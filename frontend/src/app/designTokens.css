@@ -1,0 +1,38 @@
+:root {
+  --color-bg: #fdfdfd; /* off‑white base */
+  --color-surface: #ffffff; /* cards and panels */
+  --color-primary: #0066ff; /* vibrant accent */
+  --color-secondary: #ff6f61; /* complementary accent */
+  --color-text: #212121;
+  --color-muted: #777777;
+  --shadow-glass: 0 4px 12px rgba(0,0,0,0.1);
+  --radius: 8px;
+  --font-family: 'Inter', sans-serif;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(255,255,255,0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-glass);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Global element styles */
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg);
+  color: var(--color-text);
+}

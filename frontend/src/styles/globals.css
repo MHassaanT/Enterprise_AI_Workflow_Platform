@@ -1,0 +1,72 @@
+/* globals.css – design tokens, resets, typography */
+
+/* Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Color palette – HSL for easy theming */
+:root {
+  --bg-base: hsl(220, 30%, 6%);
+  --bg-surface: hsl(220, 30%, 9%);
+  --bg-elevated: hsl(220, 30%, 12%);
+  --accent: hsl(215, 90%, 60%);      /* blue */
+  --accent-purple: hsl(260, 80%, 65%);
+  --text-primary: hsl(0, 0%, 95%);
+  --text-muted: hsl(0, 0%, 65%);
+  --border: rgba(255,255,255,0.06);
+  --success: hsl(120, 70%, 45%);
+  --warning: hsl(45, 90%, 55%);
+  --danger: hsl(0, 80%, 55%);
+}
+
+/* Utility classes */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rounded {
+  border-radius: 0.75rem;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* Text */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+p {
+  margin-bottom: 0.75rem;
+}
