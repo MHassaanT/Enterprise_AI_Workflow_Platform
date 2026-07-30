@@ -28,12 +28,13 @@ app = FastAPI(
     lifespan=mcp_http_app.lifespan,
 )
 
-# CORS — only Node.js API Gateway is allowed to call this service
+# CORS — Node.js API Gateway & external tools allowed
+allowed_origins = [settings.BACKEND_URL, "http://localhost:4000", "*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["POST", "GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
