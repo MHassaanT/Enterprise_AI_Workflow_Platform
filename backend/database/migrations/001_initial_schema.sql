@@ -1,4 +1,5 @@
--- ── TENANTS ──
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
@@ -6,7 +7,6 @@ CREATE TABLE tenants (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── USERS ──
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -16,7 +16,6 @@ CREATE TABLE users (
     UNIQUE(tenant_id, email)
 );
 
--- ── AGENT INSTANCES ──
 CREATE TABLE agent_instances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -26,7 +25,6 @@ CREATE TABLE agent_instances (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── CONVERSATIONS ──
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -38,7 +36,6 @@ CREATE TABLE conversations (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── MESSAGES ──
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -48,7 +45,6 @@ CREATE TABLE messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── APPROVAL REQUESTS ──
 CREATE TABLE approval_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -61,7 +57,6 @@ CREATE TABLE approval_requests (
     resolved_at TIMESTAMPTZ
 );
 
--- ── AUDIT LOG ──
 CREATE TABLE audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
