@@ -12,6 +12,12 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'All fields required.' });
   }
 
+  // Check if user email already exists
+  const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+  if (existingUser.rows[0]) {
+    return res.status(400).json({ error: 'An account with this email already exists. Please Sign In.' });
+  }
+
   // 1. Create the tenant (the company)
   const tenantResult = await query(
     'INSERT INTO tenants (name) VALUES ($1) RETURNING id, name',
@@ -22,7 +28,6 @@ router.post('/register', async (req, res) => {
   // 2. Hash the password
   const hashedPassword = await bcrypt.hash(password, 12);
 
-  // 3. Create the admin user for this tenant
   // 3. Create the admin user for this tenant
   await query(
     `INSERT INTO users (tenant_id, email, role, hashed_password) 
@@ -68,7 +73,11 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials.' });
   }
 
-  // Create JWT token — this is the wristband
+  // Safe fallback for JWT secrets
+  const secret = process.env.JWT_SECRET || 'default_fallback_jwt_secret_key_change_in_production';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+
+  // Create JWT token
   const token = jwt.sign(
     {
       userId: user.id,
@@ -76,8 +85,8 @@ router.post('/login', async (req, res) => {
       role: user.role,
       email: user.email
     },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN }
+    secret,
+    { expiresIn }
   );
 
   res.json({

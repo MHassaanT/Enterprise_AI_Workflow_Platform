@@ -42,8 +42,8 @@ app.get('/health', (req, res) => {
 
 // ── ERROR HANDLER ──
 app.use((err, req, res, next) => {
-  console.error(err.message);
-  res.status(500).json({ error: 'Internal server error.' });
+  console.error('Unhandled error:', err.stack || err);
+  res.status(500).json({ error: err.message || 'Internal server error.' });
 });
 
 const PORT = process.env.PORT || 4000;
