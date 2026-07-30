@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>External Tenant Demo Page - Customer Portal</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #2563eb;
+    }
+    main {
+      max-width: 900px;
+      margin: 3rem auto;
+      padding: 0 1.5rem;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 2.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+    h1 {
+      font-size: 1.85rem;
+      margin-top: 0;
+      color: #1e293b;
+    }
+    p {
+      color: #475569;
+      line-height: 1.6;
+    }
+    .code-box {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 1.25rem;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.9rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Acme E-Commerce Store</div>
+    <div>Customer Help Center</div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Welcome to Acme Online Support</h1>
+      <p>
+        This external webpage demonstrates the <b>Standalone Embeddable Chat Support Widget</b>.
+        Look at the bottom right corner of your screen for the floating chat icon!
+      </p>
+
+      <h3>How this widget was embedded:</h3>
+      <div class="code-box">
+        &lt;script src="http://localhost:4000/widget.js" data-tenant-id="YOUR_TENANT_ID"&gt;&lt;/script&gt;
+      </div>
+    </div>
+  </main>
+
+  <!-- Embeddable Chat Widget Script (Set your Tenant ID to test) -->
+  <script src="http://localhost:4000/widget.js"></script>
+</body>
+</html>

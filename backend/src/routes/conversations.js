@@ -48,12 +48,31 @@ router.post('/', authenticate, authorize('admin', 'employee', 'reviewer'), async
   const { customerIdentifier, agentInstanceId } = req.body;
   const { tenantId } = req.user;
 
+  let agentId = agentInstanceId;
+  if (!agentId) {
+    let agentRes = await query(
+      `SELECT id FROM agent_instances WHERE tenant_id = $1 LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+    if (!agentRes.rows[0]) {
+      agentRes = await query(
+        `INSERT INTO agent_instances (tenant_id, name, config)
+         VALUES ($1, 'Customer Support Agent', '{}')
+         RETURNING id`,
+        [tenantId],
+        tenantId
+      );
+    }
+    agentId = agentRes.rows[0]?.id || null;
+  }
+
   const result = await query(
     `INSERT INTO conversations 
       (tenant_id, agent_instance_id, customer_identifier, status)
      VALUES ($1, $2, $3, 'active')
      RETURNING *`,
-    [tenantId, agentInstanceId || null, customerIdentifier || 'anonymous'],
+    [tenantId, agentId, customerIdentifier || 'anonymous'],
     tenantId // activates RLS
   );
 
@@ -149,26 +168,42 @@ router.post('/:id/messages', authenticate, authorize('admin', 'employee', 'revie
   );
   const agentInstanceId = convoFull.rows[0]?.agent_instance_id;
 
-  let answer, citations = [], approvalPending = false, approvalId = null;
+  let answer = 'Unable to generate response.';
+  let citations = [];
+  let approvalPending = false;
+  let approvalId = null;
 
   if (agentInstanceId) {
-    // ── Agent-backed conversation: delegate to Python orchestration service ──
-    const agentResult = await callAgentService({
-      question: content,
-      tenant_id: tenantId,
-      agent_instance_id: agentInstanceId,
-      conversation_id: id,
-      user_id: req.user.id,
-    });
-    answer = agentResult.answer;
-    citations = agentResult.citations || [];
-    approvalPending = agentResult.approval_pending || false;
-    approvalId = agentResult.approval_id || null;
+    try {
+      // Fetch recent conversation history memory (up to 10 messages)
+      const historyRes = await query(
+        `SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 10`,
+        [id], tenantId
+      );
+      const history = (historyRes.rows || []).map(r => ({ role: r.role, content: r.content }));
+
+      const agentResult = await callAgentService({
+        question: content,
+        tenant_id: tenantId,
+        agent_instance_id: agentInstanceId,
+        conversation_id: id,
+        user_id: req.user.id,
+        history,
+      });
+      answer = agentResult?.answer || 'Unable to process your request.';
+      citations = agentResult?.citations || [];
+      approvalPending = agentResult?.approval_pending || false;
+      approvalId = agentResult?.approval_id || null;
+    } catch (agentErr) {
+      console.warn('Agent service error, falling back to direct RAG:', agentErr.message);
+      const ragResult = await answerWithRAG(content, tenantId);
+      answer = ragResult?.answer || 'Unable to process your request.';
+      citations = ragResult?.citations || [];
+    }
   } else {
-    // ── Fallback: direct RAG (conversations without an agent instance) ──
     const ragResult = await answerWithRAG(content, tenantId);
-    answer = ragResult.answer;
-    citations = ragResult.citations || [];
+    answer = ragResult?.answer || 'Unable to process your request.';
+    citations = ragResult?.citations || [];
   }
 
   // 3. Persist the assistant's response with citations
@@ -176,7 +211,7 @@ router.post('/:id/messages', authenticate, authorize('admin', 'employee', 'revie
     `INSERT INTO messages (conversation_id, tenant_id, role, content, citations_json)
      VALUES ($1, $2, 'assistant', $3, $4)
      RETURNING *`,
-    [id, tenantId, answer, JSON.stringify(citations)],
+    [id, tenantId, answer, JSON.stringify(citations || [])],
     tenantId
   );
 

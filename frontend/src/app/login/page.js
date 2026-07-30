@@ -1,55 +1,124 @@
-// src/app/login/page.js
 'use client';
 import { useState } from 'react';
-import { login } from '@/lib/api';
+import { login, register } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import styles from './login.module.css';
 
 export default function LoginPage() {
+  const [isRegister, setIsRegister] = useState(false);
+  const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
     try {
-      const data = await login(email, password);
-      localStorage.setItem('ai_platform_token', data.token);
-      router.replace('/chat');
+      if (isRegister) {
+        if (!companyName.trim()) throw new Error('Company name is required.');
+        await register(companyName, email, password);
+        setSuccessMsg('Account registered successfully! Logging you in...');
+        // Auto-login after registration
+        const loginData = await login(email, password);
+        if (loginData.token) {
+          router.replace('/');
+        }
+      } else {
+        const loginData = await login(email, password);
+        if (loginData.token) {
+          router.replace('/');
+        }
+      }
     } catch (err) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex-center min-h-screen glass rounded p-8 max-w-md mx-auto">
-      <form className="w-full" onSubmit={handleSubmit}>
-        <h2 className="text-2xl font-bold mb-6 text-center">Sign In</h2>
-        {error && <p className="text-danger mb-4 text-center">{error}</p>}
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full mb-4 p-2 rounded bg-bg-surface text-primary"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full mb-6 p-2 rounded bg-bg-surface text-primary"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          className="w-full py-2 bg-accent text-primary font-semibold rounded hover:bg-accent-purple transition"
-        >
-          Sign In
-        </button>
-      </form>
+    <div className={styles.authWrapper}>
+      <div className={styles.authCard}>
+        <div className={styles.brandHeader}>
+          <span className={styles.logoIcon}>⚡</span>
+          <h1 className={styles.brandTitle}>Enterprise AI Workforce</h1>
+        </div>
+
+        <div className={styles.tabContainer}>
+          <button
+            type="button"
+            className={`${styles.tab} ${!isRegister ? styles.activeTab : ''}`}
+            onClick={() => { setIsRegister(false); setError(null); setSuccessMsg(null); }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={`${styles.tab} ${isRegister ? styles.activeTab : ''}`}
+            onClick={() => { setIsRegister(true); setError(null); setSuccessMsg(null); }}
+          >
+            Register Company
+          </button>
+        </div>
+
+        {error && <div className={styles.errorAlert}>⚠️ {error}</div>}
+        {successMsg && <div className={styles.successAlert}>✅ {successMsg}</div>}
+
+        <form onSubmit={handleSubmit} className={styles.form}>
+          {isRegister && (
+            <div className={styles.fieldGroup}>
+              <label className={styles.label}>Company / Workspace Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Acme Support Services"
+                className={styles.input}
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.label}>Email Address</label>
+            <input
+              type="email"
+              placeholder="name@company.com"
+              className={styles.input}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.label}>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              className={styles.input}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={styles.submitBtn}
+          >
+            {loading ? 'Processing...' : isRegister ? 'Create Workspace & Account' : 'Sign In to Workspace'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

@@ -26,11 +26,11 @@ const upload = multer({
 });
 
 // ── UPLOAD A DOCUMENT ──
-// Admins and employees can upload; reviewers are read-only.
+// Admins can upload; reviewers are read-only.
 router.post(
   '/',
   authenticate,
-  authorize('admin', 'employee'),
+  authorize('admin'),
   upload.single('file'),
   async (req, res) => {
     if (!req.file) {
