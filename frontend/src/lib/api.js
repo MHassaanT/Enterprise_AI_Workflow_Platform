@@ -46,8 +46,11 @@ export async function login(email, password) {
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Login failed. Please check your credentials.');
+    const text = await res.text().catch(() => '');
+    let data = {};
+    try { data = JSON.parse(text); } catch (e) {}
+    console.error(`Login error [HTTP ${res.status}]:`, text);
+    throw new Error(data.error || `Login failed (HTTP ${res.status}). Check backend logs or API URL.`);
   }
 
   const data = await res.json();
@@ -68,8 +71,11 @@ export async function register(companyName, email, password) {
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Registration failed.');
+    const text = await res.text().catch(() => '');
+    let data = {};
+    try { data = JSON.parse(text); } catch (e) {}
+    console.error(`Registration error [HTTP ${res.status}]:`, text);
+    throw new Error(data.error || `Registration failed (HTTP ${res.status}). Check backend logs or database connection.`);
   }
 
   return res.json();
