@@ -13,6 +13,44 @@ router.use((req, res, next) => {
   next();
 });
 
+// ── GET /internal/agents/:agentInstanceId/tools ──
+// Returns the allowed tool bindings & MCP server endpoints for an agent instance
+router.get('/agents/:agentInstanceId/tools', async (req, res) => {
+  const { agentInstanceId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT tb.id, tb.tool_name, tb.connector_type, tb.mcp_server_id, tb.config, tb.is_high_risk,
+              ms.endpoint_url, ms.transport_type, ms.auth_headers
+       FROM tool_bindings tb
+       LEFT JOIN mcp_servers ms ON tb.mcp_server_id = ms.id
+       WHERE tb.agent_instance_id = $1`,
+      [agentInstanceId]
+    );
+
+    if (result.rows.length === 0) {
+      // Fallback for agent instances that don't have explicit DB bindings yet
+      return res.json({
+        agent_instance_id: agentInstanceId,
+        tools: [
+          { tool_name: 'check_order_status', connector_type: 'builtin', is_high_risk: false },
+          { tool_name: 'escalate_to_human', connector_type: 'builtin', is_high_risk: true },
+        ],
+        is_default_fallback: true,
+      });
+    }
+
+    res.json({
+      agent_instance_id: agentInstanceId,
+      tools: result.rows,
+      is_default_fallback: false,
+    });
+  } catch (error) {
+    console.error(`Error fetching tools for agent ${agentInstanceId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch agent tool bindings.' });
+  }
+});
+
 // ── POST /internal/rag/query ──
 // Called by the Python agent's retriever node.
 // Returns raw chunks + citations without creating a conversation message.

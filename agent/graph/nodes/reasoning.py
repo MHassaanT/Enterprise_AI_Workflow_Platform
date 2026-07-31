@@ -9,9 +9,9 @@ Uses the LLM gateway abstraction — Gemini or Ollama, env-switched.
 from langchain_core.messages import SystemMessage, AIMessage, ToolMessage
 from graph.state import AgentState
 from services.llm_gateway import get_llm
-from tool_gateway.registry import get_tools_for_agent
+from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 
-# Actions that always require human approval before execution
+# Actions that default to high risk requiring human approval before execution
 HIGH_RISK_TOOLS = {"escalate_to_human", "issue_refund", "process_payment"}
 
 
@@ -19,17 +19,17 @@ def _build_system_prompt(context: list[dict]) -> str:
     prompt = """You are a helpful Customer Support AI agent for an enterprise platform.
 
 Your responsibilities:
-- Answer customer questions accurately using the provided document excerpts
-- Use available tools to look up specific information (order status, account details)
-- Escalate to a human when you cannot resolve an issue or a sensitive action is needed
+- Answer customer questions accurately using the provided document excerpts.
+- Use available tools to look up specific information (order status, account details).
+- Escalate high-risk or ungrounded actions to human approval when needed.
 
 Rules:
 - Keep your answers concise, direct, and focused on the exact question (1-2 sentences).
 - Do NOT dump extra background details, categories, or target geographies unless explicitly asked.
 - Do NOT include any citation markers like [1], [2], or source labels in your response.
-- Do NOT invent information not present in documents or tool results
-- If the answer is not in the documents, say so and offer to escalate
-- For refund, credit, sensitive actions, or whenever the customer requests human escalation or human support — ALWAYS call the escalate_to_human tool.
+- Do NOT invent information not present in documents or tool results.
+- If the answer is not present in the document excerpts and cannot be answered accurately, explicitly call the escalate_to_human tool to request human assistance.
+- For high-risk or irreversible actions (such as refunds, payments, or account changes), call the escalate_to_human tool for approval.
 """
     if context:
         excerpts = "\n\n".join(
@@ -43,7 +43,15 @@ Rules:
 
 async def reasoning_node(state: AgentState) -> dict:
     llm = get_llm()
-    tools = await get_tools_for_agent(state["agent_instance_id"])
+    agent_id = state["agent_instance_id"]
+    tools = await get_tools_for_agent(agent_id)
+    bindings = await get_allowed_tool_bindings(agent_id)
+    
+    # Map tool names to whether they require human approval based on ToolBinding DB config
+    high_risk_map = {
+        b["tool_name"]: b.get("is_high_risk", False) for b in bindings
+    }
+
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     system_msg = SystemMessage(content=_build_system_prompt(state.get("context", [])))
@@ -51,36 +59,22 @@ async def reasoning_node(state: AgentState) -> dict:
 
     response: AIMessage = await llm_with_tools.ainvoke([system_msg] + history)
 
-    # ── Escalation intent detection fallback ──
-    user_q = (state.get("question") or "").lower()
-    escalate_keywords = ["escalat", "human", "representative", "supervisor", "speak to a person", "real person", "refund"]
-    is_escalation_intent = any(k in user_q for k in escalate_keywords)
-
     # ── Tool call requested ──
     if hasattr(response, "tool_calls") and response.tool_calls:
         call = response.tool_calls[0]
+        tool_name = call["name"]
+
+        is_high_risk = tool_name in HIGH_RISK_TOOLS or high_risk_map.get(tool_name, False)
+
         return {
             "messages": [response],
             "next_step": "tool_call",
             "pending_tool_call": {
-                "name": call["name"],
+                "name": tool_name,
                 "arguments": call["args"],
-                "id": call.get("id", call["name"]),  # OpenAI requires exact tool_call_id match
+                "id": call.get("id", tool_name),  # OpenAI requires exact tool_call_id match
             },
-            "is_high_risk": call["name"] in HIGH_RISK_TOOLS,
-        }
-
-    # If user explicitly requested human escalation but LLM returned text instead of tool call
-    if is_escalation_intent:
-        return {
-            "messages": [AIMessage(content="Escalating your request to a human reviewer.")],
-            "next_step": "tool_call",
-            "pending_tool_call": {
-                "name": "escalate_to_human",
-                "arguments": {"reason": state.get("question", "Customer requested human escalation")},
-                "id": "escalate_to_human_fallback",
-            },
-            "is_high_risk": True,
+            "is_high_risk": is_high_risk,
         }
 
     # ── Final answer ──

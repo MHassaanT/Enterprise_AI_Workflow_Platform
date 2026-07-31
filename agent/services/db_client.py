@@ -9,6 +9,30 @@ from config import settings
 _HEADERS = lambda: {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
 
 
+async def get_agent_tool_bindings(agent_instance_id: str) -> dict:
+    """
+    Fetches authorized tool bindings & MCP configs for the given agent instance.
+    Returns: {"tools": [...], "is_default_fallback": bool}
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.BACKEND_URL}/internal/agents/{agent_instance_id}/tools",
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"[TOOL BINDINGS ERROR] Failed to fetch tools for agent {agent_instance_id}: {e}")
+        return {
+            "tools": [
+                {"tool_name": "check_order_status", "connector_type": "builtin", "is_high_risk": False},
+                {"tool_name": "escalate_to_human", "connector_type": "builtin", "is_high_risk": True},
+            ],
+            "is_default_fallback": True,
+        }
+
+
 async def create_approval_request(payload: dict) -> str:
     """
     Creates a pending ApprovalRequest record in Postgres.

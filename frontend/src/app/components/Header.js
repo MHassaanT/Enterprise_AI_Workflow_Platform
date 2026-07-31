@@ -36,6 +36,10 @@ export default function Header() {
               🧩 Widget Setup
             </Link>
 
+            <Link href="/mcp" className="nav-link admin-nav-link">
+              🔌 MCP Tools
+            </Link>
+
             {isAdmin && (
               <Link href="/users" className="nav-link admin-nav-link">
                 👥 Team Users

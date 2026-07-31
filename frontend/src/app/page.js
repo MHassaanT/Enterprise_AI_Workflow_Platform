@@ -145,6 +145,20 @@ export default function TenantControlPanelPage() {
 
             {/* Right Column: Quick Management & Setup */}
             <div className="side-column">
+              {/* MCP Connections Card */}
+              <div className="mini-card">
+                <div className="mini-header">
+                  <span className="mini-icon">🔌</span>
+                  <h4>MCP Tools & Connectors</h4>
+                </div>
+                <p className="mini-desc">
+                  Connect unlimited external MCP servers and configure per-agent tool allowlists.
+                </p>
+                <Link href="/mcp" className="mini-btn">
+                  Manage MCP Tools ➔
+                </Link>
+              </div>
+
               {/* Widget Deployment Card */}
               <div className="mini-card">
                 <div className="mini-header">

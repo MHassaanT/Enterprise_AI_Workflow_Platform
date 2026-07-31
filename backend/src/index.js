@@ -12,6 +12,7 @@ const agentRoutes = require('./routes/agents');
 const internalRoutes = require('./routes/internal');
 const userRoutes = require('./routes/users');
 const widgetRoutes = require('./routes/widget');
+const mcpRoutes = require('./routes/mcp');
 
 const app = express();
 
@@ -31,6 +32,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/agents', agentRoutes);
+app.use('/api/v1/agents', agentRoutes); // Supporting assignment spec POST /api/v1/agents/{id}/config
+app.use('/api/mcp', mcpRoutes);
+app.use('/api/v1/mcp', mcpRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded

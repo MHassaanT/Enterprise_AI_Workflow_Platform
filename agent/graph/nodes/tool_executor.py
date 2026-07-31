@@ -1,15 +1,16 @@
 """
-Tool Executor Node — validates and executes MCP tools.
+Tool Executor Node — validates and executes built-in and dynamic MCP tools.
 
-Three-stage execution per spec (section 13.3):
-  1. ToolBinding allowlist check — agent can only call its permitted tools
-  2. Pydantic parameter validation — rejects malformed/injected arguments
+Three-stage execution per spec:
+  1. ToolBinding allowlist check — agent can only call its explicitly bound tools
+  2. Parameter validation — verifies input parameters against Pydantic models or tool schemas
   3. Execution + audit log write
 """
 from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 from graph.state import AgentState
-from tool_gateway.registry import TOOL_REGISTRY, TOOL_INPUT_MODELS, get_allowed_tools
+from tool_gateway.registry import TOOL_REGISTRY, TOOL_INPUT_MODELS, get_allowed_tool_bindings
+from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import write_audit_log
 
 
@@ -17,20 +18,17 @@ async def tool_executor_node(state: AgentState) -> dict:
     tool_call = state["pending_tool_call"]
     tool_name = tool_call["name"]
     arguments = tool_call.get("arguments", {})
-    # Use the LLM-generated call ID so ToolMessage matches the preceding AI message
     tool_call_id = tool_call.get("id", tool_name)
 
-    # ── Stage 1: ToolBinding allowlist ──
-    allowed = await get_allowed_tools(state["agent_instance_id"])
-    if tool_name not in allowed:
-        msg = f"Tool '{tool_name}' is not authorized for this agent."
+    # ── Stage 1: ToolBinding allowlist check ──
+    bindings = await get_allowed_tool_bindings(state["agent_instance_id"])
+    target_binding = next((b for b in bindings if b["tool_name"] == tool_name), None)
+
+    if not target_binding:
+        msg = f"Security Error: Tool '{tool_name}' is not authorized for this agent instance."
         return _error(tool_call_id, msg)
 
-    if tool_name not in TOOL_REGISTRY:
-        msg = f"Tool '{tool_name}' is not registered."
-        return _error(tool_call_id, msg)
-
-    # ── Stage 2: Pydantic parameter validation ──
+    # ── Stage 2: Parameter validation ──
     InputModel = TOOL_INPUT_MODELS.get(tool_name)
     if InputModel:
         try:
@@ -40,11 +38,25 @@ async def tool_executor_node(state: AgentState) -> dict:
             msg = f"Invalid parameters for '{tool_name}': {e}"
             return _error(tool_call_id, msg)
 
-    # ── Stage 3: Execute + audit ──
+    # ── Stage 3: Execution + audit ──
     try:
-        tool_fn = TOOL_REGISTRY[tool_name]
-        result = await tool_fn(**arguments)
-        result_str = str(result)
+        connector_type = target_binding.get("connector_type", "builtin")
+
+        if connector_type == "builtin" and tool_name in TOOL_REGISTRY:
+            tool_fn = TOOL_REGISTRY[tool_name]
+            result = await tool_fn(**arguments)
+            result_str = str(result)
+        else:
+            # Remote MCP Execution
+            endpoint_url = target_binding.get("endpoint_url")
+            auth_headers = target_binding.get("auth_headers") or {}
+            result_str = await execute_remote_mcp_tool(
+                endpoint_url=endpoint_url,
+                tool_name=tool_name,
+                arguments=arguments,
+                auth_headers=auth_headers,
+                transport_type=connector_type,
+            )
 
         await write_audit_log(
             state["tenant_id"],
@@ -52,6 +64,7 @@ async def tool_executor_node(state: AgentState) -> dict:
             {
                 "toolName": tool_name,
                 "arguments": arguments,
+                "connectorType": connector_type,
                 "result": result_str[:500],
                 "conversationId": state["conversation_id"],
                 "userId": state["user_id"],

@@ -216,3 +216,91 @@ export async function provisionReviewer(email, password) {
   }
   return res.json();
 }
+
+// ── MCP CONNECTIONS & DYNAMIC AGENT TOOL BINDINGS ──
+export async function fetchMCPServers() {
+  const res = await fetch('/api/mcp', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to fetch MCP servers');
+  }
+  const data = await res.json();
+  return data.mcp_servers || [];
+}
+
+export async function createMCPServer(name, transportType, endpointUrl, authHeaders = {}) {
+  const res = await fetch('/api/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      name,
+      transport_type: transportType,
+      endpoint_url: endpointUrl,
+      auth_headers: authHeaders,
+    })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to register MCP server connection');
+  }
+  return res.json();
+}
+
+export async function deleteMCPServer(id) {
+  const res = await fetch(`/api/mcp/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to delete MCP server');
+  }
+  return res.json();
+}
+
+export async function fetchAgents() {
+  const res = await fetch('/api/agents', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to fetch agents');
+  }
+  const data = await res.json();
+  return data.agents || [];
+}
+
+export async function fetchAgentConfig(agentId) {
+  const res = await fetch(`/api/v1/agents/${agentId}/config`, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to fetch agent config');
+  }
+  return res.json();
+}
+
+export async function updateAgentConfig(agentId, toolBindings, humanApprovalPolicy = []) {
+  const res = await fetch(`/api/v1/agents/${agentId}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      tool_bindings: toolBindings,
+      human_approval_policy: humanApprovalPolicy,
+    })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update agent config');
+  }
+  return res.json();
+}
