@@ -51,6 +51,11 @@ async def reasoning_node(state: AgentState) -> dict:
 
     response: AIMessage = await llm_with_tools.ainvoke([system_msg] + history)
 
+    # ── Escalation intent detection fallback ──
+    user_q = (state.get("question") or "").lower()
+    escalate_keywords = ["escalat", "human", "representative", "supervisor", "speak to a person", "real person", "refund"]
+    is_escalation_intent = any(k in user_q for k in escalate_keywords)
+
     # ── Tool call requested ──
     if hasattr(response, "tool_calls") and response.tool_calls:
         call = response.tool_calls[0]
@@ -63,6 +68,19 @@ async def reasoning_node(state: AgentState) -> dict:
                 "id": call.get("id", call["name"]),  # OpenAI requires exact tool_call_id match
             },
             "is_high_risk": call["name"] in HIGH_RISK_TOOLS,
+        }
+
+    # If user explicitly requested human escalation but LLM returned text instead of tool call
+    if is_escalation_intent:
+        return {
+            "messages": [AIMessage(content="Escalating your request to a human reviewer.")],
+            "next_step": "tool_call",
+            "pending_tool_call": {
+                "name": "escalate_to_human",
+                "arguments": {"reason": state.get("question", "Customer requested human escalation")},
+                "id": "escalate_to_human_fallback",
+            },
+            "is_high_risk": True,
         }
 
     # ── Final answer ──

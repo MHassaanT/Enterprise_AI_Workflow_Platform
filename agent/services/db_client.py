@@ -14,14 +14,18 @@ async def create_approval_request(payload: dict) -> str:
     Creates a pending ApprovalRequest record in Postgres.
     Returns the new approval UUID.
     """
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(
-            f"{settings.BACKEND_URL}/internal/approvals",
-            json=payload,
-            headers=_HEADERS(),
-        )
-        response.raise_for_status()
-        return response.json()["approvalId"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/approvals",
+                json=payload,
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()["approvalId"]
+    except Exception as e:
+        print(f"[APPROVAL REQ ERROR] Failed to create approval request at {settings.BACKEND_URL}/internal/approvals: {e}")
+        raise e
 
 
 async def write_audit_log(tenant_id: str, event_type: str, payload: dict) -> None:
