@@ -6,6 +6,7 @@ import { getUser } from '@/lib/api';
 
 export default function WidgetSetupPage() {
   const [tenantId, setTenantId] = useState('');
+  const [backendUrl, setBackendUrl] = useState('http://localhost:4000');
   const [copied, setCopied] = useState(false);
   const [copiedJs, setCopiedJs] = useState(false);
 
@@ -14,14 +15,22 @@ export default function WidgetSetupPage() {
     if (user && user.tenantId) {
       setTenantId(user.tenantId);
     }
+    const envUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    if (envUrl) {
+      setBackendUrl(envUrl.replace(/\/+$/, ''));
+    } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      setBackendUrl(window.location.origin);
+    }
   }, []);
 
-  const htmlSnippet = `<script src="http://localhost:4000/widget.js" data-tenant-id="${tenantId || 'YOUR_TENANT_ID'}"></script>`;
+  const cleanBackendUrl = backendUrl.replace(/\/+$/, '');
+  const htmlSnippet = `<script src="${cleanBackendUrl}/widget.js" data-tenant-id="${tenantId || 'YOUR_TENANT_ID'}"></script>`;
 
-  const jsSnippet = `<script src="http://localhost:4000/widget.js"></script>
+  const jsSnippet = `<script src="${cleanBackendUrl}/widget.js"></script>
 <script>
   window.EnterpriseChatWidget.init({
     tenantId: "${tenantId || 'YOUR_TENANT_ID'}",
+    apiHost: "${cleanBackendUrl}",
     title: "Customer Support",
     subtitle: "AI Agent Powered"
   });
@@ -54,6 +63,26 @@ export default function WidgetSetupPage() {
             <div className="tenant-id-badge">
               <span>Tenant ID:</span> <code>{tenantId || 'Loading...'}</code>
             </div>
+          </div>
+
+          {/* Backend Host Config */}
+          <div className="backend-url-card">
+            <div className="backend-url-content">
+              <label htmlFor="backendUrlInput" className="url-label">
+                🌐 Backend Service API URL:
+              </label>
+              <input
+                id="backendUrlInput"
+                type="text"
+                value={backendUrl}
+                onChange={(e) => setBackendUrl(e.target.value)}
+                placeholder="e.g. https://your-backend.up.railway.app"
+                className="url-input"
+              />
+            </div>
+            <p className="url-hint">
+              This host URL will be used in the script snippet below to load <code>widget.js</code> and connect the widget to your API.
+            </p>
           </div>
 
           <div className="content-grid">
@@ -125,9 +154,9 @@ export default function WidgetSetupPage() {
                 <div className="step-body">
                   <h4>Test Live Customer Interactions</h4>
                   <p>
-                    Visitors can chat directly with your AI Agent. Try opening the local demo page:
-                    <a href="http://localhost:4000/demo.html" target="_blank" rel="noreferrer" className="demo-link">
-                      Open Local Demo Page ↗
+                    Visitors can chat directly with your AI Agent. Try opening the live demo page:
+                    <a href={`${cleanBackendUrl}/demo.html`} target="_blank" rel="noreferrer" className="demo-link">
+                      Open Live Demo Page ↗
                     </a>
                   </p>
                 </div>
@@ -178,6 +207,49 @@ export default function WidgetSetupPage() {
           .tenant-id-badge code {
             color: #2563eb;
             font-weight: 700;
+          }
+          .backend-url-card {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+          }
+          .backend-url-content {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+          }
+          .url-label {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #0f172a;
+            white-space: nowrap;
+          }
+          .url-input {
+            flex: 1;
+            min-width: 280px;
+            padding: 0.6rem 1rem;
+            border: 1px solid #94a3b8;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: monospace;
+            color: #0f172a;
+            background: #f8fafc;
+            outline: none;
+            transition: border-color 0.2s;
+          }
+          .url-input:focus {
+            border-color: #2563eb;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+          }
+          .url-hint {
+            margin: 0.5rem 0 0 0;
+            font-size: 0.8rem;
+            color: #64748b;
           }
           .content-grid {
             display: flex;

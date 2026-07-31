@@ -49,9 +49,13 @@ const ingestDocument = async ({ buffer, filename, mimetype, tenantId }) => {
       status: 'ready',
     };
   } catch (err) {
+    const causeMsg = err.cause?.message || err.cause?.code || '';
+    const errorDetails = causeMsg ? `${err.message} (${causeMsg})` : err.message;
+    console.error(`[Ingestion Error] Document ${documentId} (${filename}) failed:`, err);
+
     await query(
       `UPDATE documents SET status = 'failed', error_message = $1 WHERE id = $2 AND tenant_id = $3`,
-      [err.message, documentId, tenantId],
+      [errorDetails, documentId, tenantId],
       tenantId
     );
 
@@ -61,7 +65,7 @@ const ingestDocument = async ({ buffer, filename, mimetype, tenantId }) => {
       // Best-effort cleanup
     }
 
-    throw err;
+    throw new Error(errorDetails);
   }
 };
 
