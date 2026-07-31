@@ -19,7 +19,7 @@ const generateWithOpenRouter = async (prompt) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a concise customer support assistant. Answer the user\'s question using ONLY the provided document excerpts. Keep your response extremely brief (1-2 sentences max). Do NOT include extra details like category, target geography, or unrelated background unless explicitly asked. Cite sources using [1], [2].'
+          content: 'You are a concise customer support assistant. Answer the user\'s question using ONLY the provided document excerpts. Keep your response extremely brief (1-2 sentences max). Do NOT include extra details like category, target geography, or unrelated background unless explicitly asked. Do NOT include inline citation markers like [1], [2] in your answer.'
         },
         { role: 'user', content: prompt }
       ],

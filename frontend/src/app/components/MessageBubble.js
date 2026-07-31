@@ -19,28 +19,6 @@ export default function MessageBubble({ message }) {
         <div className={styles.content}>
           {message.content}
         </div>
-
-        {citations.length > 0 && (
-          <div className={styles.citationsContainer}>
-            <div className={styles.citationsHeader}>
-              <span>📚 References & Sources ({citations.length})</span>
-            </div>
-            <div className={styles.citationsList}>
-              {citations.map((cite, idx) => (
-                <div key={idx} className={styles.citationBadge}>
-                  <span className={styles.citeIndex}>[{idx + 1}]</span>
-                  <span className={styles.citeDoc}>{cite.documentName || cite.document_name || 'Document'}</span>
-                  {cite.section && <span className={styles.citeSec}> • {cite.section}</span>}
-                  {cite.score && (
-                    <span className={styles.citeScore}>
-                      ({Math.round(cite.score * 100)}% match)
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

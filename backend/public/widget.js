@@ -325,21 +325,8 @@
     state.messages.forEach(function (msg) {
       var isUser = msg.role === 'user';
       var cls = isUser ? 'ai-widget-msg-user' : 'ai-widget-msg-assistant';
-      var citationsHtml = '';
 
-      if (!isUser && msg.citations_json) {
-        try {
-          var citations = typeof msg.citations_json === 'string' ? JSON.parse(msg.citations_json) : msg.citations_json;
-          if (Array.isArray(citations) && citations.length > 0) {
-            citationsHtml = '<div class="ai-widget-citations"><b>Sources:</b>' +
-              citations.map(function (c) {
-                return '<div class="ai-widget-citation-item">📄 ' + (c.filename || c.source || 'Knowledge Doc') + '</div>';
-              }).join('') + '</div>';
-          }
-        } catch (e) {}
-      }
-
-      html += '<div class="ai-widget-msg ' + cls + '">' + escapeHtml(msg.content) + citationsHtml + '</div>';
+      html += '<div class="ai-widget-msg ' + cls + '">' + escapeHtml(msg.content) + '</div>';
     });
 
     if (state.loading) {
