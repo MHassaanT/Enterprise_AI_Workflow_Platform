@@ -45,7 +45,7 @@ LANGCHAIN_TOOLS: list[StructuredTool] = [
         description=(
             "Escalates a customer issue to a human agent or supervisor. "
             "Use when you cannot resolve the issue, when a refund or credit is requested, "
-            "or when the customer is upset and requires human attention."
+            "or when the customer asks to escalate, speak to a human, or get human support."
         ),
         args_schema=EscalateToHumanInput,
     ),
