@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     BACKEND_URL: str = "http://localhost:4000"
     INTERNAL_SERVICE_TOKEN: str = "internal_secret_change_in_production"
+    DATABASE_URL: str = "postgresql://hassan:zareaai123@localhost:5432/ai_platform"
+    ENCRYPTION_KEY: str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     # LLM Gateway — "openrouter" | "gemini" | "ollama"
     LLM_PROVIDER: str = "openrouter"

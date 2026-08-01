@@ -1,5 +1,5 @@
 """
-Agent Router — POST /agent/run
+Agent Router — POST /agent/run & POST /agent/resume
 
 Called internally by the Node.js API Gateway. Never exposed publicly.
 Authenticated via X-Internal-Token header (shared secret).
@@ -23,6 +23,14 @@ class AgentRunRequest(BaseModel):
     conversation_id: str
     user_id: str = "anonymous"
     history: Optional[list[dict]] = None
+
+
+class AgentResumeRequest(BaseModel):
+    approval_id: str
+    conversation_id: str
+    decision: str  # "approved" or "rejected"
+    tenant_id: str
+    user_id: str = "reviewer"
 
 
 class AgentRunResponse(BaseModel):
@@ -74,8 +82,10 @@ async def run_agent(
         "user_id": request.user_id,
     }
 
+    config = {"configurable": {"thread_id": request.conversation_id}}
+
     try:
-        final_state = await customer_support_graph.ainvoke(initial_state)
+        final_state = await customer_support_graph.ainvoke(initial_state, config=config)
 
         # Extract last AI message as the answer
         ai_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "ai"]
@@ -94,7 +104,6 @@ async def run_agent(
         )
     except Exception as e:
         print(f"Error executing agent graph: {e}")
-        # Fallback to direct RAG retrieval when LLM graph encounters errors
         from services.rag_client import query_rag
         rag_result = await query_rag(request.question, request.tenant_id)
         chunks = rag_result.get("chunks", [])
@@ -109,4 +118,50 @@ async def run_agent(
             tool_used=None,
             approval_pending=False,
             approval_id=None,
+        )
+
+
+@router.post("/resume", response_model=AgentRunResponse)
+async def resume_agent(
+    request: AgentResumeRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    config = {"configurable": {"thread_id": request.conversation_id}}
+
+    try:
+        resume_update = {
+            "approval_status": request.decision,
+            "approval_id": request.approval_id,
+        }
+        if request.decision == "rejected":
+            resume_update["messages"] = [
+                AIMessage(content=f"Action (Reference ID: {request.approval_id}) was rejected by a human reviewer.")
+            ]
+
+        final_state = await customer_support_graph.ainvoke(resume_update, config=config)
+
+        ai_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "ai"]
+        answer = ai_msgs[-1].content if ai_msgs else f"Action {request.decision} by reviewer."
+
+        tool_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "tool"]
+        tool_used = tool_msgs[-1].tool_call_id if tool_msgs else None
+
+        return AgentRunResponse(
+            answer=answer if isinstance(answer, str) else str(answer),
+            citations=final_state.get("citations", []),
+            tool_used=tool_used,
+            approval_pending=False,
+            approval_id=request.approval_id,
+        )
+    except Exception as e:
+        print(f"Error resuming agent graph: {e}")
+        return AgentRunResponse(
+            answer=f"Agent workflow resumed with decision: {request.decision}.",
+            citations=[],
+            tool_used=None,
+            approval_pending=False,
+            approval_id=request.approval_id,
         )

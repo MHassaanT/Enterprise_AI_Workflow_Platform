@@ -40,6 +40,11 @@ export default function Header() {
               🔌 MCP Tools
             </Link>
 
+            <Link href="/admin/tools" className="nav-link admin-nav-link">
+              🔒 Centralized Gateway
+            </Link>
+
+
             {isAdmin && (
               <Link href="/users" className="nav-link admin-nav-link">
                 👥 Team Users

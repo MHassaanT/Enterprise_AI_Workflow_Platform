@@ -1,5 +1,5 @@
 """
-Customer Support Agent — LangGraph StateGraph
+Customer Support Agent — LangGraph StateGraph with MemorySaver Checkpointer
 
 Graph flow:
   START
@@ -11,6 +11,7 @@ Graph flow:
     → [respond]    → END
 """
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
 from graph.state import AgentState
 from graph.nodes.intent_classifier import intent_classifier_node
 from graph.nodes.retriever import retriever_node
@@ -27,10 +28,13 @@ def _route_after_reasoning(state: AgentState) -> str:
 
 
 def _route_after_approval(state: AgentState) -> str:
-    return "tool_executor" if state.get("approval_status") == "approved" else END
+    status = state.get("approval_status")
+    if status == "approved":
+        return "tool_executor"
+    return END
 
 
-def build_graph() -> StateGraph:
+def build_graph():
     builder = StateGraph(AgentState)
 
     builder.add_node("intent_classifier", intent_classifier_node)
@@ -57,8 +61,9 @@ def build_graph() -> StateGraph:
     # ReAct loop — tool result feeds back into reasoning
     builder.add_edge("tool_executor", "reasoning")
 
-    return builder.compile()
+    memory = MemorySaver()
+    return builder.compile(checkpointer=memory)
 
 
-# Compiled once at import time — reused across all requests
+# Compiled once at import time with checkpointer
 customer_support_graph = build_graph()

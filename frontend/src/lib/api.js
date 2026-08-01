@@ -304,3 +304,90 @@ export async function updateAgentConfig(agentId, toolBindings, humanApprovalPoli
   }
   return res.json();
 }
+
+// ── CENTRALIZED MCP GATEWAY & CREDENTIALS APIs ──
+export async function fetchToolRegistry() {
+  const res = await fetch('/api/mcp-gateway/registry', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch tool registry');
+  const data = await res.json();
+  return data.registry || [];
+}
+
+export async function registerGlobalTool(canonicalName, displayName, providerType, isHighRisk, schemaJson = {}) {
+  const res = await fetch('/api/mcp-gateway/registry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      canonical_name: canonicalName,
+      display_name: displayName,
+      provider_type: providerType,
+      is_high_risk: isHighRisk,
+      schema_json: schemaJson,
+    })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to register tool schema');
+  return res.json();
+}
+
+export async function fetchGatewayBindings(agentInstanceId = '') {
+  const url = agentInstanceId ? `/api/mcp-gateway/bindings?agent_instance_id=${agentInstanceId}` : '/api/mcp-gateway/bindings';
+  const res = await fetch(url, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch gateway bindings');
+  const data = await res.json();
+  return data.bindings || [];
+}
+
+export async function saveGatewayBinding(bindingData) {
+  const res = await fetch('/api/mcp-gateway/bindings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(bindingData)
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to save tool binding');
+  return res.json();
+}
+
+export async function deleteGatewayBinding(bindingId) {
+  const res = await fetch(`/api/mcp-gateway/bindings/${bindingId}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete tool binding');
+  return res.json();
+}
+
+export async function saveToolCredentials(bindingId, authType, payload) {
+  const res = await fetch('/api/mcp-gateway/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      binding_id: bindingId,
+      auth_type: authType,
+      payload,
+    })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to encrypt and store credentials');
+  return res.json();
+}
+
+export async function processApprovalAction(approvalId, action) {
+  const res = await fetch(`/api/approvals/${approvalId}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ action })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to process approval action');
+  return res.json();
+}
+
