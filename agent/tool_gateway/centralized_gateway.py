@@ -11,6 +11,8 @@ from tool_gateway.adapters.resend_adapter import execute_resend_tool
 from tool_gateway.adapters.hubspot_adapter import execute_hubspot_tool
 from tool_gateway.adapters.safepay_adapter import execute_safepay_tool
 from tool_gateway.adapters.supabase_adapter import execute_supabase_tool
+from tool_gateway.adapters.github_adapter import execute_github_tool
+from tool_gateway.adapters.vercel_adapter import execute_vercel_tool
 
 
 async def evaluate_tool_risk(agent_instance_id: str, tool_name: str) -> Tuple[bool, Dict[str, Any]]:
@@ -63,7 +65,11 @@ async def execute_mcp_tool(
 
     # 3. Adapter Routing
     try:
-        if provider_type == "safepay" or "safepay" in tool_name.lower():
+        if provider_type == "github" or "github" in tool_name.lower():
+            return await execute_github_tool(tool_name, arguments, credentials)
+        elif provider_type == "vercel" or "vercel" in tool_name.lower():
+            return await execute_vercel_tool(tool_name, arguments, credentials)
+        elif provider_type == "safepay" or "safepay" in tool_name.lower():
             return await execute_safepay_tool(tool_name, arguments, credentials)
         elif provider_type == "supabase" or "supabase" in tool_name.lower():
             return await execute_supabase_tool(tool_name, arguments, credentials)
@@ -95,4 +101,5 @@ async def execute_mcp_tool(
             )
     except Exception as e:
         return f"Error executing tool '{tool_name}' via Centralized Gateway: {str(e)}"
+
 

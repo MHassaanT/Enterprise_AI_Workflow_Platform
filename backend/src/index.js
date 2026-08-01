@@ -14,6 +14,7 @@ const userRoutes = require('./routes/users');
 const widgetRoutes = require('./routes/widget');
 const mcpRoutes = require('./routes/mcp');
 const mcpGatewayRoutes = require('./routes/mcp_gateway');
+const integrationRoutes = require('./routes/integrations');
 const approvalRoutes = require('./routes/approvals');
 
 const app = express();
@@ -38,6 +39,7 @@ app.use('/api/v1/agents', agentRoutes); // Supporting assignment spec POST /api/
 app.use('/api/mcp', mcpRoutes);
 app.use('/api/v1/mcp', mcpRoutes);
 app.use('/api/mcp-gateway', mcpGatewayRoutes);
+app.use('/api/integrations', integrationRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/widget', widgetRoutes);

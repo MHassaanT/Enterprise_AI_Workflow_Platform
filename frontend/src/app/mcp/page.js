@@ -19,6 +19,7 @@ const SEEDED_INTEGRATIONS = [
     canonical_name: 'SafePay',
     display_name: 'SafePay Payment Gateway',
     provider_type: 'safepay',
+    auth_mode: 'api_key',
     description: 'Process payment verification, refunds, and checkout link generation with encrypted secret keys.',
     category: 'Payments & Billing',
     icon: '💳',
@@ -32,6 +33,7 @@ const SEEDED_INTEGRATIONS = [
     canonical_name: 'Supabase',
     display_name: 'Supabase Database Hub',
     provider_type: 'supabase',
+    auth_mode: 'api_key',
     description: 'Execute PostgREST queries, row-level mutations, and table lookups with service role authority.',
     category: 'Database & Backend',
     icon: '⚡',
@@ -40,6 +42,28 @@ const SEEDED_INTEGRATIONS = [
       { name: 'project_url', label: 'Project URL', type: 'url', placeholder: 'https://xyzcompany.supabase.co' },
       { name: 'service_role_key', label: 'Service Role Key', type: 'password', placeholder: 'eyJhbGciOiJIUzI1NiIsInR5c...' }
     ]
+  },
+  {
+    id: 'github-card',
+    canonical_name: 'GitHub',
+    display_name: 'GitHub Developer Platform',
+    provider_type: 'github',
+    auth_mode: 'oauth2',
+    description: 'Manage repositories, track issues, inspect pull requests, and trigger workflow dispatches via OAuth2.',
+    category: 'Developer Tools',
+    icon: '🐙',
+    gradient: 'linear-gradient(135deg, #24292e 0%, #040d21 100%)',
+  },
+  {
+    id: 'vercel-card',
+    canonical_name: 'Vercel',
+    display_name: 'Vercel Cloud Platform',
+    provider_type: 'vercel',
+    auth_mode: 'oauth2',
+    description: 'Inspect cloud deployments, check project build statuses, and manage environments via OAuth2.',
+    category: 'Cloud & Infrastructure',
+    icon: '▲',
+    gradient: 'linear-gradient(135deg, #000000 0%, #1a1a1a 100%)',
   }
 ];
 
@@ -66,13 +90,27 @@ export default function IntegrationHubPage() {
 
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
-  const [newToolConnector, setNewToolConnector] = useState('builtin');
+  const [newToolConnector, setNewToolConnector] = useState('github');
   const [newToolIsHighRisk, setNewToolIsHighRisk] = useState(false);
   const [newToolDescription, setNewToolDescription] = useState('');
 
   useEffect(() => {
     setUser(getUser());
     loadInitialData();
+
+    // Listen for OAuth2 popup success messages
+    const handleOAuthMessage = (event) => {
+      if (event.data && event.data.type === 'OAUTH_SUCCESS') {
+        setMessage({
+          type: 'success',
+          text: `🎉 ${event.data.provider.toUpperCase()} authorized & connected successfully via OAuth2!`
+        });
+        loadInitialData();
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
 
   const loadInitialData = async () => {
@@ -99,7 +137,7 @@ export default function IntegrationHubPage() {
       setIntegrations(merged);
       setAgents(agentList);
 
-      if (agentList.length > 0) {
+      if (agentList.length > 0 && !selectedAgentId) {
         setSelectedAgentId(agentList[0].id);
         loadAgentConfig(agentList[0].id);
       }
@@ -123,6 +161,33 @@ export default function IntegrationHubPage() {
     const id = e.target.value;
     setSelectedAgentId(id);
     loadAgentConfig(id);
+  };
+
+  const handleConnectClick = (integration) => {
+    if (integration.auth_mode === 'oauth2') {
+      handleOAuthConnect(integration.canonical_name);
+    } else {
+      openConnectModal(integration);
+    }
+  };
+
+  const handleOAuthConnect = (provider) => {
+    const token = localStorage.getItem('token');
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.innerWidth - width) / 2;
+    const top = window.screenY + (window.innerHeight - height) / 2;
+    const popupUrl = `/api/integrations/connect/${provider.toLowerCase()}?token=${token || ''}`;
+
+    const popup = window.open(
+      popupUrl,
+      `Connect ${provider}`,
+      `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+    );
+
+    if (!popup) {
+      alert('Popup blocked! Please allow popups for this site to complete OAuth connection.');
+    }
   };
 
   const openConnectModal = (integration) => {
@@ -254,9 +319,9 @@ export default function IntegrationHubPage() {
           <div className="page-header">
             <div>
               <span className="badge">⚡ Integration Hub</span>
-              <h1>Centralized API Integration Hub</h1>
+              <h1>Centralized API & OAuth2 Integration Hub</h1>
               <p>
-                Connect API-key & token authenticated services (SafePay, Supabase) with zero-trust AES-256-GCM credential encryption.
+                Connect services (GitHub, Vercel, SafePay, Supabase) with zero-trust AES-256-GCM credential encryption.
               </p>
             </div>
           </div>
@@ -271,8 +336,8 @@ export default function IntegrationHubPage() {
           <section className="section-container">
             <div className="section-title-bar">
               <div>
-                <h2>🔌 API Key & Service Integrations</h2>
-                <p className="sub-txt">Select an integration card to securely configure and encrypt credentials.</p>
+                <h2>🔌 API Key & OAuth2 Integrations</h2>
+                <p className="sub-txt">Select an integration card to connect via OAuth2 popup or secure input modal.</p>
               </div>
             </div>
 
@@ -300,10 +365,12 @@ export default function IntegrationHubPage() {
                     <div className="card-footer">
                       {isAdmin ? (
                         <button
-                          onClick={() => openConnectModal(item)}
+                          onClick={() => handleConnectClick(item)}
                           className="btn-connect"
                         >
-                          {item.isConnected ? '⚙️ Reconfigure Credentials' : '🔌 Connect Integration'}
+                          {item.isConnected
+                            ? item.auth_mode === 'oauth2' ? '🔄 Re-authorize OAuth2' : '⚙️ Reconfigure Credentials'
+                            : item.auth_mode === 'oauth2' ? '🔗 Authorize via OAuth2' : '🔌 Connect Integration'}
                         </button>
                       ) : (
                         <span className="read-only-txt">Admin Access Required to Connect</span>
@@ -347,7 +414,7 @@ export default function IntegrationHubPage() {
                   <div className="form-group flex-2">
                     <input
                       type="text"
-                      placeholder="Tool Name (e.g. SafePay, Supabase, check_order_status)"
+                      placeholder="Tool Name (e.g. get_issues, list_deployments, SafePay)"
                       value={newToolName}
                       onChange={(e) => setNewToolName(e.target.value)}
                     />
@@ -357,6 +424,8 @@ export default function IntegrationHubPage() {
                       value={newToolConnector}
                       onChange={(e) => setNewToolConnector(e.target.value)}
                     >
+                      <option value="github">GitHub</option>
+                      <option value="vercel">Vercel</option>
                       <option value="safepay">SafePay</option>
                       <option value="supabase">Supabase</option>
                       <option value="builtin">Built-in</option>
@@ -850,6 +919,8 @@ export default function IntegrationHubPage() {
             border-radius: 4px;
             text-transform: uppercase;
           }
+          .type-github { background: #f1f5f9; color: #0f172a; }
+          .type-vercel { background: #e2e8f0; color: #000000; }
           .type-safepay { background: #e0e7ff; color: #4338ca; }
           .type-supabase { background: #dcfce7; color: #15803d; }
           .type-builtin { background: #f1f5f9; color: #475569; }
