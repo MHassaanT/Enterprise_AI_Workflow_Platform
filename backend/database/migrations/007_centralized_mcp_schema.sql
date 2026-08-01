@@ -62,19 +62,8 @@ CREATE INDEX IF NOT EXISTS idx_tool_registry_provider ON tool_registry(provider_
 ALTER TABLE tool_bindings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tool_credentials ENABLE ROW LEVEL SECURITY;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'tool_bindings' AND policyname = 'tenant_isolation_tool_bindings'
-    ) THEN
-        CREATE POLICY tenant_isolation_tool_bindings ON tool_bindings
-            USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::UUID);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies WHERE tablename = 'tool_credentials' AND policyname = 'tenant_isolation_tool_credentials'
-    ) THEN
-        CREATE POLICY tenant_isolation_tool_credentials ON tool_credentials
-            USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::UUID);
-    END IF;
-END $$;
+CREATE POLICY tenant_isolation_tool_credentials ON tool_credentials
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::UUID);
+    
+CREATE POLICY tenant_isolation_tool_bindings ON tool_bindings
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::UUID);

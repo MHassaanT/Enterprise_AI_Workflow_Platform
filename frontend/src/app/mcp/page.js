@@ -4,35 +4,69 @@ import { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import AuthGuard from '../components/AuthGuard';
 import {
-  fetchMCPServers,
-  createMCPServer,
-  deleteMCPServer,
+  fetchToolRegistry,
+  connectIntegration,
   fetchAgents,
   fetchAgentConfig,
   updateAgentConfig,
   getUser,
 } from '@/lib/api';
 
-export default function MCPManagementPage() {
+// Pre-seeded integration definitions for visual consistency
+const SEEDED_INTEGRATIONS = [
+  {
+    id: 'safepay-card',
+    canonical_name: 'SafePay',
+    display_name: 'SafePay Payment Gateway',
+    provider_type: 'safepay',
+    description: 'Process payment verification, refunds, and checkout link generation with encrypted secret keys.',
+    category: 'Payments & Billing',
+    icon: '💳',
+    gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+    fields: [
+      { name: 'secret_key', label: 'Secret Key', type: 'password', placeholder: 'sec_live_sk_...' }
+    ]
+  },
+  {
+    id: 'supabase-card',
+    canonical_name: 'Supabase',
+    display_name: 'Supabase Database Hub',
+    provider_type: 'supabase',
+    description: 'Execute PostgREST queries, row-level mutations, and table lookups with service role authority.',
+    category: 'Database & Backend',
+    icon: '⚡',
+    gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    fields: [
+      { name: 'project_url', label: 'Project URL', type: 'url', placeholder: 'https://xyzcompany.supabase.co' },
+      { name: 'service_role_key', label: 'Service Role Key', type: 'password', placeholder: 'eyJhbGciOiJIUzI1NiIsInR5c...' }
+    ]
+  }
+];
+
+export default function IntegrationHubPage() {
   const [user, setUser] = useState(null);
-  const [mcpServers, setMcpServers] = useState([]);
+  const [integrations, setIntegrations] = useState([]);
   const [agents, setAgents] = useState([]);
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [agentBindings, setAgentBindings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Form states for new MCP server
-  const [name, setName] = useState('');
-  const [transportType, setTransportType] = useState('http');
-  const [endpointUrl, setEndpointUrl] = useState('');
-  const [authToken, setAuthToken] = useState('');
+  // Modal State
+  const [activeModal, setActiveModal] = useState(null); // 'SafePay' | 'Supabase' | null
+  const [modalTarget, setModalTarget] = useState(null);
+  
+  // SafePay Modal Fields
+  const [safePaySecret, setSafePaySecret] = useState('');
+
+  // Supabase Modal Fields
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseKey, setSupabaseKey] = useState('');
 
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
   const [newToolConnector, setNewToolConnector] = useState('builtin');
-  const [newToolMcpServerId, setNewToolMcpServerId] = useState('');
   const [newToolIsHighRisk, setNewToolIsHighRisk] = useState(false);
   const [newToolDescription, setNewToolDescription] = useState('');
 
@@ -44,11 +78,25 @@ export default function MCPManagementPage() {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [servers, agentList] = await Promise.all([
-        fetchMCPServers().catch(() => []),
+      const [registryTools, agentList] = await Promise.all([
+        fetchToolRegistry().catch(() => []),
         fetchAgents().catch(() => []),
       ]);
-      setMcpServers(servers);
+
+      // Merge backend registry tool statuses into seeded cards
+      const merged = SEEDED_INTEGRATIONS.map((seed) => {
+        const matched = registryTools.find(
+          (t) => t.canonical_name.toLowerCase() === seed.canonical_name.toLowerCase()
+        );
+        return {
+          ...seed,
+          tool_id: matched?.id || seed.id,
+          isConnected: Boolean(matched?.credential_id),
+          updated_at: matched?.credential_updated_at,
+        };
+      });
+
+      setIntegrations(merged);
       setAgents(agentList);
 
       if (agentList.length > 0) {
@@ -56,7 +104,7 @@ export default function MCPManagementPage() {
         loadAgentConfig(agentList[0].id);
       }
     } catch (err) {
-      console.error('Error loading MCP data:', err);
+      console.error('Error loading Integration Hub data:', err);
     } finally {
       setLoading(false);
     }
@@ -77,39 +125,71 @@ export default function MCPManagementPage() {
     loadAgentConfig(id);
   };
 
-  const handleAddMCPServer = async (e) => {
+  const openConnectModal = (integration) => {
+    setModalTarget(integration);
+    setMessage({ type: '', text: '' });
+    if (integration.canonical_name === 'SafePay') {
+      setSafePaySecret('');
+      setActiveModal('SafePay');
+    } else if (integration.canonical_name === 'Supabase') {
+      setSupabaseUrl('');
+      setSupabaseKey('');
+      setActiveModal('Supabase');
+    }
+  };
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setModalTarget(null);
+    setSafePaySecret('');
+    setSupabaseUrl('');
+    setSupabaseKey('');
+  };
+
+  const handleSafePaySubmit = async (e) => {
     e.preventDefault();
-    if (!name || !endpointUrl) {
-      setMessage({ type: 'error', text: 'Server Name and Endpoint URL are required.' });
+    if (!safePaySecret) {
+      setMessage({ type: 'error', text: 'SafePay Secret Key is required.' });
       return;
     }
 
     try {
-      setSaving(true);
-      setMessage({ type: '', text: '' });
-      const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
-      await createMCPServer(name, transportType, endpointUrl, headers);
-      setName('');
-      setEndpointUrl('');
-      setAuthToken('');
-      setMessage({ type: 'success', text: 'MCP Server connection registered successfully!' });
-      const updated = await fetchMCPServers();
-      setMcpServers(updated);
+      setSubmitting(true);
+      const payload = { secret_key: safePaySecret };
+      await connectIntegration(modalTarget?.tool_id, 'SafePay', payload, 'api_key');
+
+      setMessage({ type: 'success', text: '🔐 SafePay credentials encrypted and connected successfully!' });
+      closeModal();
+      await loadInitialData();
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      setMessage({ type: 'error', text: err.message || 'Failed to connect SafePay credentials.' });
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  const handleDeleteMCPServer = async (id) => {
-    if (!confirm('Are you sure you want to delete this MCP connection?')) return;
+  const handleSupabaseSubmit = async (e) => {
+    e.preventDefault();
+    if (!supabaseUrl || !supabaseKey) {
+      setMessage({ type: 'error', text: 'Both Project URL and Service Role Key are required.' });
+      return;
+    }
+
     try {
-      await deleteMCPServer(id);
-      setMcpServers(mcpServers.filter((s) => s.id !== id));
-      setMessage({ type: 'success', text: 'MCP connection removed.' });
+      setSubmitting(true);
+      const payload = {
+        project_url: supabaseUrl,
+        service_role_key: supabaseKey,
+      };
+      await connectIntegration(modalTarget?.tool_id, 'Supabase', payload, 'service_role');
+
+      setMessage({ type: 'success', text: '🔐 Supabase credentials encrypted and connected successfully!' });
+      closeModal();
+      await loadInitialData();
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      setMessage({ type: 'error', text: err.message || 'Failed to connect Supabase credentials.' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -125,7 +205,6 @@ export default function MCPManagementPage() {
     const newBinding = {
       tool_name: newToolName,
       connector_type: newToolConnector,
-      mcp_server_id: newToolConnector !== 'builtin' ? newToolMcpServerId : null,
       is_high_risk: newToolIsHighRisk,
       config: { description: newToolDescription },
     };
@@ -151,7 +230,7 @@ export default function MCPManagementPage() {
     if (!selectedAgentId) return;
 
     try {
-      setSaving(true);
+      setSubmitting(true);
       setMessage({ type: '', text: '' });
       const highRiskList = agentBindings.filter((b) => b.is_high_risk).map((b) => b.tool_name);
       await updateAgentConfig(selectedAgentId, agentBindings, highRiskList);
@@ -159,7 +238,7 @@ export default function MCPManagementPage() {
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -167,17 +246,17 @@ export default function MCPManagementPage() {
 
   return (
     <AuthGuard>
-      <div className="mcp-page">
+      <div className="hub-page">
         <Header />
 
-        <main className="mcp-main">
+        <main className="hub-main">
           {/* Header Banner */}
           <div className="page-header">
             <div>
-              <span className="badge">🔌 Model Context Protocol (MCP)</span>
-              <h1>Dynamic Tools & MCP Connection Hub</h1>
+              <span className="badge">⚡ Integration Hub</span>
+              <h1>Centralized API Integration Hub</h1>
               <p>
-                Connect unlimited external MCP servers (CRMs, SQL databases, APIs) and dynamically manage per-agent tool allowlists and human approval policies.
+                Connect API-key & token authenticated services (SafePay, Supabase) with zero-trust AES-256-GCM credential encryption.
               </p>
             </div>
           </div>
@@ -188,257 +267,289 @@ export default function MCPManagementPage() {
             </div>
           )}
 
-          <div className="grid-container">
-            {/* Left Column: Register & Manage MCP Connections */}
-            <div className="card">
-              <div className="card-header">
-                <h2>🌐 Connect MCP Servers</h2>
-                <span className="card-sub">Register external MCP endpoints to expose custom tools</span>
+          {/* Section 1: Integration Grid */}
+          <section className="section-container">
+            <div className="section-title-bar">
+              <div>
+                <h2>🔌 API Key & Service Integrations</h2>
+                <p className="sub-txt">Select an integration card to securely configure and encrypt credentials.</p>
               </div>
+            </div>
 
-              {isAdmin && (
-                <form onSubmit={handleAddMCPServer} className="mcp-form">
-                  <div className="form-group">
-                    <label>Server Name</label>
+            {loading ? (
+              <p className="loading-txt">Loading Integration Hub...</p>
+            ) : (
+              <div className="integration-grid">
+                {integrations.map((item) => (
+                  <div key={item.canonical_name} className="integration-card">
+                    <div className="card-top-bar" style={{ background: item.gradient }}>
+                      <span className="card-icon">{item.icon}</span>
+                      <span className="card-category">{item.category}</span>
+                    </div>
+
+                    <div className="card-body">
+                      <div className="card-title-row">
+                        <h3>{item.display_name}</h3>
+                        <span className={`status-pill ${item.isConnected ? 'status-connected' : 'status-disconnected'}`}>
+                          {item.isConnected ? '● Connected' : '○ Not Connected'}
+                        </span>
+                      </div>
+                      <p className="card-desc">{item.description}</p>
+                    </div>
+
+                    <div className="card-footer">
+                      {isAdmin ? (
+                        <button
+                          onClick={() => openConnectModal(item)}
+                          className="btn-connect"
+                        >
+                          {item.isConnected ? '⚙️ Reconfigure Credentials' : '🔌 Connect Integration'}
+                        </button>
+                      ) : (
+                        <span className="read-only-txt">Admin Access Required to Connect</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Section 2: Per-Agent Tool Allowlist */}
+          <section className="section-container card-panel">
+            <div className="card-header">
+              <h2>🤖 Per-Agent Tool Access & Policy Controls</h2>
+              <span className="card-sub">Configure dynamic tool allowlists and human-in-the-loop approvals per agent instance.</span>
+            </div>
+
+            {agents.length === 0 ? (
+              <p className="loading-txt">No active agent instances found.</p>
+            ) : (
+              <div className="agent-selector">
+                <label>Select Agent Instance:</label>
+                <select value={selectedAgentId} onChange={handleSelectAgent}>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.id.slice(0, 8)}...)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <hr className="divider" />
+
+            {/* Add Tool to Allowlist */}
+            {isAdmin && (
+              <div className="add-tool-box">
+                <h4>Bind Integration Tool to Agent</h4>
+                <div className="form-row">
+                  <div className="form-group flex-2">
                     <input
                       type="text"
-                      placeholder="e.g. Stripe Billing MCP, Sales CRM MCP"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
+                      placeholder="Tool Name (e.g. SafePay, Supabase, check_order_status)"
+                      value={newToolName}
+                      onChange={(e) => setNewToolName(e.target.value)}
                     />
                   </div>
-
-                  <div className="form-row">
-                    <div className="form-group flex-1">
-                      <label>Transport Protocol</label>
-                      <select value={transportType} onChange={(e) => setTransportType(e.target.value)}>
-                        <option value="http">HTTP JSON-RPC</option>
-                        <option value="sse">Server-Sent Events (SSE)</option>
-                        <option value="stdio">Subprocess (Stdio)</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group flex-2">
-                      <label>Endpoint URL / Path</label>
-                      <input
-                        type="url"
-                        placeholder="https://mcp.internal.company.com/rpc"
-                        value={endpointUrl}
-                        onChange={(e) => setEndpointUrl(e.target.value)}
-                        required
-                      />
-                    </div>
+                  <div className="form-group flex-1">
+                    <select
+                      value={newToolConnector}
+                      onChange={(e) => setNewToolConnector(e.target.value)}
+                    >
+                      <option value="safepay">SafePay</option>
+                      <option value="supabase">Supabase</option>
+                      <option value="builtin">Built-in</option>
+                    </select>
                   </div>
+                </div>
 
-                  <div className="form-group">
-                    <label>Bearer Authorization Token (Optional)</label>
+                <div className="form-group">
+                  <input
+                    type="text"
+                    placeholder="Description for LLM tool selection..."
+                    value={newToolDescription}
+                    onChange={(e) => setNewToolDescription(e.target.value)}
+                  />
+                </div>
+
+                <div className="checkbox-row">
+                  <label>
                     <input
-                      type="password"
-                      placeholder="Bearer token or API Secret Key"
-                      value={authToken}
-                      onChange={(e) => setAuthToken(e.target.value)}
+                      type="checkbox"
+                      checked={newToolIsHighRisk}
+                      onChange={(e) => setNewToolIsHighRisk(e.target.checked)}
                     />
-                  </div>
+                    <span>Require Human Approval (High-Risk Action)</span>
+                  </label>
 
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? 'Connecting...' : '🔌 Add MCP Server'}
+                  <button onClick={handleAddToolBinding} className="btn btn-secondary-sm">
+                    + Add Tool
                   </button>
-                </form>
-              )}
+                </div>
+              </div>
+            )}
 
-              <hr className="divider" />
-
-              <h3>Active MCP Connections ({mcpServers.length})</h3>
-              {loading ? (
-                <p className="loading-txt">Loading connections...</p>
-              ) : mcpServers.length === 0 ? (
-                <div className="empty-box">No external MCP servers connected yet.</div>
+            {/* Current Tool Bindings List */}
+            <h3 className="section-subtitle">Bound Tools Allowlist ({agentBindings.length})</h3>
+            <div className="bindings-list">
+              {agentBindings.length === 0 ? (
+                <div className="empty-box">No tools bound to this agent instance.</div>
               ) : (
-                <div className="mcp-list">
-                  {mcpServers.map((server) => (
-                    <div key={server.id} className="mcp-item">
-                      <div className="mcp-item-info">
-                        <div className="mcp-item-title">
-                          <strong>{server.name}</strong>
-                          <span className="transport-badge">{server.transport_type}</span>
-                        </div>
-                        <div className="mcp-url">{server.endpoint_url}</div>
+                agentBindings.map((binding) => (
+                  <div key={binding.tool_name} className="binding-item">
+                    <div className="binding-main">
+                      <div className="binding-title">
+                        <code>{binding.tool_name}</code>
+                        <span className={`type-tag type-${binding.connector_type}`}>
+                          {binding.connector_type}
+                        </span>
                       </div>
+                      {binding.config?.description && (
+                        <p className="binding-desc">{binding.config.description}</p>
+                      )}
+                    </div>
+
+                    <div className="binding-controls">
+                      <button
+                        onClick={() => handleToggleHighRisk(binding.tool_name)}
+                        className={`risk-btn ${binding.is_high_risk ? 'risk-high' : 'risk-low'}`}
+                        title="Toggle Human Approval Requirement"
+                        disabled={!isAdmin}
+                      >
+                        {binding.is_high_risk ? '🛡️ Approval Required' : '⚡ Auto Execute'}
+                      </button>
 
                       {isAdmin && (
                         <button
-                          onClick={() => handleDeleteMCPServer(server.id)}
+                          onClick={() => handleRemoveToolBinding(binding.tool_name)}
                           className="btn-danger-sm"
-                          title="Disconnect MCP Server"
+                          title="Remove tool from allowlist"
                         >
-                          🗑️
+                          ✖
                         </button>
                       )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))
               )}
             </div>
 
-            {/* Right Column: Per-Agent Dynamic Tool Bindings */}
-            <div className="card">
-              <div className="card-header">
-                <h2>🤖 Per-Agent Dynamic Tool Allowlists</h2>
-                <span className="card-sub">Configure exact tools callable by an agent instance</span>
+            {isAdmin && (
+              <div className="save-bar">
+                <button
+                  onClick={handleSaveAgentConfig}
+                  className="btn btn-save"
+                  disabled={submitting || !selectedAgentId}
+                >
+                  {submitting ? 'Saving Configuration...' : '💾 Save Agent Runtime Config'}
+                </button>
               </div>
-
-              {agents.length === 0 ? (
-                <p className="loading-txt">No active agent instances found.</p>
-              ) : (
-                <div className="agent-selector">
-                  <label>Select Agent Instance:</label>
-                  <select value={selectedAgentId} onChange={handleSelectAgent}>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({a.id.slice(0, 8)}...)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <hr className="divider" />
-
-              {/* Add Tool to Allowlist */}
-              {isAdmin && (
-                <div className="add-tool-box">
-                  <h4>Bind Tool to Agent</h4>
-                  <div className="form-row">
-                    <div className="form-group flex-2">
-                      <input
-                        type="text"
-                        placeholder="Tool Name (e.g. check_order_status)"
-                        value={newToolName}
-                        onChange={(e) => setNewToolName(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group flex-1">
-                      <select
-                        value={newToolConnector}
-                        onChange={(e) => setNewToolConnector(e.target.value)}
-                      >
-                        <option value="builtin">Built-in</option>
-                        <option value="mcp_http">MCP (HTTP)</option>
-                        <option value="mcp_sse">MCP (SSE)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {newToolConnector !== 'builtin' && mcpServers.length > 0 && (
-                    <div className="form-group">
-                      <label>Target MCP Server</label>
-                      <select
-                        value={newToolMcpServerId}
-                        onChange={(e) => setNewToolMcpServerId(e.target.value)}
-                      >
-                        <option value="">Select MCP Server</option>
-                        {mcpServers.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="form-group">
-                    <input
-                      type="text"
-                      placeholder="Description for LLM tool choice..."
-                      value={newToolDescription}
-                      onChange={(e) => setNewToolDescription(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="checkbox-row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={newToolIsHighRisk}
-                        onChange={(e) => setNewToolIsHighRisk(e.target.checked)}
-                      />
-                      <span>Require Human Approval (High-Risk Action)</span>
-                    </label>
-
-                    <button onClick={handleAddToolBinding} className="btn btn-secondary-sm">
-                      + Add Tool
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Current Tool Bindings List */}
-              <h3 className="section-subtitle">Bound Tools Allowlist ({agentBindings.length})</h3>
-              <div className="bindings-list">
-                {agentBindings.length === 0 ? (
-                  <div className="empty-box">No tools bound. Agent has zero tool access.</div>
-                ) : (
-                  agentBindings.map((binding) => (
-                    <div key={binding.tool_name} className="binding-item">
-                      <div className="binding-main">
-                        <div className="binding-title">
-                          <code>{binding.tool_name}</code>
-                          <span className={`type-tag type-${binding.connector_type}`}>
-                            {binding.connector_type}
-                          </span>
-                        </div>
-                        {binding.config?.description && (
-                          <p className="binding-desc">{binding.config.description}</p>
-                        )}
-                      </div>
-
-                      <div className="binding-controls">
-                        <button
-                          onClick={() => handleToggleHighRisk(binding.tool_name)}
-                          className={`risk-btn ${binding.is_high_risk ? 'risk-high' : 'risk-low'}`}
-                          title="Toggle Human Approval Requirement"
-                          disabled={!isAdmin}
-                        >
-                          {binding.is_high_risk ? '🛡️ Approval Required' : '⚡ Auto Execute'}
-                        </button>
-
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleRemoveToolBinding(binding.tool_name)}
-                            className="btn-danger-sm"
-                            title="Remove tool from allowlist"
-                          >
-                            ✖
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {isAdmin && (
-                <div className="save-bar">
-                  <button
-                    onClick={handleSaveAgentConfig}
-                    className="btn btn-save"
-                    disabled={saving || !selectedAgentId}
-                  >
-                    {saving ? 'Saving...' : '💾 Save Runtime Agent Config (POST /api/v1/agents/id/config)'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+            )}
+          </section>
         </main>
 
+        {/* ── SAFEPAY SECURE INPUT MODAL ── */}
+        {activeModal === 'SafePay' && (
+          <div className="modal-backdrop" onClick={closeModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header safepay-header">
+                <div className="modal-title">
+                  <span className="modal-icon">💳</span>
+                  <div>
+                    <h2>Connect SafePay Payment Gateway</h2>
+                    <span className="modal-sub">API-Key Credentials Encryption</span>
+                  </div>
+                </div>
+                <button onClick={closeModal} className="modal-close">×</button>
+              </div>
+
+              <form onSubmit={handleSafePaySubmit} className="modal-form">
+                <div className="form-group">
+                  <label>SafePay Secret Key</label>
+                  <input
+                    type="password"
+                    placeholder="sec_live_sk_xxxxxxxxxxxxxxxx"
+                    value={safePaySecret}
+                    onChange={(e) => setSafePaySecret(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <small className="field-hint">Key is encrypted with AES-256-GCM before database insertion.</small>
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" onClick={closeModal} className="btn-cancel">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-submit safepay-btn" disabled={submitting}>
+                    {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── SUPABASE SECURE INPUT MODAL ── */}
+        {activeModal === 'Supabase' && (
+          <div className="modal-backdrop" onClick={closeModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header supabase-header">
+                <div className="modal-title">
+                  <span className="modal-icon">⚡</span>
+                  <div>
+                    <h2>Connect Supabase Database Hub</h2>
+                    <span className="modal-sub">PostgREST & Service Role Credentials</span>
+                  </div>
+                </div>
+                <button onClick={closeModal} className="modal-close">×</button>
+              </div>
+
+              <form onSubmit={handleSupabaseSubmit} className="modal-form">
+                <div className="form-group">
+                  <label>Project URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://xyzcompany.supabase.co"
+                    value={supabaseUrl}
+                    onChange={(e) => setSupabaseUrl(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Service Role Key</label>
+                  <input
+                    type="password"
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                    value={supabaseKey}
+                    onChange={(e) => setSupabaseKey(e.target.value)}
+                    required
+                  />
+                  <small className="field-hint">Payload encrypted using AES-256-GCM and scoped to active tenant.</small>
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" onClick={closeModal} className="btn-cancel">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-submit supabase-btn" disabled={submitting}>
+                    {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         <style jsx>{`
-          .mcp-page {
+          .hub-page {
             min-height: 100vh;
             background: #f8fafc;
           }
-          .mcp-main {
+          .hub-main {
             max-width: 1400px;
             margin: 2rem auto;
             padding: 0 1.5rem;
@@ -487,24 +598,123 @@ export default function MCPManagementPage() {
             color: #166534;
             border: 1px solid #bbf7d0;
           }
-          .grid-container {
+          .section-container {
+            margin-bottom: 2.5rem;
+          }
+          .section-title-bar h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+          }
+          .sub-txt {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin: 0.25rem 0 1.25rem 0;
+          }
+          .integration-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.75rem;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
           }
-          @media (max-width: 1024px) {
-            .grid-container {
-              grid-template-columns: 1fr;
-            }
+          .integration-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s, box-shadow 0.2s;
           }
-          .card {
+          .integration-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+          }
+          .card-top-bar {
+            padding: 1rem 1.25rem;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+          .card-icon {
+            font-size: 1.5rem;
+          }
+          .card-category {
+            font-size: 0.75rem;
+            font-weight: 700;
+            background: rgba(255,255,255,0.2);
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            text-transform: uppercase;
+          }
+          .card-body {
+            padding: 1.25rem;
+            flex: 1;
+          }
+          .card-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+          }
+          .card-title-row h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #0f172a;
+          }
+          .status-pill {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+          }
+          .status-connected {
+            background: #dcfce7;
+            color: #15803d;
+          }
+          .status-disconnected {
+            background: #f1f5f9;
+            color: #64748b;
+          }
+          .card-desc {
+            font-size: 0.85rem;
+            color: #64748b;
+            line-height: 1.45;
+            margin: 0;
+          }
+          .card-footer {
+            padding: 1rem 1.25rem;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+          }
+          .btn-connect {
+            width: 100%;
+            border: none;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 0.65rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .btn-connect:hover {
+            background: #1e293b;
+          }
+          .read-only-txt {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            font-weight: 600;
+          }
+          .card-panel {
             background: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 14px;
             padding: 1.75rem;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
-            display: flex;
-            flex-direction: column;
           }
           .card-header h2 {
             margin: 0;
@@ -523,124 +733,10 @@ export default function MCPManagementPage() {
             border-top: 1px solid #e2e8f0;
             margin: 1.5rem 0;
           }
-          .mcp-form {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            margin-top: 1.25rem;
-          }
-          .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-          }
-          .form-group label {
-            font-size: 0.8rem;
-            font-weight: 700;
-            color: #334155;
-          }
-          .form-group input, .form-group select {
-            padding: 0.6rem 0.85rem;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            font-size: 0.875rem;
-            outline: none;
-            transition: border-color 0.2s;
-          }
-          .form-group input:focus, .form-group select:focus {
-            border-color: #2563eb;
-          }
-          .form-row {
-            display: flex;
-            gap: 0.75rem;
-          }
-          .flex-1 { flex: 1; }
-          .flex-2 { flex: 2; }
-          .btn {
-            border: none;
-            padding: 0.65rem 1.25rem;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .btn-primary {
-            background: #2563eb;
-            color: #ffffff;
-          }
-          .btn-primary:hover {
-            background: #1d4ed8;
-          }
-          .btn-save {
-            background: #16a34a;
-            color: #ffffff;
-            width: 100%;
-            padding: 0.8rem;
-            font-size: 0.95rem;
-          }
-          .btn-save:hover {
-            background: #15803d;
-          }
-          .btn-secondary-sm {
-            background: #4f46e5;
-            color: #ffffff;
-            border: none;
-            padding: 0.45rem 0.85rem;
-            border-radius: 6px;
-            font-weight: 700;
-            font-size: 0.8rem;
-            cursor: pointer;
-          }
-          .btn-danger-sm {
-            background: #fee2e2;
-            color: #dc2626;
-            border: 1px solid #fca5a5;
-            padding: 0.35rem 0.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 700;
-          }
-          .mcp-list, .bindings-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            margin-top: 1rem;
-          }
-          .mcp-item, .binding-item {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 0.85rem 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-          .mcp-item-title {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-          }
-          .transport-badge {
-            background: #e0e7ff;
-            color: #4338ca;
-            padding: 0.15rem 0.45rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-          }
-          .mcp-url {
-            font-size: 0.8rem;
-            color: #64748b;
-            margin-top: 0.2rem;
-            word-break: break-all;
-          }
           .agent-selector {
             display: flex;
             flex-direction: column;
             gap: 0.4rem;
-            margin-top: 1rem;
           }
           .agent-selector label {
             font-size: 0.85rem;
@@ -668,6 +764,29 @@ export default function MCPManagementPage() {
             font-size: 0.9rem;
             color: #1e293b;
           }
+          .form-row {
+            display: flex;
+            gap: 0.75rem;
+          }
+          .flex-1 { flex: 1; }
+          .flex-2 { flex: 2; }
+          .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+          }
+          .form-group label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #334155;
+          }
+          .form-group input, .form-group select {
+            padding: 0.6rem 0.85rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            outline: none;
+          }
           .checkbox-row {
             display: flex;
             align-items: center;
@@ -681,6 +800,36 @@ export default function MCPManagementPage() {
             align-items: center;
             gap: 0.4rem;
             cursor: pointer;
+          }
+          .btn-secondary-sm {
+            background: #4f46e5;
+            color: #ffffff;
+            border: none;
+            padding: 0.45rem 0.85rem;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            cursor: pointer;
+          }
+          .section-subtitle {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #334155;
+            margin: 0 0 0.5rem 0;
+          }
+          .bindings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+          }
+          .binding-item {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.85rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
           }
           .binding-title {
             display: flex;
@@ -701,8 +850,9 @@ export default function MCPManagementPage() {
             border-radius: 4px;
             text-transform: uppercase;
           }
-          .type-builtin { background: #dcfce7; color: #15803d; }
-          .type-mcp_http, .type-mcp_sse { background: #fef3c7; color: #b45309; }
+          .type-safepay { background: #e0e7ff; color: #4338ca; }
+          .type-supabase { background: #dcfce7; color: #15803d; }
+          .type-builtin { background: #f1f5f9; color: #475569; }
           .binding-desc {
             margin: 0.25rem 0 0 0;
             font-size: 0.8rem;
@@ -731,11 +881,14 @@ export default function MCPManagementPage() {
             color: #15803d;
             border: 1px solid #bbf7d0;
           }
-          .section-subtitle {
-            font-size: 0.95rem;
+          .btn-danger-sm {
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            cursor: pointer;
             font-weight: 700;
-            color: #334155;
-            margin: 0 0 0.5rem 0;
           }
           .empty-box {
             padding: 1.5rem;
@@ -748,10 +901,136 @@ export default function MCPManagementPage() {
           .save-bar {
             margin-top: 1.5rem;
           }
+          .btn-save {
+            background: #16a34a;
+            color: #ffffff;
+            width: 100%;
+            padding: 0.8rem;
+            font-size: 0.95rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+          .btn-save:hover {
+            background: #15803d;
+          }
           .loading-txt {
             color: #64748b;
             font-size: 0.85rem;
           }
+
+          /* ── MODAL STYLES ── */
+          .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+          }
+          .modal-content {
+            background: #ffffff;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+            overflow: hidden;
+            animation: modalSlide 0.25s ease-out;
+          }
+          @keyframes modalSlide {
+            from { transform: translateY(15px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+          .modal-header {
+            padding: 1.5rem;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+          .safepay-header {
+            background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+          }
+          .supabase-header {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+          }
+          .modal-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+          .modal-icon {
+            font-size: 1.8rem;
+          }
+          .modal-title h2 {
+            margin: 0;
+            font-size: 1.15rem;
+            font-weight: 800;
+          }
+          .modal-sub {
+            font-size: 0.75rem;
+            opacity: 0.9;
+            font-weight: 600;
+          }
+          .modal-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #ffffff;
+            font-size: 1.5rem;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .modal-form {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+          }
+          .field-hint {
+            color: #64748b;
+            font-size: 0.75rem;
+            margin-top: 0.2rem;
+          }
+          .modal-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+          }
+          .btn-cancel {
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #475569;
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+          }
+          .btn-submit {
+            border: none;
+            color: #ffffff;
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+          }
+          .safepay-btn { background: #4f46e5; }
+          .supabase-btn { background: #059669; }
         `}</style>
       </div>
     </AuthGuard>

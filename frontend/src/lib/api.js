@@ -391,3 +391,23 @@ export async function processApprovalAction(approvalId, action) {
   return res.json();
 }
 
+export async function connectIntegration(toolId, canonicalName, payload, authType = 'api_key') {
+  const res = await fetch('/api/mcp-gateway/integrations/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({
+      tool_id: toolId,
+      canonical_name: canonicalName,
+      auth_type: authType,
+      payload,
+    })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to connect integration.');
+  }
+  return res.json();
+}
+
+

@@ -52,9 +52,13 @@ def decrypt_credentials(encrypted_text: str, secret_key: Optional[str] = None) -
     return json.loads(decrypted_bytes.decode("utf-8"))
 
 
-async def fetch_tool_credentials(tenant_id: str, binding_id: str) -> Dict[str, Any]:
+async def fetch_tool_credentials(
+    tenant_id: str,
+    binding_id: Optional[str] = None,
+    tool_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Fetches and decrypts tool credentials for a binding with strict RLS context switching.
+    Fetches and decrypts tool credentials for a binding or tool_id with strict RLS context switching.
     Executes SET LOCAL app.tenant_id within a database transaction.
     """
     db_url = settings.DATABASE_URL
@@ -68,10 +72,16 @@ async def fetch_tool_credentials(tenant_id: str, binding_id: str) -> Dict[str, A
                     """
                     SELECT encrypted_payload, auth_type 
                     FROM tool_credentials 
-                    WHERE tenant_id = $1 AND binding_id = $2
+                    WHERE tenant_id = $1 AND (
+                        (binding_id = $2 AND $2 IS NOT NULL) OR
+                        (tool_id = $3 AND $3 IS NOT NULL)
+                    )
+                    ORDER BY updated_at DESC
+                    LIMIT 1
                     """,
                     tenant_id,
                     binding_id,
+                    tool_id,
                 )
                 if not row:
                     return {}

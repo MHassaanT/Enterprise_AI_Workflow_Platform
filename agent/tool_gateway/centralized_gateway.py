@@ -9,6 +9,8 @@ from tool_gateway.mcp_client import execute_remote_mcp_tool
 from tool_gateway.adapters.airtable_adapter import execute_airtable_tool
 from tool_gateway.adapters.resend_adapter import execute_resend_tool
 from tool_gateway.adapters.hubspot_adapter import execute_hubspot_tool
+from tool_gateway.adapters.safepay_adapter import execute_safepay_tool
+from tool_gateway.adapters.supabase_adapter import execute_supabase_tool
 
 
 async def evaluate_tool_risk(agent_instance_id: str, tool_name: str) -> Tuple[bool, Dict[str, Any]]:
@@ -51,16 +53,21 @@ async def execute_mcp_tool(
         return f"Security Error: Tool '{tool_name}' is currently disabled for this tenant."
 
     binding_id = target_binding.get("id")
-    provider_type = target_binding.get("provider_type") or target_binding.get("connector_type") or "builtin"
+    tool_id = target_binding.get("tool_id")
+    provider_type = (target_binding.get("provider_type") or target_binding.get("connector_type") or "builtin").lower()
 
     # 2. Fetch & Decrypt Credentials
     credentials = {}
-    if binding_id:
-        credentials = await fetch_tool_credentials(tenant_id, binding_id)
+    if binding_id or tool_id:
+        credentials = await fetch_tool_credentials(tenant_id, binding_id=binding_id, tool_id=tool_id)
 
     # 3. Adapter Routing
     try:
-        if provider_type == "airtable":
+        if provider_type == "safepay" or "safepay" in tool_name.lower():
+            return await execute_safepay_tool(tool_name, arguments, credentials)
+        elif provider_type == "supabase" or "supabase" in tool_name.lower():
+            return await execute_supabase_tool(tool_name, arguments, credentials)
+        elif provider_type == "airtable":
             return await execute_airtable_tool(tool_name, arguments, credentials)
         elif provider_type == "resend":
             return await execute_resend_tool(tool_name, arguments, credentials)
@@ -88,3 +95,4 @@ async def execute_mcp_tool(
             )
     except Exception as e:
         return f"Error executing tool '{tool_name}' via Centralized Gateway: {str(e)}"
+

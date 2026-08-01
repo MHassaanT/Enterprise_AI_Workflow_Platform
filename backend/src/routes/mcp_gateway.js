@@ -25,13 +25,17 @@ const encryptPayload = (payload) => {
   return `${iv.toString('hex')}:${ciphertextWithTag.toString('hex')}`;
 };
 
-// ── GET /api/mcp-gateway/registry ── List all registered global tools
+// ── GET /api/mcp-gateway/registry ── List all registered global tools with tenant credential status
 router.get('/registry', authenticate, authorize('admin', 'employee'), async (req, res) => {
   try {
+    const { tenantId } = req.user;
     const result = await query(
-      `SELECT id, canonical_name, display_name, provider_type, is_high_risk, schema_json, created_at
-       FROM tool_registry
-       ORDER BY provider_type ASC, canonical_name ASC`
+      `SELECT tr.id, tr.canonical_name, tr.display_name, tr.provider_type, tr.is_high_risk, tr.schema_json, tr.created_at,
+              tc.id AS credential_id, tc.updated_at AS credential_updated_at
+       FROM tool_registry tr
+       LEFT JOIN tool_credentials tc ON tr.id = tc.tool_id AND tc.tenant_id = $1
+       ORDER BY tr.provider_type ASC, tr.canonical_name ASC`,
+      [tenantId]
     );
     res.json({ registry: result.rows });
   } catch (error) {
@@ -239,6 +243,74 @@ router.post('/credentials', authenticate, authorize('admin'), async (req, res) =
   } catch (error) {
     console.error('Error storing tool credentials:', error);
     res.status(500).json({ error: 'Failed to store credentials.' });
+  }
+});
+
+// ── POST /api/mcp-gateway/integrations/connect ── Save Integration credentials (SafePay, Supabase, etc.)
+router.post('/integrations/connect', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const { tool_id, canonical_name, auth_type, payload } = req.body;
+
+    if (!payload || (typeof payload === 'object' && Object.keys(payload).length === 0)) {
+      return res.status(400).json({ error: 'Credential payload is required.' });
+    }
+
+    let resolvedToolId = tool_id || null;
+    let resolvedName = canonical_name || null;
+
+    if (!resolvedToolId && resolvedName) {
+      const toolRes = await query(`SELECT id FROM tool_registry WHERE LOWER(canonical_name) = LOWER($1)`, [resolvedName]);
+      if (toolRes.rows.length > 0) {
+        resolvedToolId = toolRes.rows[0].id;
+      }
+    }
+
+    if (!resolvedToolId && !resolvedName) {
+      return res.status(400).json({ error: 'Either tool_id or canonical_name must be provided.' });
+    }
+
+    // Encrypt JSON payload using AES-256-GCM
+    const encryptedPayload = encryptPayload(payload);
+    const authType = auth_type || 'api_key';
+
+    // Upsert into tool_credentials for this tenant and tool_id
+    const existing = await query(
+      `SELECT id FROM tool_credentials WHERE tenant_id = $1 AND tool_id = $2`,
+      [tenantId, resolvedToolId],
+      tenantId
+    );
+
+    let credentialRecord;
+    if (existing.rows.length > 0) {
+      const credId = existing.rows[0].id;
+      const updateRes = await query(
+        `UPDATE tool_credentials 
+         SET encrypted_payload = $1, auth_type = $2, updated_at = NOW() 
+         WHERE id = $3 AND tenant_id = $4 
+         RETURNING id, tenant_id, tool_id, auth_type, updated_at`,
+        [encryptedPayload, authType, credId, tenantId],
+        tenantId
+      );
+      credentialRecord = updateRes.rows[0];
+    } else {
+      const insertRes = await query(
+        `INSERT INTO tool_credentials (tenant_id, tool_id, auth_type, encrypted_payload, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         RETURNING id, tenant_id, tool_id, auth_type, updated_at`,
+        [tenantId, resolvedToolId, authType, encryptedPayload],
+        tenantId
+      );
+      credentialRecord = insertRes.rows[0];
+    }
+
+    res.status(200).json({
+      message: `${resolvedName || 'Integration'} credentials successfully encrypted and connected.`,
+      credential: credentialRecord,
+    });
+  } catch (error) {
+    console.error('Error connecting integration:', error);
+    res.status(500).json({ error: 'Failed to connect integration credentials.' });
   }
 });
 
