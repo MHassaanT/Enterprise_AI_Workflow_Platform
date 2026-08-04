@@ -13,6 +13,8 @@ from tool_gateway.adapters.safepay_adapter import execute_safepay_tool
 from tool_gateway.adapters.supabase_adapter import execute_supabase_tool
 from tool_gateway.adapters.github_adapter import execute_github_tool
 from tool_gateway.adapters.vercel_adapter import execute_vercel_tool
+from tool_gateway.adapters.clickup_adapter import execute_clickup_tool
+from tool_gateway.adapters.stripe_adapter import execute_stripe_tool
 
 
 async def evaluate_tool_risk(agent_instance_id: str, tool_name: str) -> Tuple[bool, Dict[str, Any]]:
@@ -73,11 +75,15 @@ async def execute_mcp_tool(
             return await execute_safepay_tool(tool_name, arguments, credentials)
         elif provider_type == "supabase" or "supabase" in tool_name.lower():
             return await execute_supabase_tool(tool_name, arguments, credentials)
-        elif provider_type == "airtable":
+        elif provider_type == "stripe" or "stripe" in tool_name.lower():
+            return await execute_stripe_tool(tool_name, arguments, credentials)
+        elif provider_type == "clickup" or "clickup" in tool_name.lower():
+            return await execute_clickup_tool(tool_name, arguments, credentials)
+        elif provider_type == "airtable" or "airtable" in tool_name.lower():
             return await execute_airtable_tool(tool_name, arguments, credentials)
-        elif provider_type == "resend":
+        elif provider_type == "resend" or "resend" in tool_name.lower():
             return await execute_resend_tool(tool_name, arguments, credentials)
-        elif provider_type == "hubspot":
+        elif provider_type == "hubspot" or "hubspot" in tool_name.lower():
             return await execute_hubspot_tool(tool_name, arguments, credentials)
         elif provider_type == "builtin" and tool_name in TOOL_REGISTRY:
             tool_fn = TOOL_REGISTRY[tool_name]

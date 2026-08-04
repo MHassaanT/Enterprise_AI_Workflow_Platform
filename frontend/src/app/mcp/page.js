@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import {
   fetchToolRegistry,
   connectIntegration,
+  connectStripeCredentials,
   fetchAgents,
   fetchAgentConfig,
   updateAgentConfig,
@@ -44,6 +45,20 @@ const SEEDED_INTEGRATIONS = [
     ]
   },
   {
+    id: 'stripe-card',
+    canonical_name: 'Stripe',
+    display_name: 'Stripe B2B Billing & Payments',
+    provider_type: 'stripe',
+    auth_mode: 'api_key',
+    description: 'Check subscription statuses, process customer refunds, and inspect charges with encrypted keys.',
+    category: 'Payments & Billing',
+    icon: '💳',
+    gradient: 'linear-gradient(135deg, #635bff 0%, #32325d 100%)',
+    fields: [
+      { name: 'api_key', label: 'Restricted API Key', type: 'password', placeholder: 'rk_live_... / rk_test_...' }
+    ]
+  },
+  {
     id: 'github-card',
     canonical_name: 'GitHub',
     display_name: 'GitHub Developer Platform',
@@ -64,6 +79,39 @@ const SEEDED_INTEGRATIONS = [
     category: 'Cloud & Infrastructure',
     icon: '▲',
     gradient: 'linear-gradient(135deg, #000000 0%, #1a1a1a 100%)',
+  },
+  {
+    id: 'airtable-card',
+    canonical_name: 'Airtable',
+    display_name: 'Airtable Relational DB',
+    provider_type: 'airtable',
+    auth_mode: 'oauth2',
+    description: 'Query base records, create rows, and inspect schema structures via OAuth2.',
+    category: 'Database & Backend',
+    icon: '📊',
+    gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+  },
+  {
+    id: 'hubspot-card',
+    canonical_name: 'HubSpot',
+    display_name: 'HubSpot CRM Platform',
+    provider_type: 'hubspot',
+    auth_mode: 'oauth2',
+    description: 'Search contacts, create deals, and manage customer support tickets via OAuth2.',
+    category: 'Sales & CRM',
+    icon: '🧡',
+    gradient: 'linear-gradient(135deg, #ff7a59 0%, #ff522b 100%)',
+  },
+  {
+    id: 'clickup-card',
+    canonical_name: 'ClickUp',
+    display_name: 'ClickUp Project Workspace',
+    provider_type: 'clickup',
+    auth_mode: 'oauth2',
+    description: 'Create tasks, query team workspace task lists, and update statuses via OAuth2.',
+    category: 'Project Management',
+    icon: '🎯',
+    gradient: 'linear-gradient(135deg, #7b68ee 0%, #5f4bb6 100%)',
   }
 ];
 
@@ -78,7 +126,7 @@ export default function IntegrationHubPage() {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // Modal State
-  const [activeModal, setActiveModal] = useState(null); // 'SafePay' | 'Supabase' | null
+  const [activeModal, setActiveModal] = useState(null); // 'SafePay' | 'Supabase' | 'Stripe' | null
   const [modalTarget, setModalTarget] = useState(null);
   
   // SafePay Modal Fields
@@ -87,6 +135,9 @@ export default function IntegrationHubPage() {
   // Supabase Modal Fields
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
+
+  // Stripe Modal Fields
+  const [stripeApiKey, setStripeApiKey] = useState('');
 
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
@@ -200,6 +251,9 @@ export default function IntegrationHubPage() {
       setSupabaseUrl('');
       setSupabaseKey('');
       setActiveModal('Supabase');
+    } else if (integration.canonical_name === 'Stripe') {
+      setStripeApiKey('');
+      setActiveModal('Stripe');
     }
   };
 
@@ -209,6 +263,27 @@ export default function IntegrationHubPage() {
     setSafePaySecret('');
     setSupabaseUrl('');
     setSupabaseKey('');
+    setStripeApiKey('');
+  };
+
+  const handleStripeSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripeApiKey) {
+      setMessage({ type: 'error', text: 'Stripe Restricted API Key is required.' });
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await connectStripeCredentials(stripeApiKey);
+      setMessage({ type: 'success', text: '🔐 Stripe credentials encrypted and connected successfully!' });
+      closeModal();
+      await loadInitialData();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Failed to connect Stripe credentials.' });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSafePaySubmit = async (e) => {
@@ -605,6 +680,48 @@ export default function IntegrationHubPage() {
                     Cancel
                   </button>
                   <button type="submit" className="btn-submit supabase-btn" disabled={submitting}>
+                    {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── STRIPE SECURE INPUT MODAL ── */}
+        {activeModal === 'Stripe' && (
+          <div className="modal-backdrop" onClick={closeModal}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header stripe-header">
+                <div className="modal-title">
+                  <span className="modal-icon">💳</span>
+                  <div>
+                    <h2>Connect Stripe B2B Billing & Payments</h2>
+                    <span className="modal-sub">Restricted API Key Credentials</span>
+                  </div>
+                </div>
+                <button onClick={closeModal} className="modal-close">×</button>
+              </div>
+
+              <form onSubmit={handleStripeSubmit} className="modal-form">
+                <div className="form-group">
+                  <label>Restricted API Key</label>
+                  <input
+                    type="password"
+                    placeholder="rk_live_... / rk_test_..."
+                    value={stripeApiKey}
+                    onChange={(e) => setStripeApiKey(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <small className="field-hint">Payload encrypted using AES-256-GCM and scoped to active tenant. High-risk operations (refunds) require HITL approval.</small>
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" onClick={closeModal} className="btn-cancel">
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-submit stripe-btn" disabled={submitting}>
                     {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
                   </button>
                 </div>

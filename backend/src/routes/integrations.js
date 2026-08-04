@@ -73,8 +73,25 @@ router.get('/connect/:provider', async (req, res) => {
       const authorizeUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'vercel') {
-      const clientId = process.env.VERCEL_CLIENT_ID || 'dummy_vercel_client_id';
-      const authorizeUrl = `https://vercel.com/oauth/authorize?client_id=${clientId}&state=${state}`;
+      const clientId = process.env.VERCEL_CLIENT_ID || '';
+      const slug = process.env.VERCEL_INTEGRATION_SLUG || 'enterprise-ai-workflow-platform';
+      const authorizeUrl = clientId
+        ? `https://vercel.com/oauth/authorize?client_id=${clientId}&state=${state}`
+        : `https://vercel.com/integrations/${slug}/new?state=${state}`;
+      return res.redirect(authorizeUrl);
+    } else if (provider === 'airtable') {
+      const clientId = process.env.AIRTABLE_CLIENT_ID || 'dummy_airtable_client_id';
+      const scope = encodeURIComponent('data.records:read data.records:write schema.bases:read');
+      const authorizeUrl = `https://airtable.com/oauth2/v1/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=${scope}`;
+      return res.redirect(authorizeUrl);
+    } else if (provider === 'hubspot') {
+      const clientId = process.env.HUBSPOT_CLIENT_ID || 'dummy_hubspot_client_id';
+      const scope = encodeURIComponent('crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write tickets');
+      const authorizeUrl = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
+      return res.redirect(authorizeUrl);
+    } else if (provider === 'clickup') {
+      const clientId = process.env.CLICKUP_CLIENT_ID || 'dummy_clickup_client_id';
+      const authorizeUrl = `https://app.clickup.com/api?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else {
       return res.status(400).send(`<h2>Unsupported Provider</h2><p>Provider '${provider}' is not supported for OAuth2.</p>`);
@@ -182,6 +199,100 @@ router.get('/callback', async (req, res) => {
         user_id: tokenData.user_id,
         provider: 'vercel',
       };
+    } else if (provider === 'airtable') {
+      const clientId = process.env.AIRTABLE_CLIENT_ID || 'dummy_airtable_client_id';
+      const clientSecret = process.env.AIRTABLE_CLIENT_SECRET || 'dummy_airtable_client_secret';
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+      });
+
+      const tokenRes = await fetch('https://airtable.com/oauth2/v1/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: params.toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.error) {
+        throw new Error(tokenData.error_description || tokenData.error);
+      }
+
+      tokenPayload = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        token_type: tokenData.token_type || 'bearer',
+        provider: 'airtable',
+      };
+    } else if (provider === 'hubspot') {
+      const clientId = process.env.HUBSPOT_CLIENT_ID || 'dummy_hubspot_client_id';
+      const clientSecret = process.env.HUBSPOT_CLIENT_SECRET || 'dummy_hubspot_client_secret';
+
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        code,
+      });
+
+      const tokenRes = await fetch('https://api.hubapi.com/oauth/v1/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: params.toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.error || tokenData.status === 'error') {
+        throw new Error(tokenData.message || tokenData.error_description || 'HubSpot token exchange failed');
+      }
+
+      tokenPayload = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        token_type: 'bearer',
+        expires_in: tokenData.expires_in,
+        provider: 'hubspot',
+      };
+    } else if (provider === 'clickup') {
+      const clientId = process.env.CLICKUP_CLIENT_ID || 'dummy_clickup_client_id';
+      const clientSecret = process.env.CLICKUP_CLIENT_SECRET || 'dummy_clickup_client_secret';
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      });
+
+      const tokenRes = await fetch('https://api.clickup.com/api/v2/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: params.toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.err || tokenData.error) {
+        throw new Error(tokenData.err || tokenData.error);
+      }
+
+      tokenPayload = {
+        access_token: tokenData.access_token,
+        token_type: 'bearer',
+        provider: 'clickup',
+      };
     } else {
       return res.status(400).send(`Unsupported provider '${provider}'`);
     }
@@ -265,4 +376,105 @@ router.get('/callback', async (req, res) => {
   }
 });
 
+// ── POST /api/integrations/webhooks/vercel ── Receive Vercel Deployment & Event Webhooks
+router.post('/webhooks/vercel', async (req, res) => {
+  try {
+    const signature = req.headers['x-vercel-signature'];
+    const event = req.body;
+
+    console.log(`[VERCEL WEBHOOK] Received event: ${event.type || 'unknown'}`, {
+      payload_id: event.id,
+      timestamp: event.createdAt,
+    });
+
+    // Handle signature verification if VERCEL_WEBHOOK_SECRET is set
+    if (process.env.VERCEL_WEBHOOK_SECRET && signature) {
+      const rawBody = JSON.stringify(req.body);
+      const computed = crypto
+        .createHmac('sha1', process.env.VERCEL_WEBHOOK_SECRET)
+        .update(rawBody)
+        .digest('hex');
+      if (computed !== signature) {
+        console.warn('[VERCEL WEBHOOK WARNING] Invalid signature received.');
+        return res.status(401).json({ error: 'Invalid webhook signature.' });
+      }
+    }
+
+    // Acknowledge receipt to Vercel
+    res.status(200).json({ received: true, type: event.type || 'acknowledged' });
+  } catch (error) {
+    console.error('Error handling Vercel webhook:', error);
+    res.status(500).json({ error: 'Failed to process webhook.' });
+  }
+});
+
+// ── POST /api/integrations/stripe/credentials ── Save Stripe Restricted API Key
+router.post('/stripe/credentials', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const { api_key } = req.body;
+
+    if (!api_key) {
+      return res.status(400).json({ error: 'Stripe Restricted API Key (api_key) is required.' });
+    }
+
+    // Resolve Stripe tool ID from tool_registry
+    const toolQuery = await query(
+      `SELECT id FROM tool_registry WHERE LOWER(canonical_name) = 'stripe' OR LOWER(provider_type) = 'stripe'`
+    );
+
+    let toolId = null;
+    if (toolQuery.rows.length > 0) {
+      toolId = toolQuery.rows[0].id;
+    }
+
+    const payload = { api_key, provider: 'stripe' };
+    const encryptedPayload = encryptPayload(payload);
+
+    // Upsert into tool_credentials
+    const existing = await query(
+      `SELECT id FROM tool_credentials WHERE tenant_id = $1 AND tool_id = $2`,
+      [tenantId, toolId],
+      tenantId
+    );
+
+    let credentialRecord;
+    if (existing.rows.length > 0) {
+      const updateRes = await query(
+        `UPDATE tool_credentials 
+         SET encrypted_payload = $1, auth_type = 'api_key', updated_at = NOW() 
+         WHERE id = $2 AND tenant_id = $3
+         RETURNING id, tenant_id, tool_id, auth_type, updated_at`,
+        [encryptedPayload, existing.rows[0].id, tenantId],
+        tenantId
+      );
+      credentialRecord = updateRes.rows[0];
+    } else {
+      const insertRes = await query(
+        `INSERT INTO tool_credentials (tenant_id, tool_id, auth_type, encrypted_payload, updated_at)
+         VALUES ($1, $2, 'api_key', $3, NOW())
+         RETURNING id, tenant_id, tool_id, auth_type, updated_at`,
+        [tenantId, toolId, encryptedPayload],
+        tenantId
+      );
+      credentialRecord = insertRes.rows[0];
+    }
+
+    res.status(200).json({
+      message: '💳 Stripe Restricted API Key successfully encrypted and connected!',
+      credential: credentialRecord,
+    });
+  } catch (error) {
+    console.error('Error connecting Stripe credentials:', error);
+    res.status(500).json({ error: 'Failed to connect Stripe credentials.' });
+  }
+});
+
+// Generic Webhook Fallback
+router.post('/webhooks', (req, res) => {
+  console.log('[GENERIC WEBHOOK] Payload received:', req.body);
+  res.status(200).json({ received: true });
+});
+
 module.exports = router;
+

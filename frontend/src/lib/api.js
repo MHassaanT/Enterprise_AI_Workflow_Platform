@@ -410,4 +410,19 @@ export async function connectIntegration(toolId, canonicalName, payload, authTyp
   return res.json();
 }
 
+export async function connectStripeCredentials(apiKey) {
+  const res = await fetch('/api/integrations/stripe/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to connect Stripe credentials.');
+  }
+  return res.json();
+}
+
+
 
