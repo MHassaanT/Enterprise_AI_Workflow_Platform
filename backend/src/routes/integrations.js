@@ -68,29 +68,79 @@ router.get('/connect/:provider', async (req, res) => {
     const redirectUri = getCallbackUrl(req);
 
     if (provider === 'github') {
-      const clientId = process.env.GITHUB_CLIENT_ID || 'dummy_github_client_id';
+      const clientId = process.env.GITHUB_CLIENT_ID;
+      if (!clientId || clientId.startsWith('dummy_')) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #38bdf8;">⚙️ GitHub OAuth Configuration Required</h2>
+            <p>Please configure <code>GITHUB_CLIENT_ID</code> and <code>GITHUB_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your OAuth App's <strong>Authorization Callback URL</strong> in GitHub Developer Settings to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #38bdf8;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
       const scope = encodeURIComponent('repo user workflow');
       const authorizeUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'vercel') {
-      const clientId = process.env.VERCEL_CLIENT_ID || '';
-      const slug = process.env.VERCEL_INTEGRATION_SLUG || 'enterprise-ai-workflow-platform';
+      const clientId = process.env.VERCEL_CLIENT_ID;
+      const slug = process.env.VERCEL_INTEGRATION_SLUG;
+      if (!clientId && !slug) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #38bdf8;">⚙️ Vercel OAuth Configuration Required</h2>
+            <p>Please configure <code>VERCEL_CLIENT_ID</code> and <code>VERCEL_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your Vercel Integration Redirect URI in Vercel Developer Console to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #38bdf8;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
       const authorizeUrl = clientId
-        ? `https://vercel.com/oauth/authorize?client_id=${clientId}&state=${state}`
+        ? `https://vercel.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
         : `https://vercel.com/integrations/${slug}/new?state=${state}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'airtable') {
-      const clientId = process.env.AIRTABLE_CLIENT_ID || 'dummy_airtable_client_id';
+      const clientId = process.env.AIRTABLE_CLIENT_ID;
+      if (!clientId || clientId.startsWith('dummy_')) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #f59e0b;">⚙️ Airtable OAuth Configuration Required</h2>
+            <p>Please configure <code>AIRTABLE_CLIENT_ID</code> and <code>AIRTABLE_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your Airtable OAuth App Redirect URI to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #f59e0b;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
       const scope = encodeURIComponent('data.records:read data.records:write schema.bases:read');
       const authorizeUrl = `https://airtable.com/oauth2/v1/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=${scope}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'hubspot') {
-      const clientId = process.env.HUBSPOT_CLIENT_ID || 'dummy_hubspot_client_id';
+      const clientId = process.env.HUBSPOT_CLIENT_ID;
+      if (!clientId || clientId.startsWith('dummy_')) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #ff7a59;">⚙️ HubSpot OAuth Configuration Required</h2>
+            <p>Please configure <code>HUBSPOT_CLIENT_ID</code> and <code>HUBSPOT_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your HubSpot Developer App Redirect URL to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #ff7a59;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
       const scope = encodeURIComponent('crm.objects.contacts.read crm.objects.contacts.write crm.objects.deals.read crm.objects.deals.write tickets');
       const authorizeUrl = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'clickup') {
-      const clientId = process.env.CLICKUP_CLIENT_ID || 'dummy_clickup_client_id';
+      const clientId = process.env.CLICKUP_CLIENT_ID;
+      if (!clientId || clientId.startsWith('dummy_')) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #7b68ee;">⚙️ ClickUp OAuth Configuration Required</h2>
+            <p>Please configure <code>CLICKUP_CLIENT_ID</code> and <code>CLICKUP_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your ClickUp App Redirect URL to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #7b68ee;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
       const authorizeUrl = `https://app.clickup.com/api?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else {
