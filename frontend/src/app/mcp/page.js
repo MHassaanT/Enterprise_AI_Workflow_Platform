@@ -11,6 +11,7 @@ import {
   fetchAgentConfig,
   updateAgentConfig,
   getUser,
+  getToken,
 } from '@/lib/api';
 
 // Pre-seeded integration definitions for visual consistency
@@ -223,12 +224,12 @@ export default function IntegrationHubPage() {
   };
 
   const handleOAuthConnect = (provider) => {
-    const token = localStorage.getItem('token');
+    const token = getToken() || localStorage.getItem('ai_platform_token');
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
-    const popupUrl = `/api/integrations/connect/${provider.toLowerCase()}?token=${token || ''}`;
+    const popupUrl = `/api/integrations/connect/${provider.toLowerCase()}?token=${encodeURIComponent(token || '')}`;
 
     const popup = window.open(
       popupUrl,
