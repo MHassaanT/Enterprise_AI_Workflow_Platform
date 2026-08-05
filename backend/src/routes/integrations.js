@@ -361,8 +361,12 @@ router.get(['/callback', '/callback/'], async (req, res) => {
     }
 
     // Resolve or auto-register tool_id from tool_registry
+    // Prioritize exact canonical_name match over sub-tool provider_type matches (e.g. 'Airtable' vs 'airtable_search_records')
     let toolQuery = await query(
-      `SELECT id FROM tool_registry WHERE LOWER(canonical_name) = LOWER($1) OR LOWER(provider_type) = LOWER($1)`,
+      `SELECT id FROM tool_registry 
+       WHERE LOWER(canonical_name) = LOWER($1) OR LOWER(provider_type) = LOWER($1)
+       ORDER BY CASE WHEN LOWER(canonical_name) = LOWER($1) THEN 0 ELSE 1 END ASC, created_at ASC
+       LIMIT 1`,
       [provider]
     );
 
@@ -385,10 +389,16 @@ router.get(['/callback', '/callback/'], async (req, res) => {
     // Encrypt token payload with AES-256-GCM
     const encryptedPayload = encryptPayload(tokenPayload);
 
-    // Upsert into tool_credentials for tenant and toolId (handling any legacy null tool_id)
+    // Upsert into tool_credentials for tenant and toolId (fixing any legacy orphan or sub-tool credential rows)
     const existing = await query(
-      `SELECT id FROM tool_credentials WHERE tenant_id = $1 AND (tool_id = $2 OR tool_id IS NULL)`,
-      [tenantId, toolId],
+      `SELECT tc.id FROM tool_credentials tc
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         tc.tool_id = $2 
+         OR LOWER(tr.provider_type) = LOWER($3)
+         OR tc.tool_id IS NULL
+       )`,
+      [tenantId, toolId, provider],
       tenantId
     );
 
