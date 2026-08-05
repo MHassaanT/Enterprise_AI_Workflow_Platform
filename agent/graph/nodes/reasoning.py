@@ -28,7 +28,8 @@ Rules:
 - Do NOT dump extra background details, categories, or target geographies unless explicitly asked.
 - Do NOT include any citation markers like [1], [2], or source labels in your response.
 - Do NOT invent information not present in documents or tool results.
-- If the answer is not present in the document excerpts and cannot be answered accurately, explicitly call the escalate_to_human tool to request human assistance.
+- When asked about order status, customer records, database lookups, or external tools, ALWAYS call the available tool first to retrieve live data.
+- If an inquiry cannot be answered from document excerpts or tool execution, call the escalate_to_human tool to request human assistance.
 - For high-risk or irreversible actions (such as refunds, payments, or account changes), call the escalate_to_human tool for approval.
 """
     if context:

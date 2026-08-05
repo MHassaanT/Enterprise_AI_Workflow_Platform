@@ -8,9 +8,9 @@ from pydantic import BaseModel
 
 # ── Mock data — swap with DB query in Phase 4 ──
 MOCK_ORDERS: dict[str, dict] = {
-    "ORD-001": {"status": "Delivered", "date": "2026-07-25", "carrier": "FedEx"},
-    "ORD-002": {"status": "Shipped", "eta": "2026-08-02", "carrier": "UPS"},
-    "ORD-003": {"status": "Processing", "eta": "2026-08-05"},
+    "ORD-001": {"email": "misterhassan58@gmail.com", "status": "Delivered", "date": "2026-07-25", "carrier": "FedEx"},
+    "ORD-002": {"email": "customer@example.com", "status": "Shipped", "eta": "2026-08-02", "carrier": "UPS"},
+    "ORD-003": {"email": "misterhassan58@gmail.com", "status": "Processing", "eta": "2026-08-05"},
     "ORD-004": {"status": "Cancelled", "reason": "Item out of stock"},
     "ORD-123": {"status": "Shipped", "eta": "2026-08-02", "carrier": "DHL", "tracking": "DHL123456789"},
     "ORD-456": {"status": "Delivered", "date": "2026-07-20", "carrier": "FedEx"},
@@ -18,18 +18,37 @@ MOCK_ORDERS: dict[str, dict] = {
 
 
 class CheckOrderStatusInput(BaseModel):
-    order_id: str
+    order_id: str | None = None
+    email: str | None = None
+    query: str | None = None
 
 
-async def check_order_status_impl(order_id: str) -> str:
-    order = MOCK_ORDERS.get(order_id.upper().strip())
+async def check_order_status_impl(order_id: str | None = None, email: str | None = None, query: str | None = None) -> str:
+    search_term = (order_id or email or query or "").strip()
+    if not search_term:
+        return "Please provide an order ID or customer email to lookup order status."
+
+    # Direct match on Order ID
+    order = MOCK_ORDERS.get(search_term.upper())
+    matched_id = search_term.upper()
+
+    # Email search match
+    if not order and "@" in search_term:
+        for oid, data in MOCK_ORDERS.items():
+            if data.get("email", "").lower() == search_term.lower():
+                order = data
+                matched_id = oid
+                break
+
     if not order:
         return (
-            f"Order '{order_id}' was not found in our system. "
-            "Please verify the order ID and try again."
+            f"No active orders found matching '{search_term}'. "
+            "Please verify the order ID or email address and try again."
         )
 
     parts = [f"Status: {order['status']}"]
+    if "email" in order:
+        parts.append(f"Customer: {order['email']}")
     if "date" in order:
         parts.append(f"Delivered on: {order['date']}")
     if "eta" in order:
@@ -41,4 +60,4 @@ async def check_order_status_impl(order_id: str) -> str:
     if "reason" in order:
         parts.append(f"Reason: {order['reason']}")
 
-    return f"Order {order_id} — " + " | ".join(parts)
+    return f"Order {matched_id} — " + " | ".join(parts)

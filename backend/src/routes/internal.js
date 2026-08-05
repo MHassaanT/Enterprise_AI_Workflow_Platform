@@ -20,9 +20,11 @@ router.get('/agents/:agentInstanceId/tools', async (req, res) => {
 
   try {
     const result = await query(
-      `SELECT tb.id, tb.tool_name, tb.connector_type, tb.mcp_server_id, tb.config, tb.is_high_risk,
+      `SELECT tb.id, tb.agent_instance_id, tb.tenant_id, tb.tool_id, tb.tool_name, tb.connector_type, tb.mcp_server_id, tb.config, tb.is_high_risk,
+              tr.canonical_name, tr.display_name, tr.provider_type, tr.is_high_risk as registry_high_risk,
               ms.endpoint_url, ms.transport_type, ms.auth_headers
        FROM tool_bindings tb
+       LEFT JOIN tool_registry tr ON tb.tool_id = tr.id OR LOWER(tb.tool_name) = LOWER(tr.canonical_name)
        LEFT JOIN mcp_servers ms ON tb.mcp_server_id = ms.id
        WHERE tb.agent_instance_id = $1`,
       [agentInstanceId]

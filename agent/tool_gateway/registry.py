@@ -33,8 +33,8 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         coroutine=check_order_status_impl,
         name="check_order_status",
         description=(
-            "Returns the current status of a customer order. "
-            "Use this when the user asks about their order, delivery, shipment, or tracking."
+            "Returns the current status of a customer order by order_id or email address. "
+            "Use this when the user asks about their order status, shipment, delivery, or order details."
         ),
         args_schema=CheckOrderStatusInput,
     ),
