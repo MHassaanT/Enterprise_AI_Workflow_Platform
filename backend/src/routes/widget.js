@@ -28,8 +28,13 @@ const callAgentService = (payload) => {
       let data = '';
       res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error('Invalid agent service response')); }
+        try {
+          if (res.statusCode >= 400) {
+            reject(new Error(`Agent service HTTP ${res.statusCode}: ${data}`));
+          } else {
+            resolve(JSON.parse(data));
+          }
+        } catch (e) { reject(new Error('Invalid agent service response: ' + data)); }
       });
     });
     req.on('error', reject);

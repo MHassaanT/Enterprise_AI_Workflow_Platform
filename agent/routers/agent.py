@@ -104,6 +104,8 @@ async def run_agent(
         )
     except Exception as e:
         print(f"Error executing agent graph: {e}")
+        import traceback
+        traceback.print_exc()
         from services.rag_client import query_rag
         rag_result = await query_rag(request.question, request.tenant_id)
         chunks = rag_result.get("chunks", [])

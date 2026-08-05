@@ -41,6 +41,6 @@ def get_llm() -> BaseChatModel:
         model=settings.GEMINI_MODEL,
         google_api_key=settings.GEMINI_API_KEY,
         temperature=0.1,
-        timeout=5.0,
-        max_retries=1,
+        timeout=30.0,
+        max_retries=2,
     )
