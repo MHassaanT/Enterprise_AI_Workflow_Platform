@@ -236,7 +236,10 @@
             ${config.subtitle}
           </div>
         </div>
-        <button class="ai-widget-close-btn" id="ai-widget-close">&times;</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="ai-widget-close-btn" id="ai-widget-reset" title="Start New Chat">↺</button>
+          <button class="ai-widget-close-btn" id="ai-widget-close">&times;</button>
+        </div>
       </div>
       <div class="ai-widget-body" id="ai-widget-messages">
         <div class="ai-widget-msg ai-widget-msg-assistant">
@@ -253,6 +256,12 @@
     document.body.appendChild(drawer);
 
     document.getElementById('ai-widget-close').onclick = toggleDrawer;
+    document.getElementById('ai-widget-reset').onclick = function() {
+      if (config.tenantId) sessionStorage.removeItem('ai_widget_convo_' + config.tenantId);
+      state.conversationId = null;
+      state.messages = [];
+      renderMessages();
+    };
     document.getElementById('ai-widget-form').onsubmit = handleSend;
   }
 

@@ -49,7 +49,7 @@ async def run_agent(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    # Reconstruct conversation history memory from past turns
+    # Reconstruct conversation history memory from past turns, filtering out previous fallback refusal loops
     messages_list = []
     if request.history:
         for msg in request.history:
@@ -58,6 +58,9 @@ async def run_agent(
             if role == "user":
                 messages_list.append(HumanMessage(content=text))
             elif role == "assistant":
+                # Skip legacy refusal fallback messages from previous failed attempts
+                if "cannot assist with" in text.lower() or "unable to process your request" in text.lower():
+                    continue
                 messages_list.append(AIMessage(content=text))
 
     # Append current question if not already the last message
