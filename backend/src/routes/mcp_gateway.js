@@ -145,6 +145,9 @@ router.post('/bindings', authenticate, authorize('admin'), async (req, res) => {
       }
     }
 
+    const validConnectors = ['builtin', 'mcp_sse', 'mcp_http', 'mcp_stdio'];
+    const safeConnectorType = validConnectors.includes(connector_type) ? connector_type : 'builtin';
+
     const result = await query(
       `INSERT INTO tool_bindings 
         (agent_instance_id, tenant_id, tool_id, tool_name, connector_type, is_enabled, custom_risk_override, config_json, config)
@@ -162,7 +165,7 @@ router.post('/bindings', authenticate, authorize('admin'), async (req, res) => {
         tenantId,
         resolvedToolId,
         resolvedToolName,
-        connector_type || 'builtin',
+        safeConnectorType,
         is_enabled !== undefined ? is_enabled : true,
         custom_risk_override !== undefined ? custom_risk_override : null,
         JSON.stringify(config_json || {}),
@@ -173,7 +176,7 @@ router.post('/bindings', authenticate, authorize('admin'), async (req, res) => {
     res.status(201).json({ message: 'Tool binding created/updated.', binding: result.rows[0] });
   } catch (error) {
     console.error('Error creating tool binding:', error);
-    res.status(500).json({ error: 'Failed to create tool binding.' });
+    res.status(500).json({ error: error.message || 'Failed to create tool binding.' });
   }
 });
 

@@ -351,7 +351,10 @@ export async function saveGatewayBinding(bindingData) {
     body: JSON.stringify(bindingData)
   });
   handleUnauthorized(res);
-  if (!res.ok) throw new Error('Failed to save tool binding');
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to save tool binding');
+  }
   return res.json();
 }
 
