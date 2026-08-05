@@ -107,9 +107,9 @@ router.get('/connect/:provider', async (req, res) => {
           </body></html>
         `);
       }
-      const authorizeUrl = clientId
-        ? `https://vercel.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
-        : `https://vercel.com/integrations/${slug}/new?state=${state}`;
+      const authorizeUrl = slug
+        ? `https://vercel.com/integrations/${slug}/new?state=${state}`
+        : `https://vercel.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'airtable') {
       const clientId = process.env.AIRTABLE_CLIENT_ID;
