@@ -58,8 +58,19 @@ async def run_agent(
             if role == "user":
                 messages_list.append(HumanMessage(content=text))
             elif role == "assistant":
-                # Skip legacy refusal fallback messages from previous failed attempts
-                if "cannot assist with" in text.lower() or "unable to process your request" in text.lower():
+                # Skip legacy refusal / fallback messages from previous failed attempts
+                # to prevent the LLM from seeing past refusals and reinforcing them
+                _lower = text.lower()
+                REFUSAL_PATTERNS = [
+                    "cannot assist with", "unable to process your request",
+                    "don't have the ability", "not able to",
+                    "i cannot help with", "i'm unable to",
+                    "i don't have access to", "cannot look up",
+                    "cannot check", "i can't assist",
+                    "i'm not able to help", "i do not have access",
+                    "unable to assist", "beyond my capabilities",
+                ]
+                if any(pat in _lower for pat in REFUSAL_PATTERNS):
                     continue
                 messages_list.append(AIMessage(content=text))
 

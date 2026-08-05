@@ -142,7 +142,7 @@ export default function IntegrationHubPage() {
 
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
-  const [newToolConnector, setNewToolConnector] = useState('github');
+  const [newToolConnector, setNewToolConnector] = useState('builtin');
   const [newToolIsHighRisk, setNewToolIsHighRisk] = useState(false);
   const [newToolDescription, setNewToolDescription] = useState('');
 
@@ -500,11 +500,16 @@ export default function IntegrationHubPage() {
                       value={newToolConnector}
                       onChange={(e) => setNewToolConnector(e.target.value)}
                     >
+                      <option value="builtin">Built-in</option>
+                      <option value="airtable">Airtable</option>
                       <option value="github">GitHub</option>
                       <option value="vercel">Vercel</option>
                       <option value="safepay">SafePay</option>
                       <option value="supabase">Supabase</option>
-                      <option value="builtin">Built-in</option>
+                      <option value="stripe">Stripe</option>
+                      <option value="hubspot">HubSpot</option>
+                      <option value="clickup">ClickUp</option>
+                      <option value="resend">Resend</option>
                     </select>
                   </div>
                 </div>
