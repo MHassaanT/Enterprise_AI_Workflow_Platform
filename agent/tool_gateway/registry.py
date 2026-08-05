@@ -84,19 +84,18 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
             tools.append(BUILTIN_LANGCHAIN_TOOLS[tool_name])
             continue
 
-        # 2. Dynamic MCP connector tool
-        endpoint_url = binding.get("endpoint_url")
-        auth_headers = binding.get("auth_headers") or {}
+        # 2. Dynamic MCP / Vendor Adapter tool
+        tenant_id = binding.get("tenant_id", "")
         config = binding.get("config") or {}
-        description = config.get("description", f"Dynamic MCP tool: {tool_name}")
+        description = config.get("description") or f"Execute {tool_name} tool via Centralized Integration Gateway."
 
-        async def _mcp_executor(tn=tool_name, ep=endpoint_url, ah=auth_headers, tt=connector_type, **kwargs):
-            return await execute_remote_mcp_tool(
-                endpoint_url=ep,
+        async def _mcp_executor(tn=tool_name, tid=tenant_id, aid=agent_instance_id, **kwargs):
+            from tool_gateway.centralized_gateway import execute_mcp_tool
+            return await execute_mcp_tool(
+                tenant_id=tid,
+                agent_instance_id=aid,
                 tool_name=tn,
                 arguments=kwargs,
-                auth_headers=ah,
-                transport_type=tt,
             )
 
         mcp_tool = StructuredTool.from_function(
