@@ -28,8 +28,16 @@ const encryptPayload = (payload) => {
 
 // Helper to construct base callback URI
 const getCallbackUrl = (req) => {
-  const host = req.get('host');
-  const protocol = req.protocol || 'http';
+  if (process.env.OAUTH_REDIRECT_URI) {
+    return process.env.OAUTH_REDIRECT_URI.replace(/\/+$/, '');
+  }
+  if (process.env.BACKEND_URL) {
+    const baseUrl = process.env.BACKEND_URL.replace(/\/+$/, '');
+    return `${baseUrl}/api/integrations/callback`;
+  }
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const rawProto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  const protocol = rawProto.split(',')[0].trim();
   return `${protocol}://${host}/api/integrations/callback`;
 };
 
@@ -153,7 +161,7 @@ router.get('/connect/:provider', async (req, res) => {
 });
 
 // ── GET /api/integrations/callback ── Unified OAuth2 Callback & Code Exchange Handler
-router.get('/callback', async (req, res) => {
+router.get(['/callback', '/callback/'], async (req, res) => {
   try {
     const { code, state, error: oauthError } = req.query;
 
