@@ -1150,6 +1150,9 @@ export default function IntegrationHubPage() {
           .supabase-header {
             background: linear-gradient(135deg, #059669 0%, #047857 100%);
           }
+          .vercel-header {
+            background: linear-gradient(135deg, #000000 0%, #1e293b 100%);
+          }
           .modal-title {
             display: flex;
             align-items: center;
@@ -1220,6 +1223,7 @@ export default function IntegrationHubPage() {
           }
           .safepay-btn { background: #4f46e5; }
           .supabase-btn { background: #059669; }
+          .vercel-btn { background: #000000; }
         `}</style>
       </div>
     </AuthGuard>
