@@ -70,8 +70,12 @@ router.get('/connect/:provider', async (req, res) => {
       return res.status(401).send('<h2>Authentication Required</h2><p>Please log in to authorize this integration.</p>');
     }
 
-    // Encode tenantId and provider into state
-    const stateObj = { tenantId, provider, timestamp: Date.now() };
+    // Generate PKCE pair (required for Airtable & OAuth 2.0 PKCE)
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
+    const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+    // Encode tenantId, provider, and PKCE codeVerifier into state
+    const stateObj = { tenantId, provider, timestamp: Date.now(), codeVerifier };
     const state = Buffer.from(JSON.stringify(stateObj)).toString('base64url');
     const redirectUri = getCallbackUrl(req);
 
@@ -120,7 +124,7 @@ router.get('/connect/:provider', async (req, res) => {
         `);
       }
       const scope = encodeURIComponent('data.records:read data.records:write schema.bases:read');
-      const authorizeUrl = `https://airtable.com/oauth2/v1/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=${scope}`;
+      const authorizeUrl = `https://airtable.com/oauth2/v1/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}&scope=${scope}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
       return res.redirect(authorizeUrl);
     } else if (provider === 'hubspot') {
       const clientId = process.env.HUBSPOT_CLIENT_ID;
@@ -266,6 +270,7 @@ router.get(['/callback', '/callback/'], async (req, res) => {
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
+        code_verifier: stateObj.codeVerifier || '',
       });
 
       const tokenRes = await fetch('https://airtable.com/oauth2/v1/token', {
