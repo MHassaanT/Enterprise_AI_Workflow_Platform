@@ -65,18 +65,27 @@ async def reasoning_node(state: AgentState) -> dict:
         b["tool_name"]: b.get("is_high_risk", False) for b in bindings
     }
 
-    context = state.get("context", [])
-    has_tool_context = bool(tools)
-    has_rag_context = bool(context)
+    # Keywords that indicate the user wants live data from a tool, not document excerpts
+    TOOL_INTENT_KEYWORDS = {
+        "order status", "track order", "order details", "my order",
+        "order id", "ord-", "shipping status", "delivery status",
+        "check order", "where is my order", "track my", "tracking number",
+        "order number", "order update", "check my order", "look up order",
+        "lookup order", "find my order", "order info",
+    }
 
-    if has_tool_context:
-        if not has_rag_context:
-            # RAG was skipped (tool-intent query) — FORCE the LLM to call a tool
-            # Without this, the LLM may generate a text response saying "I cannot help"
-            llm_with_tools = llm.bind_tools(tools, tool_choice="any")
-            print(f"[REASONING] Forcing tool_choice='any' (no RAG context, tools available)")
-        else:
-            llm_with_tools = llm.bind_tools(tools)
+    context = state.get("context", [])
+    question_lower = (state.get("question") or "").strip().lower()
+    is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
+
+    if is_tool_intent and has_tool_context:
+        # Tool-intent detected: force the LLM to call a tool and strip RAG context
+        # so the LLM doesn't get confused by irrelevant document excerpts
+        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+        context = []  # Clear RAG context to prevent document-based answers
+        print(f"[REASONING] TOOL-INTENT detected for '{question_lower}' — forcing tool_choice='any', clearing RAG context")
+    elif has_tool_context:
+        llm_with_tools = llm.bind_tools(tools)
     else:
         llm_with_tools = llm
 
