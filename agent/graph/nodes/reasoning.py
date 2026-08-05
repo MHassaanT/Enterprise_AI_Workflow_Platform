@@ -55,15 +55,32 @@ async def reasoning_node(state: AgentState) -> dict:
     agent_id = state["agent_instance_id"]
     tools = await get_tools_for_agent(agent_id)
     bindings = await get_allowed_tool_bindings(agent_id)
+
+    # Diagnostic logging — critical for debugging tool binding issues
+    tool_names = [t.name for t in tools] if tools else []
+    print(f"[REASONING] Agent={agent_id} | Tools bound: {tool_names} | Bindings count: {len(bindings)} | Context chunks: {len(state.get('context', []))}")
     
     # Map tool names to whether they require human approval based on ToolBinding DB config
     high_risk_map = {
         b["tool_name"]: b.get("is_high_risk", False) for b in bindings
     }
 
-    llm_with_tools = llm.bind_tools(tools) if tools else llm
+    context = state.get("context", [])
+    has_tool_context = bool(tools)
+    has_rag_context = bool(context)
 
-    system_msg = SystemMessage(content=_build_system_prompt(state.get("context", [])))
+    if has_tool_context:
+        if not has_rag_context:
+            # RAG was skipped (tool-intent query) — FORCE the LLM to call a tool
+            # Without this, the LLM may generate a text response saying "I cannot help"
+            llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+            print(f"[REASONING] Forcing tool_choice='any' (no RAG context, tools available)")
+        else:
+            llm_with_tools = llm.bind_tools(tools)
+    else:
+        llm_with_tools = llm
+
+    system_msg = SystemMessage(content=_build_system_prompt(context))
     history = list(state["messages"])
 
     response: AIMessage = await llm_with_tools.ainvoke([system_msg] + history)
