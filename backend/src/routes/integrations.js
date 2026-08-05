@@ -355,8 +355,8 @@ router.get(['/callback', '/callback/'], async (req, res) => {
       return res.status(400).send(`Unsupported provider '${provider}'`);
     }
 
-    // Resolve tool_id from tool_registry
-    const toolQuery = await query(
+    // Resolve or auto-register tool_id from tool_registry
+    let toolQuery = await query(
       `SELECT id FROM tool_registry WHERE LOWER(canonical_name) = LOWER($1) OR LOWER(provider_type) = LOWER($1)`,
       [provider]
     );
@@ -364,14 +364,25 @@ router.get(['/callback', '/callback/'], async (req, res) => {
     let toolId = null;
     if (toolQuery.rows.length > 0) {
       toolId = toolQuery.rows[0].id;
+    } else {
+      const canonicalName = provider === 'github' ? 'GitHub' : (provider.charAt(0).toUpperCase() + provider.slice(1));
+      const displayName = `${canonicalName} Integration`;
+      const insertRes = await query(
+        `INSERT INTO tool_registry (canonical_name, display_name, provider_type, is_high_risk, schema_json)
+         VALUES ($1, $2, $3, false, '{}'::jsonb)
+         ON CONFLICT (canonical_name) DO UPDATE SET provider_type = EXCLUDED.provider_type
+         RETURNING id`,
+        [canonicalName, displayName, provider]
+      );
+      toolId = insertRes.rows[0].id;
     }
 
     // Encrypt token payload with AES-256-GCM
     const encryptedPayload = encryptPayload(tokenPayload);
 
-    // Upsert into tool_credentials for tenant and toolId
+    // Upsert into tool_credentials for tenant and toolId (handling any legacy null tool_id)
     const existing = await query(
-      `SELECT id FROM tool_credentials WHERE tenant_id = $1 AND tool_id = $2`,
+      `SELECT id FROM tool_credentials WHERE tenant_id = $1 AND (tool_id = $2 OR tool_id IS NULL)`,
       [tenantId, toolId],
       tenantId
     );
@@ -379,9 +390,9 @@ router.get(['/callback', '/callback/'], async (req, res) => {
     if (existing.rows.length > 0) {
       await query(
         `UPDATE tool_credentials 
-         SET encrypted_payload = $1, auth_type = 'oauth2', updated_at = NOW() 
-         WHERE id = $2 AND tenant_id = $3`,
-        [encryptedPayload, existing.rows[0].id, tenantId],
+         SET tool_id = $1, encrypted_payload = $2, auth_type = 'oauth2', updated_at = NOW() 
+         WHERE id = $3 AND tenant_id = $4`,
+        [toolId, encryptedPayload, existing.rows[0].id, tenantId],
         tenantId
       );
     } else {
