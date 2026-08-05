@@ -84,13 +84,19 @@ router.get('/bindings', authenticate, authorize('admin', 'employee', 'reviewer')
     const { agent_instance_id } = req.query;
 
     let sql = `
-      SELECT tb.id, tb.agent_instance_id, tb.tenant_id, tb.tool_id, tb.tool_name, tb.connector_type,
+      SELECT DISTINCT ON (tb.id)
+             tb.id, tb.agent_instance_id, tb.tenant_id, tb.tool_id, tb.tool_name, tb.connector_type,
              tb.is_enabled, tb.custom_risk_override, tb.config, tb.config_json, tb.created_at,
              tr.canonical_name, tr.display_name, tr.provider_type, tr.is_high_risk as registry_high_risk,
              tc.id as credential_id, tc.auth_type, tc.updated_at as credential_updated_at
       FROM tool_bindings tb
-      LEFT JOIN tool_registry tr ON tb.tool_id = tr.id OR tb.tool_name = tr.canonical_name
-      LEFT JOIN tool_credentials tc ON tb.id = tc.binding_id AND tc.tenant_id = $1
+      LEFT JOIN tool_registry tr ON tb.tool_id = tr.id OR LOWER(tb.tool_name) = LOWER(tr.canonical_name)
+      LEFT JOIN tool_credentials tc ON (
+        tc.tenant_id = $1 AND (
+          tc.binding_id = tb.id OR
+          (tc.tool_id IS NOT NULL AND (tc.tool_id = tb.tool_id OR tc.tool_id = tr.id))
+        )
+      )
       WHERE tb.tenant_id = $1
     `;
     const params = [tenantId];
@@ -99,7 +105,7 @@ router.get('/bindings', authenticate, authorize('admin', 'employee', 'reviewer')
       sql += ` AND tb.agent_instance_id = $2`;
       params.push(agent_instance_id);
     }
-    sql += ` ORDER BY tb.created_at DESC`;
+    sql += ` ORDER BY tb.id, tc.updated_at DESC NULLS LAST, tb.created_at DESC`;
 
     const result = await query(sql, params, tenantId);
     res.json({ bindings: result.rows });
