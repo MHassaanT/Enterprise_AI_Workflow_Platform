@@ -50,11 +50,29 @@ Response format:
     return prompt
 
 
+MAX_TOOL_RETRIES = 3  # Circuit breaker: max consecutive tool call attempts
+
+
 async def reasoning_node(state: AgentState) -> dict:
     llm = get_llm()
     agent_id = state["agent_instance_id"]
     tools = await get_tools_for_agent(agent_id)
     bindings = await get_allowed_tool_bindings(agent_id)
+
+    # Circuit breaker: if the ReAct loop has retried tools too many times,
+    # stop looping and give a clear error to the user
+    retry_count = state.get("tool_retry_count", 0)
+    if retry_count >= MAX_TOOL_RETRIES:
+        print(f"[REASONING] Circuit breaker triggered: {retry_count} consecutive tool failures for agent={agent_id}")
+        return {
+            "messages": [AIMessage(content=(
+                "I encountered a technical issue while trying to retrieve that information. "
+                "Please try again in a moment, or contact support if the issue persists."
+            ))],
+            "next_step": "respond",
+            "tool_result": None,
+            "pending_tool_call": None,
+        }
 
     # Diagnostic logging — critical for debugging tool binding issues
     tool_names = [t.name for t in tools] if tools else []

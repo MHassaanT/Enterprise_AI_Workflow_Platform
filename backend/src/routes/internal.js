@@ -100,4 +100,41 @@ router.post('/audit', async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// ── POST /internal/credentials ──
+// Called by the Python agent's credentials_manager to fetch encrypted tool credentials
+// without requiring direct Postgres access from the agent service.
+router.post('/credentials', async (req, res) => {
+  const { tenantId, bindingId, toolId } = req.body;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  try {
+    const result = await query(
+      `SELECT encrypted_payload, auth_type
+       FROM tool_credentials
+       WHERE tenant_id = $1 AND (
+         (binding_id = $2 AND $2 IS NOT NULL) OR
+         (tool_id = $3 AND $3 IS NOT NULL)
+       )
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [tenantId, bindingId || null, toolId || null],
+      tenantId,
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ encrypted_payload: null, auth_type: null });
+    }
+
+    res.json({
+      encrypted_payload: result.rows[0].encrypted_payload,
+      auth_type: result.rows[0].auth_type,
+    });
+  } catch (error) {
+    console.error(`Error fetching credentials for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch tool credentials.' });
+  }
+});
+
 module.exports = router;

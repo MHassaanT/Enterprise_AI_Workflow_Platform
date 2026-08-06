@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     pending_tool_call: Optional[dict]   # {name, arguments}
     tool_result: Optional[str]          # raw result from last tool execution
     is_high_risk: bool                  # whether pending tool requires human approval
+    tool_retry_count: int               # circuit breaker: counts consecutive tool failures
 
     # Approval tracking
     approval_id: Optional[str]          # UUID of the pending ApprovalRequest

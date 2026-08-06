@@ -1,10 +1,13 @@
 """
-Credentials Manager — AES-256-GCM encryption/decryption & RLS context switching.
+Credentials Manager — AES-256-GCM encryption/decryption & HTTP-based credential fetch.
+
+Fetches encrypted credentials via the Node.js backend's internal API
+(never connects directly to Postgres — keeps tenant isolation in one place).
 """
 import json
 import os
 from typing import Dict, Any, Optional
-import asyncpg
+import httpx
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from config import settings
 
@@ -58,38 +61,33 @@ async def fetch_tool_credentials(
     tool_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Fetches and decrypts tool credentials for a binding or tool_id with strict RLS context switching.
-    Executes SET LOCAL app.tenant_id within a database transaction.
+    Fetches and decrypts tool credentials via the Node.js backend's internal API.
+    This avoids direct Postgres connections from the agent service, which fail
+    on Railway/cloud deployments where localhost DB is unreachable.
     """
-    db_url = settings.DATABASE_URL
     try:
-        conn = await asyncpg.connect(db_url)
-        try:
-            async with conn.transaction():
-                # Enforce Row-Level Security
-                await conn.execute(f"SET LOCAL app.tenant_id = '{tenant_id}'")
-                row = await conn.fetchrow(
-                    """
-                    SELECT encrypted_payload, auth_type 
-                    FROM tool_credentials 
-                    WHERE tenant_id = $1 AND (
-                        (binding_id = $2 AND $2 IS NOT NULL) OR
-                        (tool_id = $3 AND $3 IS NOT NULL)
-                    )
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                    """,
-                    tenant_id,
-                    binding_id,
-                    tool_id,
-                )
-                if not row:
-                    return {}
-                payload = decrypt_credentials(row["encrypted_payload"])
-                payload["_auth_type"] = row["auth_type"]
-                return payload
-        finally:
-            await conn.close()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/credentials",
+                json={
+                    "tenantId": tenant_id,
+                    "bindingId": binding_id,
+                    "toolId": tool_id,
+                },
+                headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            encrypted_payload = data.get("encrypted_payload")
+            if not encrypted_payload:
+                print(f"[CREDENTIALS MANAGER] No credentials found for tenant={tenant_id}, binding={binding_id}, tool={tool_id}")
+                return {}
+
+            payload = decrypt_credentials(encrypted_payload)
+            payload["_auth_type"] = data.get("auth_type")
+            return payload
+
     except Exception as e:
-        print(f"[CREDENTIALS MANAGER WARNING] DB fetch failed: {e}. Returning empty credentials.")
+        print(f"[CREDENTIALS MANAGER ERROR] Failed to fetch credentials via backend: {e}")
         return {}

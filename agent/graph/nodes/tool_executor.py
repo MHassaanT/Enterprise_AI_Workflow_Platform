@@ -28,6 +28,8 @@ async def tool_executor_node(state: AgentState) -> dict:
             msg = f"Invalid parameters for '{tool_name}': {e}"
             return _error(tool_call_id, msg)
 
+    current_retries = state.get("tool_retry_count", 0)
+
     # ── Stage 2: Centralized Gateway Execution ──
     try:
         result_str = await execute_mcp_tool(
@@ -35,6 +37,12 @@ async def tool_executor_node(state: AgentState) -> dict:
             agent_instance_id=agent_instance_id,
             tool_name=tool_name,
             arguments=arguments,
+        )
+
+        # Detect error results returned as strings (gateway catches exceptions internally)
+        is_error_result = any(
+            result_str.startswith(prefix)
+            for prefix in ["Error executing tool", "Security Error:", "Tool '"]
         )
 
         # ── Stage 3: Tenant-Scoped Audit Logging ──
@@ -55,17 +63,19 @@ async def tool_executor_node(state: AgentState) -> dict:
             "tool_result": result_str,
             "next_step": "",
             "pending_tool_call": None,
+            "tool_retry_count": (current_retries + 1) if is_error_result else 0,
         }
 
     except Exception as e:
         msg = f"Tool '{tool_name}' execution failed: {e}"
-        return _error(tool_call_id, msg)
+        return _error(tool_call_id, msg, current_retries)
 
 
-def _error(tool_call_id: str, message: str) -> dict:
+def _error(tool_call_id: str, message: str, retry_count: int = 0) -> dict:
     return {
         "messages": [ToolMessage(content=message, tool_call_id=tool_call_id)],
         "tool_result": message,
         "next_step": "",
         "pending_tool_call": None,
+        "tool_retry_count": retry_count + 1,
     }
