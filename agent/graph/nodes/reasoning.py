@@ -11,8 +11,8 @@ from graph.state import AgentState
 from services.llm_gateway import get_llm
 from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 
-# Actions that default to high risk requiring human approval before execution
-HIGH_RISK_TOOLS = {"escalate_to_human", "issue_refund", "process_payment"}
+# Actions that default to high risk requiring human approval before execution if not configured in UI
+HIGH_RISK_TOOLS = {"issue_refund", "process_payment"}
 
 
 def _build_system_prompt(context: list[dict]) -> str:
