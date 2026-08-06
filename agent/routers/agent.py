@@ -117,9 +117,30 @@ async def run_agent(
             approval_id=final_state.get("approval_id"),
         )
     except Exception as e:
-        print(f"Error executing agent graph: {e}")
         import traceback
+        print(f"[AGENT FATAL] Graph execution failed: {e}")
         traceback.print_exc()
+
+        # Detect whether this was a tool-intent query (order lookups, etc.)
+        # If so, RAG fallback would produce irrelevant document text that
+        # looks like a refusal — give a clear error message instead.
+        from graph.nodes.intent_classifier import TOOL_INTENT_KEYWORDS
+        question_lower = request.question.strip().lower()
+        is_tool_query = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
+
+        if is_tool_query:
+            return AgentRunResponse(
+                answer=(
+                    "I encountered a technical error while trying to look up that information. "
+                    "Please try again in a moment, or contact support if the issue persists."
+                ),
+                citations=[],
+                tool_used=None,
+                approval_pending=False,
+                approval_id=None,
+            )
+
+        # Document/policy questions — RAG fallback is appropriate here
         from services.rag_client import query_rag
         rag_result = await query_rag(request.question, request.tenant_id)
         chunks = rag_result.get("chunks", [])

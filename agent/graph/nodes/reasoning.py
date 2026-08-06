@@ -75,6 +75,7 @@ async def reasoning_node(state: AgentState) -> dict:
     }
 
     context = state.get("context", [])
+    has_tool_context = bool(tools)
     question_lower = (state.get("question") or "").strip().lower()
     is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
 
