@@ -11,11 +11,11 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
         return "Error: Airtable OAuth Access Token or API Key is missing from tenant credentials. Please configure Airtable in Centralized Integration Hub."
 
     action = (arguments.get("action") or tool_name).lower()
-    base_id = arguments.get("base_id") or credentials.get("base_id") or credentials.get("default_base_id") or "appM8QeaMZ6Y6JSWK"
+    base_id = arguments.get("base_id") or credentials.get("base_id") or credentials.get("default_base_id")
     table_name = arguments.get("table_name") or credentials.get("table_name") or credentials.get("default_table_name") or "Orders"
 
     if not base_id:
-        return "Error: Both 'base_id' and 'table_name' are required for Airtable operations (specify in arguments or integration config)."
+        return "Error: Airtable 'base_id' is required for tenant operations. Please specify base_id in tool arguments or tenant integration setup."
 
     headers = {
         "Authorization": f"Bearer {token}",
