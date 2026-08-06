@@ -106,16 +106,16 @@ async def reasoning_node(state: AgentState) -> dict:
             has_recent_tool_call = True
             break
 
-    if is_tool_intent and has_tool_context and not has_recent_tool_call:
+    if has_recent_tool_call:
+        # A tool has already executed for this turn: unbind tools so the LLM is forced to synthesize a final text response
+        llm_with_tools = llm
+        context = []
+    elif is_tool_intent and has_tool_context:
         # Tool-intent detected on initial turn: force the LLM to call a tool and strip RAG context
         # so the LLM doesn't get confused by irrelevant document excerpts
         llm_with_tools = llm.bind_tools(tools, tool_choice="any")
         context = []  # Clear RAG context to prevent document-based answers
         print(f"[REASONING] TOOL-INTENT detected for '{question_lower}' — forcing tool_choice='any', clearing RAG context")
-    elif is_tool_intent and has_tool_context and has_recent_tool_call:
-        # Tool has already executed for this turn: allow normal answer generation using tool result
-        llm_with_tools = llm.bind_tools(tools)
-        context = []
     elif has_tool_context:
         llm_with_tools = llm.bind_tools(tools)
     else:
