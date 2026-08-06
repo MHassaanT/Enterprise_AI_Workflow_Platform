@@ -6,7 +6,7 @@ Produces: either a final answer (next_step="respond") or a tool call (next_step=
 
 Uses the LLM gateway abstraction — Gemini or Ollama, env-switched.
 """
-from langchain_core.messages import SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, AIMessage, ToolMessage, HumanMessage
 from graph.state import AgentState
 from services.llm_gateway import get_llm
 from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
@@ -97,12 +97,25 @@ async def reasoning_node(state: AgentState) -> dict:
     question_lower = (state.get("question") or "").strip().lower()
     is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
 
-    if is_tool_intent and has_tool_context:
-        # Tool-intent detected: force the LLM to call a tool and strip RAG context
+    # Check if a tool has already been executed for the current user turn
+    has_recent_tool_call = False
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            break
+        if isinstance(msg, ToolMessage):
+            has_recent_tool_call = True
+            break
+
+    if is_tool_intent and has_tool_context and not has_recent_tool_call:
+        # Tool-intent detected on initial turn: force the LLM to call a tool and strip RAG context
         # so the LLM doesn't get confused by irrelevant document excerpts
         llm_with_tools = llm.bind_tools(tools, tool_choice="any")
         context = []  # Clear RAG context to prevent document-based answers
         print(f"[REASONING] TOOL-INTENT detected for '{question_lower}' — forcing tool_choice='any', clearing RAG context")
+    elif is_tool_intent and has_tool_context and has_recent_tool_call:
+        # Tool has already executed for this turn: allow normal answer generation using tool result
+        llm_with_tools = llm.bind_tools(tools)
+        context = []
     elif has_tool_context:
         llm_with_tools = llm.bind_tools(tools)
     else:
