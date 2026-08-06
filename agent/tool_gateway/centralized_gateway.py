@@ -108,7 +108,7 @@ async def execute_mcp_tool(
                 tool_fn = TOOL_REGISTRY.get("escalate_to_human")
 
             if tool_fn:
-                res = await tool_fn(**arguments)
+                res = await tool_fn(**arguments, tenant_id=tenant_id, binding_id=binding_id, credentials=credentials)
                 return str(res)
             else:
                 return f"Error: Built-in tool '{tool_name}' not found in registry."
