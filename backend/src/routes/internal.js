@@ -111,13 +111,17 @@ router.post('/credentials', async (req, res) => {
 
   try {
     const result = await query(
-      `SELECT encrypted_payload, auth_type
-       FROM tool_credentials
-       WHERE tenant_id = $1 AND (
-         (binding_id = $2 AND $2 IS NOT NULL) OR
-         (tool_id = $3 AND $3 IS NOT NULL)
+      `SELECT tc.encrypted_payload, tc.auth_type
+       FROM tool_credentials tc
+       LEFT JOIN tool_bindings tb ON tc.binding_id = tb.id OR tc.tool_id = tb.tool_id
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id OR tb.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         (tc.binding_id = $2 AND $2 IS NOT NULL) OR
+         (tc.tool_id = $3 AND $3 IS NOT NULL) OR
+         (tb.id = $2 AND $2 IS NOT NULL) OR
+         (tr.provider_type = 'airtable' OR LOWER(tb.tool_name) LIKE '%airtable%')
        )
-       ORDER BY updated_at DESC
+       ORDER BY tc.updated_at DESC
        LIMIT 1`,
       [tenantId, bindingId || null, toolId || null],
       tenantId,
