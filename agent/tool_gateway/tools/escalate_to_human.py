@@ -7,7 +7,7 @@ Always classified as HIGH-RISK — routes through approval_checkpoint before exe
 The tool itself is lightweight; the real work (creating an ApprovalRequest in Postgres)
 is done by the approval_checkpoint node after the reasoning node flags is_high_risk=True.
 """
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel
 
 
@@ -17,8 +17,9 @@ class EscalateToHumanInput(BaseModel):
 
 
 async def escalate_to_human_impl(
-    reason: str,
+    reason: str = "Issue requires human support",
     action_payload: Optional[dict] = None,
+    **kwargs: Any,
 ) -> str:
     """
     Returns a confirmation string. The approval_checkpoint node handles

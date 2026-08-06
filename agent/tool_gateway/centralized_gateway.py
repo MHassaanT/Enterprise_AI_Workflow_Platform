@@ -17,13 +17,27 @@ from tool_gateway.adapters.clickup_adapter import execute_clickup_tool
 from tool_gateway.adapters.stripe_adapter import execute_stripe_tool
 
 
+def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
+    norm_req = tool_name.lower().replace("-", "_").replace(" ", "_")
+    for b in bindings:
+        b_name = b.get("tool_name", "")
+        b_norm = b_name.lower().replace("-", "_").replace(" ", "_")
+        if b_name == tool_name or b_norm == norm_req:
+            return b
+        if "order" in b_norm and "order" in norm_req:
+            return b
+        if "escalat" in b_norm and "escalat" in norm_req:
+            return b
+    return None
+
+
 async def evaluate_tool_risk(agent_instance_id: str, tool_name: str) -> Tuple[bool, Dict[str, Any]]:
     """
     Evaluates whether a tool is authorized for an agent and determines its effective risk level.
     Returns: (is_high_risk, binding_info)
     """
     bindings = await get_allowed_tool_bindings(agent_instance_id)
-    target = next((b for b in bindings if b.get("tool_name") == tool_name), None)
+    target = _find_matching_binding(bindings, tool_name)
     if not target:
         return False, {}
 
@@ -48,7 +62,7 @@ async def execute_mcp_tool(
     """
     # 1. Allowlist Verification & Risk Evaluation
     bindings = await get_allowed_tool_bindings(agent_instance_id)
-    target_binding = next((b for b in bindings if b.get("tool_name") == tool_name), None)
+    target_binding = _find_matching_binding(bindings, tool_name)
 
     if not target_binding:
         return f"Security Error: Tool '{tool_name}' is not authorized or bound for agent instance '{agent_instance_id}'."
@@ -85,10 +99,19 @@ async def execute_mcp_tool(
             return await execute_resend_tool(tool_name, arguments, credentials)
         elif provider_type == "hubspot" or "hubspot" in tool_name.lower():
             return await execute_hubspot_tool(tool_name, arguments, credentials)
-        elif provider_type == "builtin" and tool_name in TOOL_REGISTRY:
-            tool_fn = TOOL_REGISTRY[tool_name]
-            res = await tool_fn(**arguments)
-            return str(res)
+        elif provider_type == "builtin" or tool_name in TOOL_REGISTRY or "order" in tool_name.lower() or "escalat" in tool_name.lower():
+            norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
+            tool_fn = TOOL_REGISTRY.get(norm_name) or TOOL_REGISTRY.get(tool_name)
+            if not tool_fn and "order" in norm_name:
+                tool_fn = TOOL_REGISTRY.get("check_order_status")
+            elif not tool_fn and "escalat" in norm_name:
+                tool_fn = TOOL_REGISTRY.get("escalate_to_human")
+
+            if tool_fn:
+                res = await tool_fn(**arguments)
+                return str(res)
+            else:
+                return f"Error: Built-in tool '{tool_name}' not found in registry."
         else:
             # External / Remote MCP Server HTTP / SSE execution
             endpoint_url = target_binding.get("endpoint_url")

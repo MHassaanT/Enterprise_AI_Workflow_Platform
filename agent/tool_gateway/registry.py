@@ -18,34 +18,78 @@ from services.db_client import get_agent_tool_bindings
 
 # ── Core built-in registries ──
 
+_check_order_desc = (
+    "Returns the current status of a customer order by order_id or email address. "
+    "Use this when the user asks about their order status, shipment, delivery, or order details."
+)
+
+_escalate_desc = (
+    "Escalates an issue or high-risk action to a human supervisor for approval. "
+    "Use when an ungrounded inquiry cannot be answered accurately from documents, "
+    "or when an irreversible/high-risk action (such as refunds or credits) is requested."
+)
+
 TOOL_REGISTRY: Dict[str, Callable] = {
     "check_order_status": check_order_status_impl,
+    "check_order_details": check_order_status_impl,
+    "check_order": check_order_status_impl,
+    "order_status": check_order_status_impl,
     "escalate_to_human": escalate_to_human_impl,
+    "human_escalation": escalate_to_human_impl,
+    "escalate": escalate_to_human_impl,
 }
 
 TOOL_INPUT_MODELS: Dict[str, type] = {
     "check_order_status": CheckOrderStatusInput,
+    "check_order_details": CheckOrderStatusInput,
+    "check_order": CheckOrderStatusInput,
+    "order_status": CheckOrderStatusInput,
     "escalate_to_human": EscalateToHumanInput,
+    "human_escalation": EscalateToHumanInput,
+    "escalate": EscalateToHumanInput,
 }
 
 BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
     "check_order_status": StructuredTool.from_function(
         coroutine=check_order_status_impl,
         name="check_order_status",
-        description=(
-            "Returns the current status of a customer order by order_id or email address. "
-            "Use this when the user asks about their order status, shipment, delivery, or order details."
-        ),
+        description=_check_order_desc,
+        args_schema=CheckOrderStatusInput,
+    ),
+    "check_order_details": StructuredTool.from_function(
+        coroutine=check_order_status_impl,
+        name="check_order_details",
+        description=_check_order_desc,
+        args_schema=CheckOrderStatusInput,
+    ),
+    "check_order": StructuredTool.from_function(
+        coroutine=check_order_status_impl,
+        name="check_order",
+        description=_check_order_desc,
+        args_schema=CheckOrderStatusInput,
+    ),
+    "order_status": StructuredTool.from_function(
+        coroutine=check_order_status_impl,
+        name="order_status",
+        description=_check_order_desc,
         args_schema=CheckOrderStatusInput,
     ),
     "escalate_to_human": StructuredTool.from_function(
         coroutine=escalate_to_human_impl,
         name="escalate_to_human",
-        description=(
-            "Escalates an issue or high-risk action to a human supervisor for approval. "
-            "Use when an ungrounded inquiry cannot be answered accurately from documents, "
-            "or when an irreversible/high-risk action (such as refunds or credits) is requested."
-        ),
+        description=_escalate_desc,
+        args_schema=EscalateToHumanInput,
+    ),
+    "human_escalation": StructuredTool.from_function(
+        coroutine=escalate_to_human_impl,
+        name="human_escalation",
+        description=_escalate_desc,
+        args_schema=EscalateToHumanInput,
+    ),
+    "escalate": StructuredTool.from_function(
+        coroutine=escalate_to_human_impl,
+        name="escalate",
+        description=_escalate_desc,
         args_schema=EscalateToHumanInput,
     ),
 }
@@ -139,13 +183,31 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
     tools: List[StructuredTool] = []
 
     for binding in bindings:
-        tool_name = binding.get("tool_name")
-        connector_type = binding.get("connector_type", "builtin")
+        tool_name = binding.get("tool_name", "")
+        connector_type = (binding.get("connector_type") or binding.get("provider_type") or "builtin").lower()
+        norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
 
-        # 1. Check if it's a built-in platform tool
-        if connector_type == "builtin" and tool_name in BUILTIN_LANGCHAIN_TOOLS:
-            tools.append(BUILTIN_LANGCHAIN_TOOLS[tool_name])
-            continue
+        # 1. Check if it's a built-in platform tool (direct match or alias)
+        if connector_type == "builtin" or norm_name in BUILTIN_LANGCHAIN_TOOLS or "order" in norm_name or "escalat" in norm_name:
+            if norm_name in BUILTIN_LANGCHAIN_TOOLS:
+                tools.append(BUILTIN_LANGCHAIN_TOOLS[norm_name])
+                continue
+            elif "order" in norm_name:
+                tools.append(StructuredTool.from_function(
+                    coroutine=check_order_status_impl,
+                    name=tool_name,
+                    description=_check_order_desc,
+                    args_schema=CheckOrderStatusInput,
+                ))
+                continue
+            elif "escalat" in norm_name:
+                tools.append(StructuredTool.from_function(
+                    coroutine=escalate_to_human_impl,
+                    name=tool_name,
+                    description=_escalate_desc,
+                    args_schema=EscalateToHumanInput,
+                ))
+                continue
 
         # 2. Dynamic MCP / Vendor Adapter tool
         tenant_id = binding.get("tenant_id", "")

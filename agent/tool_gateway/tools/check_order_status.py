@@ -4,6 +4,7 @@ Tool: check_order_status
 Phase 3: Mock data implementation — defines the contract.
 Phase 4: Replace MOCK_ORDERS with a real Postgres query against the orders table.
 """
+from typing import Any
 from pydantic import BaseModel
 
 # ── Mock data — swap with DB query in Phase 4 ──
@@ -23,8 +24,20 @@ class CheckOrderStatusInput(BaseModel):
     query: str | None = None
 
 
-async def check_order_status_impl(order_id: str | None = None, email: str | None = None, query: str | None = None) -> str:
-    search_term = (order_id or email or query or "").strip()
+async def check_order_status_impl(
+    order_id: str | None = None,
+    email: str | None = None,
+    query: str | None = None,
+    customer_email: str | None = None,
+    user_email: str | None = None,
+    **kwargs: Any,
+) -> str:
+    search_term = (order_id or email or customer_email or user_email or query or "").strip()
+    if not search_term and kwargs:
+        for val in kwargs.values():
+            if isinstance(val, str) and val.strip():
+                search_term = val.strip()
+                break
     if not search_term:
         return "Please provide an order ID or customer email to lookup order status."
 
