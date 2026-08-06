@@ -54,4 +54,4 @@ async def check_order_status_impl(
     except Exception as e:
         print(f"[LIVE ORDER LOOKUP] Airtable adapter call exception: {e}")
 
-    return f"No active order records found matching '{search_term}' in connected integrations. Please verify the order ID or connect Airtable in the Centralized Integration Hub."
+    return f"Order not found: There are no active order records matching '{search_term}'. Please verify the order ID or email address."
