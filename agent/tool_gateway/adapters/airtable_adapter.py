@@ -8,14 +8,14 @@ import httpx
 async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], credentials: Dict[str, Any]) -> str:
     token = credentials.get("access_token") or credentials.get("api_key") or credentials.get("bearer_token") or credentials.get("token")
     if not token:
-        return "Error: Airtable OAuth Access Token or API Key is missing from tenant credentials. Please configure Airtable in Centralized Integration Hub."
+        return "I cannot fetch the data because the Airtable integration has not been connected yet. Please inform the user that the administrator needs to connect Airtable in the Centralized Integration Hub."
 
     action = (arguments.get("action") or tool_name).lower()
     base_id = arguments.get("base_id") or credentials.get("base_id") or credentials.get("default_base_id")
     table_name = arguments.get("table_name") or credentials.get("table_name") or credentials.get("default_table_name") or "Orders"
 
     if not base_id:
-        return "Error: Airtable 'base_id' is required for tenant operations. Please specify base_id in tool arguments or tenant integration setup."
+        return "I cannot fetch the data because the Airtable Base ID is missing. Please inform the user that the administrator needs to configure the Base ID in the integration setup."
 
     headers = {
         "Authorization": f"Bearer {token}",
