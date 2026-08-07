@@ -294,6 +294,29 @@ router.get(['/callback', '/callback/'], async (req, res) => {
         token_type: tokenData.token_type || 'bearer',
         provider: 'airtable',
       };
+
+      // Auto-discover Airtable bases so the adapter has a valid base_id
+      try {
+        const basesRes = await fetch('https://api.airtable.com/v0/meta/bases', {
+          headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+        });
+        if (basesRes.ok) {
+          const basesData = await basesRes.json();
+          if (basesData.bases && basesData.bases.length > 0) {
+            tokenPayload.base_id = basesData.bases[0].id;
+            tokenPayload.available_bases = basesData.bases.map(b => ({
+              id: b.id, name: b.name,
+            }));
+            console.log(`[AIRTABLE OAUTH] Auto-discovered ${basesData.bases.length} base(s). Using base_id=${tokenPayload.base_id}`);
+          } else {
+            console.warn('[AIRTABLE OAUTH] Token exchanged but no bases found in the authorized scope.');
+          }
+        } else {
+          console.warn(`[AIRTABLE OAUTH] Meta API returned ${basesRes.status} — base_id not auto-populated.`);
+        }
+      } catch (basesErr) {
+        console.warn('[AIRTABLE OAUTH] Could not fetch bases from Meta API:', basesErr.message);
+      }
     } else if (provider === 'hubspot') {
       const clientId = process.env.HUBSPOT_CLIENT_ID || 'dummy_hubspot_client_id';
       const clientSecret = process.env.HUBSPOT_CLIENT_SECRET || 'dummy_hubspot_client_secret';
