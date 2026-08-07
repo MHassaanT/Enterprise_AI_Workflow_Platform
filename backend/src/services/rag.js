@@ -19,7 +19,7 @@ const generateWithOpenRouter = async (prompt) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a concise customer support assistant. Answer the user\'s question using ONLY the provided document excerpts. Keep your response extremely brief (1-2 sentences max). Do NOT include extra details like category, target geography, or unrelated background unless explicitly asked. Do NOT include inline citation markers like [1], [2] in your answer.'
+          content: 'You are a concise customer support assistant. First evaluate the user\'s question against the provided document excerpts. If the question is in context of the provided document excerpts, answer it using ONLY those excerpts in 1-2 concise sentences. Otherwise, if the question cannot be answered using the provided document excerpts, respond with "The query is out of context." Do NOT use outside knowledge or include inline citation markers like [1], [2] in your answer.'
         },
         { role: 'user', content: prompt }
       ],
@@ -69,7 +69,7 @@ const answerWithRAG = async (question, tenantId, { limit = 5 } = {}) => {
 
   if (chunks.length === 0) {
     return {
-      answer: "I don't have enough information in the provided documents to answer that question.",
+      answer: "The query is out of context.",
       citations: [],
       retrievedChunks: [],
     };

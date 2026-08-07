@@ -148,7 +148,7 @@ async def run_agent(
             top_text = chunks[0].get("text", "").replace("\n", " ").strip()
             answer = top_text[:300] + ("..." if len(top_text) > 300 else "")
         else:
-            answer = "I don't have enough information in the provided documents to answer that question."
+            answer = "The query is out of context."
         return AgentRunResponse(
             answer=answer,
             citations=rag_result.get("citations", []),

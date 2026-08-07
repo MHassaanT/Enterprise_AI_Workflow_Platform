@@ -20,17 +20,22 @@ def _build_system_prompt(context: list[dict]) -> str:
 
 CRITICAL RULES (in priority order):
 
-1. TOOL-FIRST RULE: When a user asks about order status, order tracking, order details,
+1. CONTEXT EVALUATION RULE:
+   - First, evaluate the user's question against the provided DOCUMENT EXCERPTS and available tools.
+   - If the question is in context (covered by the provided document excerpts or relates to available support tools/greetings), answer it using ONLY the provided document excerpts or tools.
+   - If the question is NOT in context (not covered by the provided document excerpts and not a tool request or greeting), you MUST respond with: "The query is out of context."
+   - Do NOT use outside general knowledge (such as recipes like how to make tea, general trivia, or unprovided topics) to answer questions.
+
+2. TOOL-FIRST RULE: When a user asks about order status, order tracking, order details,
    customer lookups, shipment tracking, or ANY data that can be retrieved via an available
    tool — you MUST call that tool IMMEDIATELY. Do NOT answer from document excerpts for
-   these queries. Do NOT say you cannot help. Call the tool.
+   these queries. Call the tool.
 
-2. DOCUMENT RULE: For product information, company policies, pricing, and general questions
-   that are NOT about specific customer data, use the provided document excerpts to answer.
+3. DOCUMENT RULE: For product information, company policies, pricing, and general questions
+   that are NOT about specific customer data, use ONLY the provided document excerpts to answer.
+   If the answer is not in the document excerpts, state that the query is out of context.
 
-3. ESCALATION RULE: For high-risk or irreversible actions (refunds, payments), call the escalate_to_human tool. DO NOT escalate when asked for order details — you MUST always call the data lookup tools (like Airtable or check_order_status) first!
-
-4. NEVER say "I cannot assist with that". Always attempt to use your tools to fetch live data.
+4. ESCALATION RULE: For high-risk or irreversible actions (refunds, payments), call the escalate_to_human tool. DO NOT escalate when asked for order details — you MUST always call the data lookup tools (like Airtable or check_order_status) first!
 
 Response format:
 - Keep answers concise, direct, and focused (1-2 sentences).
@@ -44,6 +49,8 @@ Response format:
             for i, c in enumerate(context)
         )
         prompt += f"\n\nDOCUMENT EXCERPTS:\n{excerpts}"
+    else:
+        prompt += "\n\nDOCUMENT EXCERPTS: None provided."
     return prompt
 
 
@@ -89,10 +96,16 @@ async def reasoning_node(state: AgentState) -> dict:
         "lookup order", "find my order", "order info",
     }
 
+    GREETINGS = {
+        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+        "thanks", "thank you", "bye", "goodbye"
+    }
+
     context = state.get("context", [])
     has_tool_context = bool(tools)
     question_lower = (state.get("question") or "").strip().lower()
     is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
+    is_greeting = any(g in question_lower for g in GREETINGS)
 
     # Check if a tool has already been executed for the current user turn
     has_recent_tool_call = False
@@ -102,6 +115,15 @@ async def reasoning_node(state: AgentState) -> dict:
         if isinstance(msg, ToolMessage):
             has_recent_tool_call = True
             break
+
+    # If no document context was retrieved from RAG, and query is neither a tool intent nor a greeting nor post-tool turn:
+    if not context and not is_tool_intent and not has_recent_tool_call and not is_greeting:
+        return {
+            "messages": [AIMessage(content="The query is out of context.")],
+            "next_step": "respond",
+            "tool_result": None,
+            "pending_tool_call": None,
+        }
 
     if has_recent_tool_call:
         # A tool has already executed for this turn: unbind tools so the LLM is forced to synthesize a final text response
