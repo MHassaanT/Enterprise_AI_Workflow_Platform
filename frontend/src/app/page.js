@@ -64,7 +64,7 @@ export default function TenantControlPanelPage() {
                 )}
               </div>
               <h1 className="font-display-lg text-display-lg text-on-surface mb-2">
-                Enterprise AI Workforce Dashboard
+                Enterprise AI Dashboard
               </h1>
               <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
                 Centralized management for customer support agent conversations, human approval queues, vector knowledge bases, and embeddable widget deployments.

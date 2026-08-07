@@ -43,7 +43,7 @@ export default function Sidebar() {
           <div className="h-8 w-8 rounded bg-primary-container/20 flex items-center justify-center border border-primary/30 text-primary">
             <span className="material-symbols-outlined text-lg">hexagon</span>
           </div>
-          <span className="font-headline-md text-headline-md font-extrabold text-on-surface">Vanguard AI</span>
+          <span className="font-headline-md text-headline-md font-extrabold text-on-surface">Enterprise AI</span>
         </Link>
         <button
           onClick={() => setIsOpenMobile(!isOpenMobile)}
@@ -75,7 +75,7 @@ export default function Sidebar() {
                 <span className="material-symbols-outlined text-primary text-xl">hexagon</span>
               </div>
               <div>
-                <h1 className="font-headline-md text-headline-md font-extrabold text-on-surface leading-tight">Vanguard AI</h1>
+                <h1 className="font-headline-md text-headline-md font-extrabold text-on-surface leading-tight">Enterprise AI</h1>
                 <p className="font-label-md text-label-md text-on-surface-variant">Control Platform</p>
               </div>
             </Link>
