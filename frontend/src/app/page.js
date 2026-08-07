@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Header from './components/Header';
 import AuthGuard from './components/AuthGuard';
 import ApprovalCard from './components/ApprovalCard';
 import { fetchConversations, fetchPendingApprovals, fetchDocuments, patchApproval, getUser } from '@/lib/api';
@@ -50,8 +49,6 @@ export default function TenantControlPanelPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
-        <Header />
-
         <main className="max-w-container-max mx-auto px-lg py-xl">
           {/* Welcome Banner */}
           <header className="mb-xl border-b border-outline-variant pb-lg flex flex-col md:flex-row md:items-center justify-between gap-md">

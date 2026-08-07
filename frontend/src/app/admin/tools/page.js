@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Header from '../../components/Header';
 import AuthGuard from '../../components/AuthGuard';
 import {
   fetchToolRegistry,
@@ -147,8 +146,6 @@ export default function AdminToolsPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
-        <Header />
-
         <main className="max-w-container-max mx-auto px-lg py-xl">
           {/* Header Banner */}
           <header className="mb-xl border-b border-outline-variant pb-lg">

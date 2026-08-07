@@ -1,14 +1,11 @@
 'use client';
 import Link from 'next/link';
-import Header from '../components/Header';
 import AuthGuard from '../components/AuthGuard';
 
 export default function AdminHubPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
-        <Header />
-
         <main className="max-w-container-max mx-auto px-lg py-xl">
           <header className="mb-xl border-b border-outline-variant pb-lg">
             <span className="font-label-md text-label-md text-primary bg-primary-container/10 px-3 py-1 rounded-full border border-primary/20 inline-block mb-3">
