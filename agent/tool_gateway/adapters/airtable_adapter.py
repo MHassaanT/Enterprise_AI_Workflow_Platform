@@ -5,17 +5,52 @@ from typing import Dict, Any
 import httpx
 
 
+async def _auto_discover_base_id(token: str) -> str | None:
+    """
+    Fallback: if credentials have an access_token but no base_id (legacy OAuth flow),
+    call the Airtable Meta API to discover the first authorized base at runtime.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(
+                "https://api.airtable.com/v0/meta/bases",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if res.is_success:
+                bases = res.json().get("bases", [])
+                if bases:
+                    base_id = bases[0]["id"]
+                    print(f"[AIRTABLE ADAPTER] Auto-discovered base_id={base_id} from Meta API ({len(bases)} base(s) available)")
+                    return base_id
+                else:
+                    print("[AIRTABLE ADAPTER] Meta API returned 0 bases — check OAuth scope includes schema.bases:read")
+            else:
+                print(f"[AIRTABLE ADAPTER] Meta API returned {res.status_code}: {res.text[:200]}")
+    except Exception as e:
+        print(f"[AIRTABLE ADAPTER] Meta API auto-discovery failed: {e}")
+    return None
+
+
 async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], credentials: Dict[str, Any]) -> str:
     token = credentials.get("access_token") or credentials.get("api_key") or credentials.get("bearer_token") or credentials.get("token")
     if not token:
+        print("[AIRTABLE ADAPTER] No token found in credentials — integration not connected")
         return "I cannot fetch the data because the Airtable integration has not been connected yet. Please inform the user that the administrator needs to connect Airtable in the Centralized Integration Hub."
 
     action = (arguments.get("action") or tool_name).lower()
     base_id = arguments.get("base_id") or credentials.get("base_id") or credentials.get("default_base_id")
     table_name = arguments.get("table_name") or credentials.get("table_name") or credentials.get("default_table_name") or "Orders"
 
+    # Self-healing: auto-discover base_id from Meta API if missing from credentials
     if not base_id:
+        print("[AIRTABLE ADAPTER] base_id missing from credentials — attempting auto-discovery via Meta API")
+        base_id = await _auto_discover_base_id(token)
+
+    if not base_id:
+        print("[AIRTABLE ADAPTER] base_id still missing after auto-discovery — cannot proceed")
         return "I cannot fetch the data because the Airtable Base ID is missing. Please inform the user that the administrator needs to configure the Base ID in the integration setup."
+
+    print(f"[AIRTABLE ADAPTER] Executing action='{action}' | base_id={base_id} | table={table_name}")
 
     headers = {
         "Authorization": f"Bearer {token}",
