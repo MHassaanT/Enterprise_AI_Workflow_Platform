@@ -1,12 +1,15 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { fetchConversations, createConversation } from '../../lib/api';
+import { fetchConversations, createConversation, clearAllConversations } from '../../lib/api';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function ConversationList({ activeId, onSelect }) {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     async function load() {
@@ -35,17 +38,51 @@ export default function ConversationList({ activeId, onSelect }) {
     }
   };
 
+  const handleClearHistory = async () => {
+    if (!confirm('Are you sure you want to clear all chat history for this tenant? This action cannot be undone.')) {
+      return;
+    }
+    setClearing(true);
+    try {
+      await clearAllConversations();
+      setConversations([]);
+      const newConv = await createConversation('Customer Session');
+      if (newConv && newConv.id) {
+        setConversations([newConv]);
+        if (onSelect) onSelect(newConv.id);
+        router.push(`/chat/${newConv.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to clear chat history:', err);
+      alert(err.message || 'Failed to clear chat history.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <aside className="w-full md:w-80 bg-surface border-r border-outline-variant flex flex-col h-full overflow-hidden">
-      <div className="p-md border-b border-outline-variant flex items-center justify-between">
+      <div className="p-md border-b border-outline-variant flex items-center justify-between gap-2">
         <h2 className="font-headline-md text-headline-md text-on-surface font-bold">Conversations</h2>
-        <button
-          onClick={handleNewChat}
-          disabled={creating}
-          className="px-md py-1.5 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm disabled:opacity-50"
-        >
-          {creating ? '...' : '+ New Chat'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleNewChat}
+            disabled={creating || clearing}
+            className="px-md py-1.5 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm disabled:opacity-50"
+            title="Create New Chat"
+          >
+            {creating ? '...' : '+ New'}
+          </button>
+          <button
+            onClick={handleClearHistory}
+            disabled={clearing || creating}
+            className="px-2.5 py-1.5 bg-error-container/20 text-error border border-error/30 font-label-md text-label-md font-semibold rounded-md hover:bg-error-container/40 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1"
+            title="Clear All Chat History"
+          >
+            <span>🗑️</span>
+            <span>{clearing ? '...' : 'Clear'}</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (

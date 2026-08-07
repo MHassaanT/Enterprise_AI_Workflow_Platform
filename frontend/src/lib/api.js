@@ -103,6 +103,19 @@ export async function createConversation(customerIdentifier = 'Customer Inquiry'
   return data.conversation;
 }
 
+export async function clearAllConversations() {
+  const res = await fetch('/api/conversations', {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to clear chat history');
+  }
+  return res.json();
+}
+
 export async function fetchMessages(conversationId) {
   const res = await fetch(`/api/conversations/${conversationId}`, {
     headers: { ...getAuthHeader() }

@@ -108,6 +108,42 @@ router.get('/', authenticate, authorize('admin', 'employee', 'reviewer'), async 
   res.json({ conversations: result.rows });
 });
 
+// ── CLEAR ALL CHAT HISTORY FOR TENANT ──
+router.delete('/', authenticate, authorize('admin', 'employee', 'reviewer'), async (req, res) => {
+  const { tenantId } = req.user;
+
+  // 1. Delete approval requests linked to this tenant's conversations
+  await query(
+    `DELETE FROM approval_requests WHERE tenant_id = $1`,
+    [tenantId],
+    tenantId
+  );
+
+  // 2. Delete messages linked to this tenant
+  await query(
+    `DELETE FROM messages WHERE tenant_id = $1`,
+    [tenantId],
+    tenantId
+  );
+
+  // 3. Delete conversations linked to this tenant
+  await query(
+    `DELETE FROM conversations WHERE tenant_id = $1`,
+    [tenantId],
+    tenantId
+  );
+
+  // 4. Log to audit trail
+  await query(
+    `INSERT INTO audit_logs (tenant_id, event_type, payload)
+     VALUES ($1, 'chat_history_cleared', $2)`,
+    [tenantId, JSON.stringify({ clearedBy: req.user.id })],
+    tenantId
+  );
+
+  res.json({ message: 'All chat history cleared successfully.' });
+});
+
 // ── GET A SINGLE CONVERSATION WITH MESSAGES ──
 router.get('/:id', authenticate, authorize('admin', 'employee', 'reviewer'), async (req, res) => {
   const { tenantId } = req.user;
