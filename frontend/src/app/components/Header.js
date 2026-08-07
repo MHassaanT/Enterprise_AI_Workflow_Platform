@@ -80,13 +80,12 @@ export default function Header() {
         </div>
         <style jsx>{`
           .header-bar {
-            background: #ffffff;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-            padding: 0.85rem 1.5rem;
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            padding: 1rem 1.5rem;
             position: sticky;
             top: 0;
             z-index: 50;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
           }
           .header-container {
             max-width: 1400px;
@@ -98,67 +97,71 @@ export default function Header() {
           .logo-brand {
             display: flex;
             align-items: center;
-            gap: 0.6rem;
+            gap: 0.75rem;
             text-decoration: none;
-            color: #111827;
+            color: var(--color-text);
             font-weight: 700;
             font-size: 1.15rem;
             letter-spacing: -0.02em;
           }
           .logo-icon {
             font-size: 1.25rem;
-            background: #eff6ff;
-            padding: 0.3rem 0.5rem;
-            border-radius: 8px;
-            border: 1px solid #dbeafe;
+            background: var(--color-bg);
+            padding: 0.35rem 0.5rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border);
+            box-shadow: var(--shadow-sm);
           }
           .header-nav {
             display: flex;
             align-items: center;
-            gap: 0.85rem;
+            gap: 1rem;
           }
           .nav-link {
             text-decoration: none;
-            color: #475569;
+            color: var(--color-muted);
             font-weight: 600;
             font-size: 0.875rem;
-            padding: 0.4rem 0.75rem;
-            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            border-radius: var(--radius-sm);
             transition: all 0.2s ease;
           }
           .nav-link:hover {
-            color: #2563eb;
-            background: #f1f5f9;
+            color: var(--color-text);
+            background: var(--color-bg);
           }
           .admin-nav-link {
-            color: #4f46e5;
+            color: var(--color-primary);
+          }
+          .admin-nav-link:hover {
+            color: var(--color-primary-hover);
           }
           .docs-nav-btn {
-            background: #f1f5f9;
-            color: #1e293b;
-            border: 1px solid #cbd5e1;
-            padding: 0.4rem 0.85rem;
-            border-radius: 8px;
+            background: var(--color-bg);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
             font-weight: 600;
-            font-size: 0.825rem;
+            font-size: 0.85rem;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.5rem;
             transition: all 0.2s ease;
           }
           .docs-nav-btn:hover {
-            background: #e2e8f0;
-            border-color: #94a3b8;
+            background: var(--color-secondary);
+            border-color: #d1d5db;
           }
           .badge-status {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.4rem 0.8rem;
+            padding: 0.4rem 0.85rem;
             background: #f0fdf4;
             color: #166534;
-            font-size: 0.825rem;
+            font-size: 0.85rem;
             font-weight: 600;
             border-radius: 20px;
             border: 1px solid #bbf7d0;
@@ -174,45 +177,45 @@ export default function Header() {
           .user-profile {
             display: flex;
             align-items: center;
-            gap: 0.65rem;
+            gap: 0.75rem;
             font-size: 0.875rem;
-            color: #334155;
-            padding-left: 0.75rem;
-            border-left: 1px solid #e2e8f0;
+            color: var(--color-text);
+            padding-left: 1rem;
+            border-left: 1px solid var(--color-border);
           }
           .user-email {
             font-weight: 600;
-            color: #1e293b;
+            color: var(--color-text);
           }
           .user-role {
-            font-size: 0.725rem;
+            font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
-            padding: 0.15rem 0.45rem;
-            border-radius: 4px;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-sm);
           }
           .role-admin {
             background: #e0e7ff;
             color: #4338ca;
           }
           .role-reviewer {
-            background: #fef3c7;
-            color: #b45309;
+            background: #fefce8;
+            color: #a16207;
           }
           .logout-btn {
-            background: #fee2e2;
+            background: var(--color-surface);
             color: #dc2626;
-            border: 1px solid #fca5a5;
-            padding: 0.35rem 0.75rem;
-            border-radius: 6px;
+            border: 1px solid var(--color-border);
+            padding: 0.4rem 0.85rem;
+            border-radius: var(--radius-sm);
             font-weight: 600;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             cursor: pointer;
             transition: all 0.2s ease;
           }
           .logout-btn:hover {
-            background: #fca5a5;
-            color: #991b1b;
+            background: #fef2f2;
+            border-color: #fca5a5;
           }
         `}</style>
       </header>

@@ -1,10 +1,10 @@
 .card {
-  background: #fffdfa;
-  border: 1.5px solid #fde68a;
-  border-radius: 12px;
-  padding: 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
   margin: 1.25rem 0;
-  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
+  box-shadow: var(--shadow-sm);
   animation: slideUp 0.35s ease-out forwards;
   max-width: 580px;
 }
@@ -13,50 +13,53 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .badgeWarning {
-  background: #fef3c7;
-  color: #b45309;
-  font-weight: 700;
+  background: #fefce8;
+  color: #a16207;
+  font-weight: 600;
   font-size: 0.75rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 20px;
-  border: 1px solid #fcd34d;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #fef08a;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .appId {
   font-family: monospace;
   font-size: 0.75rem;
-  color: #92400e;
+  color: var(--color-muted);
 }
 
 .body {
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .title {
   font-size: 1rem;
   font-weight: 700;
-  color: #78350f;
-  margin-bottom: 0.35rem;
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
 }
 
 .reason {
   font-size: 0.9rem;
-  color: #451a03;
-  line-height: 1.45;
+  color: var(--color-text);
+  line-height: 1.5;
 }
 
 .payloadBox {
-  margin-top: 0.6rem;
-  padding: 0.6rem 0.8rem;
-  background: #fef1d6;
-  border-radius: 6px;
-  font-size: 0.8rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
   overflow-x: auto;
-  color: #78350f;
+  color: var(--color-muted);
 }
 
 .actions {
@@ -66,52 +69,56 @@
 }
 
 .btn {
-  padding: 0.55rem 1.1rem;
-  border-radius: 8px;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
   border: none;
 }
 
 .btnApprove {
-  background: #16a34a;
+  background: var(--color-primary);
   color: #ffffff;
 }
 
 .btnApprove:hover {
-  background: #15803d;
-  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
+  background: var(--color-primary-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 .btnReject {
-  background: #ef4444;
-  color: #ffffff;
+  background: var(--color-surface);
+  color: #dc2626;
+  border: 1px solid var(--color-border);
 }
 
 .btnReject:hover {
-  background: #dc2626;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 .statusBanner {
   width: 100%;
   text-align: center;
-  padding: 0.5rem;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 0.875rem;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
 }
 
 .banner_approved {
-  background: #dcfce7;
+  background: #f0fdf4;
   color: #15803d;
+  border-color: #bbf7d0;
 }
 
 .banner_rejected {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
 }
 
 @keyframes slideUp {

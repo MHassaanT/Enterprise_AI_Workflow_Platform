@@ -168,7 +168,7 @@ export default function DocumentModal({ isOpen, onClose }) {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(15, 23, 42, 0.55);
+          background: rgba(17, 24, 39, 0.4);
           backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
@@ -178,65 +178,76 @@ export default function DocumentModal({ isOpen, onClose }) {
         }
 
         .modal-container {
-          background: #ffffff;
-          border-radius: 16px;
+          background: var(--color-surface);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--color-border);
           width: 100%;
           max-width: 680px;
           max-height: 85vh;
           display: flex;
           flex-direction: column;
-          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+          box-shadow: var(--shadow-modal);
           overflow: hidden;
+          animation: modalSlide 0.2s ease-out;
+        }
+
+        @keyframes modalSlide {
+          from { transform: translateY(10px) scale(0.98); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
         }
 
         .modal-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 1.25rem 1.5rem;
-          border-bottom: 1px solid #f1f5f9;
+          padding: 1.5rem 2rem;
+          border-bottom: 1px solid var(--color-border);
+          background: var(--color-bg);
         }
 
         .modal-title {
           display: flex;
           align-items: center;
-          gap: 0.6rem;
+          gap: 0.75rem;
         }
 
         .title-icon {
-          font-size: 1.3rem;
+          font-size: 1.5rem;
         }
 
         .modal-title h2 {
           margin: 0;
           font-size: 1.15rem;
           font-weight: 700;
-          color: #0f172a;
+          color: var(--color-text);
         }
 
         .close-btn {
-          background: #f1f5f9;
+          background: transparent;
           border: none;
-          color: #64748b;
+          color: var(--color-muted);
           width: 32px;
           height: 32px;
-          border-radius: 50%;
-          font-size: 1rem;
+          border-radius: var(--radius-sm);
+          font-size: 1.25rem;
           cursor: pointer;
           transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .close-btn:hover {
-          background: #e2e8f0;
-          color: #0f172a;
+          background: var(--color-secondary);
+          color: var(--color-text);
         }
 
         .modal-body {
-          padding: 1.5rem;
+          padding: 2rem;
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 1.25rem;
+          gap: 1.5rem;
         }
 
         .error-banner {
@@ -244,7 +255,7 @@ export default function DocumentModal({ isOpen, onClose }) {
           color: #991b1b;
           border: 1px solid #fecaca;
           padding: 0.75rem 1rem;
-          border-radius: 8px;
+          border-radius: var(--radius);
           font-size: 0.875rem;
         }
 
@@ -252,18 +263,18 @@ export default function DocumentModal({ isOpen, onClose }) {
           background: #fefce8;
           color: #854d0e;
           border: 1px solid #fef08a;
-          padding: 0.85rem 1rem;
-          border-radius: 8px;
+          padding: 1rem;
+          border-radius: var(--radius);
           font-size: 0.85rem;
-          line-height: 1.45;
+          line-height: 1.5;
         }
 
         .dropzone {
-          border: 2px dashed #cbd5e1;
-          border-radius: 12px;
-          padding: 2rem 1.5rem;
+          border: 2px dashed var(--color-border);
+          border-radius: var(--radius-lg);
+          padding: 2.5rem 2rem;
           text-align: center;
-          background: #f8fafc;
+          background: var(--color-bg);
           transition: all 0.2s ease;
           display: flex;
           flex-direction: column;
@@ -271,7 +282,7 @@ export default function DocumentModal({ isOpen, onClose }) {
         }
 
         .dropzone.drag-over {
-          border-color: #3b82f6;
+          border-color: var(--color-accent);
           background: #eff6ff;
         }
 
@@ -282,37 +293,40 @@ export default function DocumentModal({ isOpen, onClose }) {
 
         .upload-title {
           font-weight: 600;
-          color: #1e293b;
+          color: var(--color-text);
           margin: 0 0 0.25rem 0;
         }
 
         .upload-subtitle {
-          font-size: 0.8rem;
-          color: #64748b;
-          margin: 0 0 1rem 0;
+          font-size: 0.85rem;
+          color: var(--color-muted);
+          margin: 0 0 1.25rem 0;
         }
 
         .browse-btn {
-          background: #2563eb;
+          background: var(--color-primary);
           color: #ffffff;
-          padding: 0.55rem 1.25rem;
-          border-radius: 8px;
-          font-size: 0.875rem;
+          padding: 0.65rem 1.25rem;
+          border-radius: var(--radius);
+          font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
-          transition: background 0.2s;
+          transition: all 0.2s;
+          box-shadow: var(--shadow-sm);
         }
 
         .browse-btn:hover {
-          background: #1d4ed8;
+          background: var(--color-primary-hover);
+          box-shadow: var(--shadow-md);
+          transform: translateY(-1px);
         }
 
         .upload-spinner-state {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 0.75rem;
-          color: #2563eb;
+          gap: 1rem;
+          color: var(--color-primary);
           font-weight: 600;
           font-size: 0.9rem;
         }
@@ -320,8 +334,8 @@ export default function DocumentModal({ isOpen, onClose }) {
         .spinner {
           width: 32px;
           height: 32px;
-          border: 3px solid #dbeafe;
-          border-top-color: #2563eb;
+          border: 3px solid #e5e7eb;
+          border-top-color: var(--color-primary);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
@@ -332,9 +346,9 @@ export default function DocumentModal({ isOpen, onClose }) {
 
         .inventory-header h3 {
           margin: 0;
-          font-size: 0.95rem;
+          font-size: 1rem;
           font-weight: 700;
-          color: #334155;
+          color: var(--color-text);
         }
 
         .doc-list {
@@ -347,15 +361,16 @@ export default function DocumentModal({ isOpen, onClose }) {
           display: flex;
           align-items: center;
           gap: 1rem;
-          padding: 0.85rem 1rem;
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          transition: border-color 0.2s;
+          padding: 1rem 1.25rem;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius);
+          transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         .doc-card:hover {
-          border-color: #cbd5e1;
+          border-color: #d1d5db;
+          box-shadow: var(--shadow-sm);
         }
 
         .doc-icon {
@@ -372,21 +387,22 @@ export default function DocumentModal({ isOpen, onClose }) {
         .doc-filename {
           font-weight: 600;
           font-size: 0.9rem;
-          color: #0f172a;
+          color: var(--color-text);
           word-break: break-all;
         }
 
         .doc-meta {
           display: flex;
           align-items: center;
-          gap: 0.6rem;
-          font-size: 0.775rem;
+          gap: 0.75rem;
+          font-size: 0.8rem;
         }
 
         .status-tag {
-          padding: 0.15rem 0.45rem;
-          border-radius: 4px;
+          padding: 0.15rem 0.5rem;
+          border-radius: var(--radius-sm);
           font-weight: 600;
+          font-size: 0.75rem;
         }
 
         .status-ready {
@@ -400,21 +416,21 @@ export default function DocumentModal({ isOpen, onClose }) {
         }
 
         .chunks-tag {
-          background: #eff6ff;
-          color: #1e40af;
-          padding: 0.15rem 0.45rem;
-          border-radius: 4px;
+          background: #f3f4f6;
+          color: #1f2937;
+          padding: 0.15rem 0.5rem;
+          border-radius: var(--radius-sm);
           font-weight: 500;
         }
 
         .date-tag {
-          color: #94a3b8;
+          color: var(--color-muted);
         }
 
         .delete-btn {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
+          background: var(--color-surface);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-sm);
           padding: 0.4rem 0.6rem;
           cursor: pointer;
           transition: all 0.2s;
@@ -422,17 +438,18 @@ export default function DocumentModal({ isOpen, onClose }) {
         }
 
         .delete-btn:hover {
-          background: #fee2e2;
+          background: #fef2f2;
           border-color: #fca5a5;
         }
 
         .empty-state, .loading-state {
           text-align: center;
-          padding: 1.5rem;
-          color: #64748b;
-          font-size: 0.875rem;
-          background: #f8fafc;
-          border-radius: 8px;
+          padding: 2rem;
+          color: var(--color-muted);
+          font-size: 0.9rem;
+          background: var(--color-bg);
+          border-radius: var(--radius-lg);
+          border: 1px dashed var(--color-border);
         }
       `}</style>
     </div>

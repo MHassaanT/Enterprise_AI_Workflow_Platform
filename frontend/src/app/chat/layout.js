@@ -26,7 +26,7 @@ export default function ChatLayout({ children }) {
           display: flex;
           flex-direction: column;
           min-height: 100vh;
-          background: #fdfdfd;
+          background: var(--color-bg);
         }
         .chat-app-body {
           display: flex;
@@ -38,7 +38,7 @@ export default function ChatLayout({ children }) {
           flex: 1;
           display: flex;
           flex-direction: column;
-          background: #fafafa;
+          background: var(--color-surface);
           height: 100%;
           overflow: hidden;
         }
