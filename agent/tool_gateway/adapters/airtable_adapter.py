@@ -64,14 +64,15 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
             # 1. READ / SEARCH / GET RECORDS
             if any(k in action for k in ("search", "get", "check", "order", "list", "read", "find")):
                 query_str = arguments.get("query") or arguments.get("order_id") or arguments.get("email") or arguments.get("customer_email") or ""
-                params = {}
+
+                records = []
+                # Attempt filtered search first, then fall back to unfiltered fetch
                 if query_str:
                     search_field = arguments.get("search_field")
                     if search_field:
-                        params["filterByFormula"] = f"SEARCH('{query_str}', {{{search_field}}})"
+                        formula = f"SEARCH('{query_str}', {{{search_field}}})"
                     else:
-                        # Real-time search across OrderId, CustomerEmail, CustomerName, Name, Email
-                        params["filterByFormula"] = (
+                        formula = (
                             f"OR("
                             f"SEARCH('{query_str}', {{OrderId}}), "
                             f"SEARCH('{query_str}', {{CustomerEmail}}), "
@@ -81,16 +82,41 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
                             f")"
                         )
 
-                res = await client.get(url, headers=headers, params=params)
-                if res.is_success:
-                    records = res.json().get("records", [])
-                    if not records:
-                        return f"No matching records found in Airtable table '{table_name}' for '{query_str}'."
-                    
-                    formatted = [f"Record ID: {r.get('id')} | Fields: {r.get('fields')}" for r in records[:10]]
-                    return f"Successfully retrieved {len(records)} record(s) from Airtable '{table_name}':\n" + "\n".join(formatted)
-                
-                return f"Airtable API Error ({res.status_code}): {res.text}"
+                    res = await client.get(url, headers=headers, params={"filterByFormula": formula})
+                    print(f"[AIRTABLE ADAPTER] Filtered search response: status={res.status_code} body={res.text[:300]}")
+
+                    if res.is_success:
+                        records = res.json().get("records", [])
+                    elif res.status_code == 422:
+                        # Formula error — field names likely don't match the table schema.
+                        # Fall back to fetching all records and searching client-side.
+                        print(f"[AIRTABLE ADAPTER] Formula rejected (422) — falling back to unfiltered fetch + client-side search")
+                        fallback_res = await client.get(url, headers=headers)
+                        print(f"[AIRTABLE ADAPTER] Unfiltered fetch response: status={fallback_res.status_code}")
+                        if fallback_res.is_success:
+                            all_records = fallback_res.json().get("records", [])
+                            query_lower = query_str.lower()
+                            records = [
+                                r for r in all_records
+                                if any(query_lower in str(v).lower() for v in (r.get("fields") or {}).values())
+                            ]
+                        else:
+                            return f"Airtable API Error ({fallback_res.status_code}): {fallback_res.text[:300]}"
+                    else:
+                        return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
+                else:
+                    res = await client.get(url, headers=headers)
+                    print(f"[AIRTABLE ADAPTER] List response: status={res.status_code}")
+                    if res.is_success:
+                        records = res.json().get("records", [])
+                    else:
+                        return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
+
+                if not records:
+                    return f"No matching records found in Airtable table '{table_name}' for '{query_str}'."
+
+                formatted = [f"Record ID: {r.get('id')} | Fields: {r.get('fields')}" for r in records[:10]]
+                return f"Successfully retrieved {len(records)} record(s) from Airtable '{table_name}':\n" + "\n".join(formatted)
 
             # 2. CREATE / WRITE RECORD
             elif any(k in action for k in ("create", "add", "write", "insert", "post")):
@@ -103,10 +129,11 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
 
                 payload = {"fields": fields}
                 res = await client.post(url, headers=headers, json=payload)
+                print(f"[AIRTABLE ADAPTER] Create response: status={res.status_code}")
                 if res.is_success:
                     created = res.json()
                     return f"Successfully created record in Airtable! Record ID: {created.get('id')} | Fields: {created.get('fields')}"
-                return f"Airtable API Error ({res.status_code}): {res.text}"
+                return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
 
             # 3. UPDATE / EDIT RECORD
             elif any(k in action for k in ("update", "edit", "patch", "modify")):
@@ -117,19 +144,22 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
 
                 payload = {"fields": fields}
                 res = await client.patch(f"{url}/{record_id}", headers=headers, json=payload)
+                print(f"[AIRTABLE ADAPTER] Update response: status={res.status_code}")
                 if res.is_success:
                     updated = res.json()
                     return f"Successfully updated record {record_id} in Airtable! Fields: {updated.get('fields')}"
-                return f"Airtable API Error ({res.status_code}): {res.text}"
+                return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
 
             else:
                 # Default listing fallback
                 res = await client.get(url, headers=headers)
+                print(f"[AIRTABLE ADAPTER] Default list response: status={res.status_code}")
                 if res.is_success:
                     records = res.json().get("records", [])
                     formatted = [f"Record ID: {r.get('id')} | Fields: {r.get('fields')}" for r in records[:5]]
                     return f"Airtable Table '{table_name}' Records:\n" + "\n".join(formatted)
-                return f"Airtable API Error ({res.status_code}): {res.text}"
+                return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
 
     except Exception as e:
+        print(f"[AIRTABLE ADAPTER] Exception: {e}")
         return f"Airtable execution exception: {str(e)}"
