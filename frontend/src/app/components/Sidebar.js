@@ -123,7 +123,6 @@ export default function Sidebar() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span className="font-label-md text-label-md text-emerald-400 font-semibold">Agent Active</span>
             </div>
-            <span className="font-mono-sm text-mono-sm text-emerald-400/80">v2.4</span>
           </div>
 
           {/* User Info & Logout */}
