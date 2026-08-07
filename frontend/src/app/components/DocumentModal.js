@@ -76,38 +76,38 @@ export default function DocumentModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="modal-title">
-            <span className="title-icon">📁</span>
-            <h2>Knowledge Base Documents</h2>
+    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={onClose}>
+      <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📁</span>
+            <h2 className="font-headline-md text-headline-md text-on-surface">Knowledge Base Documents</h2>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="text-on-surface-variant hover:text-on-surface text-xl p-1 rounded-md hover:bg-surface-container transition-colors" onClick={onClose}>✕</button>
         </div>
 
-        <div className="modal-body">
-          {error && <div className="error-banner">{error}</div>}
+        <div className="p-xl overflow-y-auto space-y-lg">
+          {error && <div className="p-md rounded-lg bg-error-container/20 text-error border border-error/30 font-body-md">{error}</div>}
 
           {/* Upload Dropzone (Admin Only) */}
           {isAdmin ? (
             <div
-              className={`dropzone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
+              className={`border-2 border-dashed rounded-xl p-xl text-center flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-primary bg-primary-container/10' : 'border-outline-variant bg-surface'}`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
               {uploading ? (
-                <div className="upload-spinner-state">
-                  <div className="spinner"></div>
-                  <p>Extracting, Chunking & Indexing into Vector DB...</p>
+                <div className="flex flex-col items-center gap-md text-primary font-semibold">
+                  <div className="w-8 h-8 border-4 border-outline-variant border-t-primary rounded-full animate-spin"></div>
+                  <p className="font-body-md">Extracting, Chunking & Indexing into Vector DB...</p>
                 </div>
               ) : (
                 <>
-                  <span className="upload-icon">☁️</span>
-                  <p className="upload-title">Drag & Drop your document here</p>
-                  <p className="upload-subtitle">Supports PDF (.pdf) and Word (.docx) up to 20MB</p>
-                  <label className="browse-btn">
+                  <span className="text-4xl mb-2">☁️</span>
+                  <p className="font-headline-md text-headline-md text-on-surface mb-1">Drag & Drop your document here</p>
+                  <p className="font-body-md text-body-md text-on-surface-variant mb-md">Supports PDF (.pdf) and Word (.docx) up to 20MB</p>
+                  <label className="px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors cursor-pointer shadow-sm">
                     Browse File
                     <input
                       type="file"
@@ -120,37 +120,39 @@ export default function DocumentModal({ isOpen, onClose }) {
               )}
             </div>
           ) : (
-            <div className="reviewer-notice">
+            <div className="p-md rounded-lg bg-tertiary-container/10 border border-tertiary/20 text-tertiary font-body-md">
               🔒 <b>Reviewer Access Notice:</b> Document uploading and deletion are restricted to Tenant Admins. Reviewers have read-only access to knowledge base documents.
             </div>
           )}
 
           {/* Document Inventory */}
-          <div className="inventory-header">
-            <h3>Uploaded Documents ({documents.length})</h3>
+          <div>
+            <h3 className="font-headline-md text-headline-md text-on-surface mb-md">Uploaded Documents ({documents.length})</h3>
           </div>
 
           {loading ? (
-            <div className="loading-state">Loading document index...</div>
+            <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">Loading document index...</div>
           ) : documents.length === 0 ? (
-            <div className="empty-state">No documents uploaded yet. Upload a PDF or DOCX file to enable RAG.</div>
+            <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">No documents uploaded yet. Upload a PDF or DOCX file to enable RAG.</div>
           ) : (
-            <div className="doc-list">
+            <div className="space-y-3">
               {documents.map((doc) => (
-                <div className="doc-card" key={doc.id}>
-                  <div className="doc-icon">📄</div>
-                  <div className="doc-info">
-                    <div className="doc-filename">{doc.filename}</div>
-                    <div className="doc-meta">
-                      <span className={`status-tag status-${doc.status}`}>
-                        {doc.status === 'ready' ? '✅ Ready' : doc.status === 'failed' ? '❌ Failed' : '⏳ Processing'}
-                      </span>
-                      {doc.chunk_count > 0 && <span className="chunks-tag">{doc.chunk_count} vector chunks</span>}
-                      <span className="date-tag">{new Date(doc.created_at).toLocaleDateString()}</span>
+                <div className="bg-surface border border-outline-variant rounded-lg p-md flex items-center justify-between hover:border-outline transition-colors" key={doc.id}>
+                  <div className="flex items-center gap-md">
+                    <span className="text-2xl">📄</span>
+                    <div className="space-y-1">
+                      <div className="font-body-md text-on-surface font-semibold break-all">{doc.filename}</div>
+                      <div className="flex items-center gap-md font-label-md text-label-md">
+                        <span className={`px-2 py-0.5 rounded font-mono ${doc.status === 'ready' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : doc.status === 'failed' ? 'bg-error-container/20 text-error border border-error/30' : 'bg-tertiary-container/20 text-tertiary border border-tertiary/30'}`}>
+                          {doc.status === 'ready' ? '✅ Ready' : doc.status === 'failed' ? '❌ Failed' : '⏳ Processing'}
+                        </span>
+                        {doc.chunk_count > 0 && <span className="text-on-surface-variant bg-surface-container px-2 py-0.5 rounded border border-outline-variant font-mono">{doc.chunk_count} vector chunks</span>}
+                        <span className="text-on-surface-variant">{new Date(doc.created_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
                   </div>
                   {isAdmin && (
-                    <button className="delete-btn" title="Delete Document" onClick={() => handleDelete(doc.id)}>
+                    <button className="px-3 py-1.5 bg-error-container/20 text-error border border-error/30 rounded-md font-label-md text-label-md hover:bg-error-container/40 transition-colors" title="Delete Document" onClick={() => handleDelete(doc.id)}>
                       🗑️
                     </button>
                   )}
@@ -160,298 +162,6 @@ export default function DocumentModal({ isOpen, onClose }) {
           )}
         </div>
       </div>
-
-      <style jsx>{`
-        .modal-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(17, 24, 39, 0.4);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          padding: 1rem;
-        }
-
-        .modal-container {
-          background: var(--color-surface);
-          border-radius: var(--radius-lg);
-          border: 1px solid var(--color-border);
-          width: 100%;
-          max-width: 680px;
-          max-height: 85vh;
-          display: flex;
-          flex-direction: column;
-          box-shadow: var(--shadow-modal);
-          overflow: hidden;
-          animation: modalSlide 0.2s ease-out;
-        }
-
-        @keyframes modalSlide {
-          from { transform: translateY(10px) scale(0.98); opacity: 0; }
-          to { transform: translateY(0) scale(1); opacity: 1; }
-        }
-
-        .modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 1.5rem 2rem;
-          border-bottom: 1px solid var(--color-border);
-          background: var(--color-bg);
-        }
-
-        .modal-title {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-        }
-
-        .title-icon {
-          font-size: 1.5rem;
-        }
-
-        .modal-title h2 {
-          margin: 0;
-          font-size: 1.15rem;
-          font-weight: 700;
-          color: var(--color-text);
-        }
-
-        .close-btn {
-          background: transparent;
-          border: none;
-          color: var(--color-muted);
-          width: 32px;
-          height: 32px;
-          border-radius: var(--radius-sm);
-          font-size: 1.25rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .close-btn:hover {
-          background: var(--color-secondary);
-          color: var(--color-text);
-        }
-
-        .modal-body {
-          padding: 2rem;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-        }
-
-        .error-banner {
-          background: #fef2f2;
-          color: #991b1b;
-          border: 1px solid #fecaca;
-          padding: 0.75rem 1rem;
-          border-radius: var(--radius);
-          font-size: 0.875rem;
-        }
-
-        .reviewer-notice {
-          background: #fefce8;
-          color: #854d0e;
-          border: 1px solid #fef08a;
-          padding: 1rem;
-          border-radius: var(--radius);
-          font-size: 0.85rem;
-          line-height: 1.5;
-        }
-
-        .dropzone {
-          border: 2px dashed var(--color-border);
-          border-radius: var(--radius-lg);
-          padding: 2.5rem 2rem;
-          text-align: center;
-          background: var(--color-bg);
-          transition: all 0.2s ease;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .dropzone.drag-over {
-          border-color: var(--color-accent);
-          background: #eff6ff;
-        }
-
-        .upload-icon {
-          font-size: 2.25rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .upload-title {
-          font-weight: 600;
-          color: var(--color-text);
-          margin: 0 0 0.25rem 0;
-        }
-
-        .upload-subtitle {
-          font-size: 0.85rem;
-          color: var(--color-muted);
-          margin: 0 0 1.25rem 0;
-        }
-
-        .browse-btn {
-          background: var(--color-primary);
-          color: #ffffff;
-          padding: 0.65rem 1.25rem;
-          border-radius: var(--radius);
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .browse-btn:hover {
-          background: var(--color-primary-hover);
-          box-shadow: var(--shadow-md);
-          transform: translateY(-1px);
-        }
-
-        .upload-spinner-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 1rem;
-          color: var(--color-primary);
-          font-weight: 600;
-          font-size: 0.9rem;
-        }
-
-        .spinner {
-          width: 32px;
-          height: 32px;
-          border: 3px solid #e5e7eb;
-          border-top-color: var(--color-primary);
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        .inventory-header h3 {
-          margin: 0;
-          font-size: 1rem;
-          font-weight: 700;
-          color: var(--color-text);
-        }
-
-        .doc-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .doc-card {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 1rem 1.25rem;
-          background: var(--color-surface);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius);
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .doc-card:hover {
-          border-color: #d1d5db;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .doc-icon {
-          font-size: 1.5rem;
-        }
-
-        .doc-info {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .doc-filename {
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: var(--color-text);
-          word-break: break-all;
-        }
-
-        .doc-meta {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          font-size: 0.8rem;
-        }
-
-        .status-tag {
-          padding: 0.15rem 0.5rem;
-          border-radius: var(--radius-sm);
-          font-weight: 600;
-          font-size: 0.75rem;
-        }
-
-        .status-ready {
-          background: #f0fdf4;
-          color: #166534;
-        }
-
-        .status-failed {
-          background: #fef2f2;
-          color: #991b1b;
-        }
-
-        .chunks-tag {
-          background: #f3f4f6;
-          color: #1f2937;
-          padding: 0.15rem 0.5rem;
-          border-radius: var(--radius-sm);
-          font-weight: 500;
-        }
-
-        .date-tag {
-          color: var(--color-muted);
-        }
-
-        .delete-btn {
-          background: var(--color-surface);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-sm);
-          padding: 0.4rem 0.6rem;
-          cursor: pointer;
-          transition: all 0.2s;
-          font-size: 0.9rem;
-        }
-
-        .delete-btn:hover {
-          background: #fef2f2;
-          border-color: #fca5a5;
-        }
-
-        .empty-state, .loading-state {
-          text-align: center;
-          padding: 2rem;
-          color: var(--color-muted);
-          font-size: 0.9rem;
-          background: var(--color-bg);
-          border-radius: var(--radius-lg);
-          border: 1px dashed var(--color-border);
-        }
-      `}</style>
     </div>
   );
 }

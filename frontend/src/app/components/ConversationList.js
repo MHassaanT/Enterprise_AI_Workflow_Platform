@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from 'react';
 import { fetchConversations, createConversation } from '../../lib/api';
 import Link from 'next/link';
-import styles from './ConversationList.module.css';
 
 export default function ConversationList({ activeId, onSelect }) {
   const [conversations, setConversations] = useState([]);
@@ -37,42 +36,42 @@ export default function ConversationList({ activeId, onSelect }) {
   };
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.headerArea}>
-        <h2 className={styles.title}>Support Conversations</h2>
+    <aside className="w-full md:w-80 bg-surface border-r border-outline-variant flex flex-col h-full overflow-hidden">
+      <div className="p-md border-b border-outline-variant flex items-center justify-between">
+        <h2 className="font-headline-md text-headline-md text-on-surface font-bold">Conversations</h2>
         <button
           onClick={handleNewChat}
           disabled={creating}
-          className={styles.newChatBtn}
+          className="px-md py-1.5 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm disabled:opacity-50"
         >
           {creating ? '...' : '+ New Chat'}
         </button>
       </div>
 
       {loading ? (
-        <div className={styles.loadingState}>Loading conversations...</div>
+        <div className="p-xl text-center text-on-surface-variant font-body-md">Loading conversations...</div>
       ) : conversations.length === 0 ? (
-        <div className={styles.emptyState}>No conversations found.</div>
+        <div className="p-xl text-center text-on-surface-variant font-body-md">No conversations found.</div>
       ) : (
-        <div className={styles.list}>
+        <div className="flex-1 overflow-y-auto p-sm space-y-2">
           {conversations.map((c) => {
             const isActive = String(c.id) === String(activeId);
             return (
               <Link
                 key={c.id}
                 href={`/chat/${c.id}`}
-                className={`${styles.card} ${isActive ? styles.activeCard : ''}`}
+                className={`block p-md rounded-lg border transition-colors ${isActive ? 'bg-surface-container-high border-primary/40 text-on-surface' : 'bg-surface-container-low border-outline-variant text-on-surface-variant hover:bg-surface-container hover:text-on-surface'}`}
                 onClick={() => onSelect && onSelect(c.id)}
               >
-                <div className={styles.cardHeader}>
-                  <span className={styles.cardIcon}>💬</span>
-                  <h3 className={styles.cardTitle}>{c.title || `Chat #${String(c.id).slice(0, 6)}`}</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">💬</span>
+                  <h3 className="font-body-md font-semibold text-on-surface truncate">{c.title || `Chat #${String(c.id).slice(0, 6)}`}</h3>
                 </div>
-                <div className={styles.cardFooter}>
-                  <span className={styles.timeText}>
+                <div className="flex items-center justify-between font-label-md text-label-md text-on-surface-variant">
+                  <span>
                     {c.created_at ? new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
                   </span>
-                  {isActive && <span className={styles.activeDot}>Active</span>}
+                  {isActive && <span className="px-2 py-0.5 rounded font-mono text-primary bg-primary-container/10 border border-primary/20">Active</span>}
                 </div>
               </Link>
             );

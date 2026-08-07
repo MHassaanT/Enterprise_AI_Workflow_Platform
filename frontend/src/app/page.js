@@ -49,86 +49,104 @@ export default function TenantControlPanelPage() {
 
   return (
     <AuthGuard>
-      <div className="portal-wrapper">
+      <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
         <Header />
 
-        <main className="portal-main">
+        <main className="max-w-container-max mx-auto px-lg py-xl">
           {/* Welcome Banner */}
-          <div className="welcome-banner">
+          <header className="mb-xl border-b border-outline-variant pb-lg flex flex-col md:flex-row md:items-center justify-between gap-md">
             <div>
-              <div className="badge-row">
-                <span className="tenant-tag">⚡ Tenant Control Panel</span>
+              <div className="flex items-center gap-sm mb-sm">
+                <span className="font-label-md text-label-md text-on-surface-variant bg-surface-container px-3 py-1 rounded-full border border-outline-variant">
+                  ⚡ Tenant Control Panel
+                </span>
                 {user?.role && (
-                  <span className={`role-pill ${isAdmin ? 'role-admin' : 'role-reviewer'}`}>
+                  <span className={`font-label-md text-label-md px-3 py-1 rounded-full border ${isAdmin ? 'text-primary bg-primary-container/10 border-primary/20' : 'text-tertiary bg-tertiary-container/10 border-tertiary/20'}`}>
                     Role: {user.role}
                   </span>
                 )}
               </div>
-              <h1 className="welcome-title">Enterprise AI Workforce Dashboard</h1>
-              <p className="welcome-desc">
+              <h1 className="font-display-lg text-display-lg text-on-surface mb-2">
+                Enterprise AI Workforce Dashboard
+              </h1>
+              <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
                 Centralized management for customer support agent conversations, human approval queues, vector knowledge bases, and embeddable widget deployments.
               </p>
             </div>
-            <Link href="/widget-setup" className="deploy-widget-btn">
+            <Link href="/widget-setup" className="inline-flex items-center gap-2 px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors shadow-sm whitespace-nowrap">
               🧩 Deploy Web Widget ➔
             </Link>
-          </div>
+          </header>
 
           {/* Metrics Grid */}
-          <div className="metrics-grid">
-            <div className="metric-card">
-              <div className="metric-icon">💬</div>
-              <div className="metric-details">
-                <span className="metric-val">{conversations.length}</span>
-                <span className="metric-lbl">Customer Conversations</span>
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-lg mb-xl">
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl p-lg relative overflow-hidden group hover:border-outline transition-colors">
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Customer Conversations</span>
+                <span className="material-symbols-outlined text-primary">forum</span>
               </div>
-              <Link href="/chat" className="metric-link">
+              <div className="flex items-baseline gap-2">
+                <span className="font-display-lg text-display-lg text-on-surface">{conversations.length}</span>
+              </div>
+              <Link href="/chat" className="inline-block mt-4 text-primary font-label-md text-label-md hover:underline">
                 View Chat Histories ➔
               </Link>
             </div>
 
-            <div className="metric-card">
-              <div className="metric-icon">⚖️</div>
-              <div className="metric-details">
-                <span className="metric-val">{pendingApprovals.length}</span>
-                <span className="metric-lbl">Pending Approvals</span>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl p-lg relative overflow-hidden group hover:border-outline transition-colors">
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Pending Approvals</span>
+                <span className="material-symbols-outlined text-tertiary">fact_check</span>
               </div>
-              <span className="metric-tag">Human-in-the-Loop</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display-lg text-display-lg text-on-surface">{pendingApprovals.length}</span>
+                {pendingApprovals.length > 0 && (
+                  <span className="font-label-md text-label-md text-error bg-error-container/20 px-2 py-0.5 rounded font-mono">ACTION REQ</span>
+                )}
+              </div>
+              <span className="block mt-4 font-label-md text-label-md text-on-surface-variant">Human-in-the-Loop</span>
             </div>
 
-            <div className="metric-card">
-              <div className="metric-icon">📄</div>
-              <div className="metric-details">
-                <span className="metric-val">{documents.length}</span>
-                <span className="metric-lbl">Indexed Knowledge Docs</span>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl p-lg relative overflow-hidden group hover:border-outline transition-colors">
+              <div className="flex justify-between items-start mb-4">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Indexed Knowledge Docs</span>
+                <span className="material-symbols-outlined text-secondary">description</span>
               </div>
-              <span className="metric-tag">Vector Retrieval (RAG)</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display-lg text-display-lg text-on-surface">{documents.length}</span>
+                <span className="font-label-md text-label-md text-on-surface-variant px-2 py-0.5 rounded font-mono">Synced</span>
+              </div>
+              <span className="block mt-4 font-label-md text-label-md text-on-surface-variant">Vector Retrieval (RAG)</span>
             </div>
-          </div>
+          </section>
 
           {/* Main Dashboard Layout */}
-          <div className="dashboard-grid">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-xl">
             {/* Left Column: Human Approval Queue */}
-            <div className="section-card">
-              <div className="section-header">
-                <div className="section-title">
-                  <span className="section-icon">🛡️</span>
+            <section className="lg:col-span-2">
+              <div className="flex justify-between items-center mb-lg">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-primary">gavel</span>
                   <div>
-                    <h3>Human Approval Queue</h3>
-                    <p className="section-sub">High-risk actions awaiting Reviewer / Admin authorization</p>
+                    <h3 className="font-headline-md text-headline-md text-on-surface">Human Approval Queue</h3>
+                    <p className="font-body-md text-body-md text-on-surface-variant">High-risk actions awaiting Reviewer / Admin authorization</p>
                   </div>
                 </div>
-                <span className="count-pill">{pendingApprovals.length} Pending</span>
+                <span className="font-mono-sm text-mono-sm text-tertiary bg-tertiary-container/10 px-3 py-1 rounded-full border border-tertiary/20">
+                  {pendingApprovals.length} Pending
+                </span>
               </div>
 
               {loading ? (
-                <div className="state-box">Loading approval queue...</div>
+                <div className="bg-surface-container border border-outline-variant rounded-lg p-xl text-center text-on-surface-variant">
+                  Loading approval queue...
+                </div>
               ) : pendingApprovals.length === 0 ? (
-                <div className="state-box empty-state">
+                <div className="bg-surface-container border border-outline-variant rounded-lg p-xl text-center text-emerald-400 font-medium bg-emerald-950/20 border-emerald-800/40">
                   ✅ No pending approval requests. All agent tools are executing within safety parameters.
                 </div>
               ) : (
-                <div className="approvals-list">
+                <div className="space-y-4">
                   {pendingApprovals.map((approval) => (
                     <ApprovalCard
                       key={approval.id}
@@ -141,378 +159,74 @@ export default function TenantControlPanelPage() {
                   ))}
                 </div>
               )}
-            </div>
+            </section>
 
-            {/* Right Column: Quick Management & Setup */}
-            <div className="side-column">
-              {/* MCP Connections Card */}
-              <div className="mini-card">
-                <div className="mini-header">
-                  <span className="mini-icon">🔌</span>
-                  <h4>MCP Tools & Connectors</h4>
+            {/* Right Column: Quick Management */}
+            <aside className="lg:col-span-1 space-y-md">
+              <h3 className="font-headline-md text-headline-md text-on-surface mb-lg">Quick Actions</h3>
+
+              {/* MCP Tools Card */}
+              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="material-symbols-outlined text-primary">extension</span>
+                  <h4 className="font-body-md text-body-md font-medium text-on-surface">MCP Tools & Connectors</h4>
                 </div>
-                <p className="mini-desc">
+                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
                   Connect unlimited external MCP servers and configure per-agent tool allowlists.
                 </p>
-                <Link href="/mcp" className="mini-btn">
+                <Link href="/mcp" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
                   Manage MCP Tools ➔
                 </Link>
               </div>
 
-              {/* Widget Deployment Card */}
-              <div className="mini-card">
-                <div className="mini-header">
-                  <span className="mini-icon">🧩</span>
-                  <h4>Standalone Web Widget</h4>
+              {/* Widget Setup Card */}
+              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="material-symbols-outlined text-secondary">widgets</span>
+                  <h4 className="font-body-md text-body-md font-medium text-on-surface">Standalone Web Widget</h4>
                 </div>
-                <p className="mini-desc">
+                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
                   Embed the customer support widget into your website HTML with a single script tag.
                 </p>
-                <Link href="/widget-setup" className="mini-btn">
+                <Link href="/widget-setup" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
                   Get Widget Script ➔
                 </Link>
               </div>
 
               {/* User Management Card (Admin Only) */}
               {isAdmin && (
-                <div className="mini-card">
-                  <div className="mini-header">
-                    <span className="mini-icon">👥</span>
-                    <h4>Reviewer Accounts</h4>
+                <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="material-symbols-outlined text-tertiary">group</span>
+                    <h4 className="font-body-md text-body-md font-medium text-on-surface">Reviewer Accounts</h4>
                   </div>
-                  <p className="mini-desc">
+                  <p className="font-label-md text-label-md text-on-surface-variant mb-4">
                     Provision discrete login credentials for team members restricted to approval queue management.
                   </p>
-                  <Link href="/users" className="mini-btn mini-btn-indigo">
+                  <Link href="/users" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
                     Manage Team Users ➔
                   </Link>
                 </div>
               )}
 
               {/* Knowledge Base Card */}
-              <div className="mini-card">
-                <div className="mini-header">
-                  <span className="mini-icon">📁</span>
-                  <h4>Knowledge Base (RAG)</h4>
+              <div className="bg-surface border border-outline-variant rounded-lg p-md">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="material-symbols-outlined text-primary">menu_book</span>
+                  <h4 className="font-body-md text-body-md font-medium text-on-surface">Knowledge Base (RAG)</h4>
                 </div>
-                <p className="mini-desc">
+                <p className="font-label-md text-label-md text-on-surface-variant mb-3">
                   {isAdmin
                     ? 'Upload PDF and DOCX files to feed vector retrieval memory.'
                     : 'Read-only view of uploaded company knowledge docs.'}
                 </p>
-                <div className="doc-count-badge">
+                <div className="font-mono-sm text-mono-sm text-primary bg-primary-container/10 px-3 py-1 rounded text-center border border-primary/20">
                   {documents.length} File(s) Indexed
                 </div>
               </div>
-            </div>
+            </aside>
           </div>
         </main>
-
-        <style jsx>{`
-          .portal-wrapper {
-            min-height: 100vh;
-            background: var(--color-bg);
-          }
-          .portal-main {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 1.5rem;
-            animation: fadeIn 0.4s ease-out;
-          }
-          .welcome-banner {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            color: var(--color-text);
-            border-radius: var(--radius-lg);
-            padding: 2rem 2.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: var(--shadow-sm);
-            margin-bottom: 2rem;
-          }
-          .badge-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 0.75rem;
-          }
-          .tenant-tag {
-            background: var(--color-secondary);
-            color: var(--color-muted);
-            border: 1px solid var(--color-border);
-            padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-          }
-          .role-pill {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-sm);
-          }
-          .role-admin {
-            background: #eef2ff;
-            color: #4f46e5;
-            border: 1px solid #c7d2fe;
-          }
-          .role-reviewer {
-            background: #fefce8;
-            color: #a16207;
-            border: 1px solid #fef08a;
-          }
-          .welcome-title {
-            font-size: 1.75rem;
-            font-weight: 700;
-            margin: 0 0 0.5rem 0;
-            letter-spacing: -0.02em;
-            color: var(--color-text);
-          }
-          .welcome-desc {
-            color: var(--color-muted);
-            margin: 0;
-            max-width: 600px;
-            font-size: 0.95rem;
-            line-height: 1.5;
-          }
-          .deploy-widget-btn {
-            background: var(--color-primary);
-            color: #ffffff;
-            text-decoration: none;
-            padding: 0.75rem 1.25rem;
-            border-radius: var(--radius);
-            font-weight: 600;
-            font-size: 0.875rem;
-            transition: all 0.2s;
-            white-space: nowrap;
-            box-shadow: var(--shadow-sm);
-          }
-          .deploy-widget-btn:hover {
-            background: var(--color-primary-hover);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-1px);
-          }
-          .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.25rem;
-            margin-bottom: 2rem;
-          }
-          @media (max-width: 900px) {
-            .metrics-grid {
-              grid-template-columns: 1fr;
-            }
-          }
-          .metric-card {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            box-shadow: var(--shadow-card);
-            position: relative;
-            transition: box-shadow 0.2s, border-color 0.2s;
-          }
-          .metric-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: #d1d5db;
-          }
-          .metric-icon {
-            font-size: 1.25rem;
-            margin-bottom: 0.25rem;
-          }
-          .metric-details {
-            display: flex;
-            flex-direction: column;
-          }
-          .metric-val {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--color-text);
-            line-height: 1.1;
-            letter-spacing: -0.02em;
-          }
-          .metric-lbl {
-            font-size: 0.85rem;
-            color: var(--color-muted);
-            font-weight: 500;
-            margin-top: 0.25rem;
-          }
-          .metric-link {
-            color: var(--color-accent);
-            font-size: 0.85rem;
-            font-weight: 500;
-            text-decoration: none;
-            margin-top: auto;
-            padding-top: 1rem;
-          }
-          .metric-link:hover {
-            text-decoration: underline;
-          }
-          .metric-tag {
-            color: var(--color-muted);
-            font-size: 0.8rem;
-            font-weight: 500;
-            margin-top: auto;
-            padding-top: 1rem;
-          }
-          .dashboard-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 1.5rem;
-          }
-          @media (max-width: 1024px) {
-            .dashboard-grid {
-              grid-template-columns: 1fr;
-            }
-          }
-          .section-card {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: 1.75rem;
-            box-shadow: var(--shadow-card);
-          }
-          .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--color-border);
-          }
-          .section-title {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-          }
-          .section-icon {
-            font-size: 1.25rem;
-          }
-          .section-title h3 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--color-text);
-          }
-          .section-sub {
-            margin: 0.2rem 0 0 0;
-            font-size: 0.85rem;
-            color: var(--color-muted);
-          }
-          .count-pill {
-            background: #fefce8;
-            color: #a16207;
-            border: 1px solid #fef08a;
-            padding: 0.25rem 0.6rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            font-weight: 600;
-          }
-          .approvals-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-          }
-          .state-box {
-            padding: 2.5rem 2rem;
-            text-align: center;
-            color: var(--color-muted);
-            font-size: 0.9rem;
-            background: var(--color-bg);
-            border-radius: var(--radius);
-            border: 1px dashed var(--color-border);
-          }
-          .empty-state {
-            color: #15803d;
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            border-style: solid;
-            font-weight: 500;
-          }
-          .side-column {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-          }
-          .mini-card {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-card);
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            transition: box-shadow 0.2s, border-color 0.2s;
-          }
-          .mini-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: #d1d5db;
-          }
-          .mini-header {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-          }
-          .mini-icon {
-            font-size: 1.1rem;
-          }
-          .mini-header h4 {
-            margin: 0;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--color-text);
-          }
-          .mini-desc {
-            margin: 0;
-            font-size: 0.85rem;
-            color: var(--color-muted);
-            line-height: 1.5;
-          }
-          .mini-btn {
-            display: inline-block;
-            background: var(--color-bg);
-            color: var(--color-text);
-            border: 1px solid var(--color-border);
-            text-decoration: none;
-            padding: 0.5rem 0.75rem;
-            border-radius: var(--radius-sm);
-            font-weight: 500;
-            font-size: 0.85rem;
-            text-align: center;
-            margin-top: 0.5rem;
-            transition: all 0.2s;
-            box-shadow: var(--shadow-sm);
-          }
-          .mini-btn:hover {
-            background: var(--color-secondary);
-            border-color: #d1d5db;
-          }
-          .mini-btn-indigo {
-            background: var(--color-bg);
-            border: 1px solid var(--color-border);
-            color: var(--color-text);
-          }
-          .mini-btn-indigo:hover {
-            background: var(--color-secondary);
-          }
-          .doc-count-badge {
-            background: var(--color-secondary);
-            color: var(--color-muted);
-            padding: 0.4rem 0.75rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.8rem;
-            font-weight: 500;
-            text-align: center;
-            border: 1px solid var(--color-border);
-          }
-        `}</style>
       </div>
     </AuthGuard>
   );

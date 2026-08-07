@@ -13,42 +13,14 @@ export default function ChatLayout({ children }) {
   };
 
   return (
-    <div className="chat-app-root">
+    <div className="flex flex-col min-h-screen bg-background text-on-surface font-body-md antialiased">
       <Header />
-      <div className="chat-app-body">
+      <div className="flex flex-1 h-[calc(100vh-65px)] overflow-hidden flex-col md:flex-row">
         <ConversationList activeId={conversationId} onSelect={handleSelect} />
-        <main className="chat-main-area">
+        <main className="flex-1 flex flex-col bg-surface-container-low h-full overflow-hidden">
           {children}
         </main>
       </div>
-      <style jsx global>{`
-        .chat-app-root {
-          display: flex;
-          flex-direction: column;
-          min-height: 100vh;
-          background: var(--color-bg);
-        }
-        .chat-app-body {
-          display: flex;
-          flex: 1;
-          height: calc(100vh - 60px);
-          overflow: hidden;
-        }
-        .chat-main-area {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          background: var(--color-surface);
-          height: 100%;
-          overflow: hidden;
-        }
-        @media (max-width: 768px) {
-          .chat-app-body {
-            flex-direction: column;
-            height: auto;
-          }
-        }
-      `}</style>
     </div>
   );
 }

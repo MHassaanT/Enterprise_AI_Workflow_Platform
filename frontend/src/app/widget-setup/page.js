@@ -49,26 +49,26 @@ export default function WidgetSetupPage() {
 
   return (
     <AuthGuard>
-      <div className="page-wrapper">
+      <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
         <Header />
 
-        <main className="main-content">
-          <div className="page-header">
+        <main className="max-w-container-max mx-auto px-lg py-xl">
+          <header className="mb-xl border-b border-outline-variant pb-lg flex flex-col md:flex-row md:items-center justify-between gap-md">
             <div>
-              <h1 className="page-title">Embeddable Chat Widget Integration</h1>
-              <p className="page-subtitle">
+              <h1 className="font-display-lg text-display-lg text-on-surface mb-2">Embeddable Chat Widget Integration</h1>
+              <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
                 Deploy your Customer Support AI Agent directly onto any external website with a single line of script.
               </p>
             </div>
-            <div className="tenant-id-badge">
-              <span>Tenant ID:</span> <code>{tenantId || 'Loading...'}</code>
+            <div className="bg-surface-container border border-outline-variant px-lg py-md rounded-xl font-body-md text-on-surface flex items-center gap-2 whitespace-nowrap self-start md:self-center">
+              <span>Tenant ID:</span> <code className="font-mono-sm text-mono-sm text-primary font-bold">{tenantId || 'Loading...'}</code>
             </div>
-          </div>
+          </header>
 
           {/* Backend Host Config */}
-          <div className="backend-url-card">
-            <div className="backend-url-content">
-              <label htmlFor="backendUrlInput" className="url-label">
+          <div className="bg-surface-container-low border border-outline-variant rounded-xl p-xl mb-xl shadow-sm space-y-2">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-md">
+              <label htmlFor="backendUrlInput" className="font-headline-md text-headline-md text-on-surface font-bold whitespace-nowrap">
                 🌐 Backend Service API URL:
               </label>
               <input
@@ -77,30 +77,30 @@ export default function WidgetSetupPage() {
                 value={backendUrl}
                 onChange={(e) => setBackendUrl(e.target.value)}
                 placeholder="e.g. https://your-backend.up.railway.app"
-                className="url-input"
+                className="w-full md:flex-1 p-3 bg-surface border border-outline-variant rounded-lg text-on-surface font-mono-sm text-mono-sm focus:outline-none focus:border-primary"
               />
             </div>
-            <p className="url-hint">
-              This host URL will be used in the script snippet below to load <code>widget.js</code> and connect the widget to your API.
+            <p className="font-body-md text-body-md text-on-surface-variant">
+              This host URL will be used in the script snippet below to load <code className="font-mono-sm text-mono-sm text-primary">widget.js</code> and connect the widget to your API.
             </p>
           </div>
 
-          <div className="content-grid">
+          <div className="space-y-xl mb-xl">
             {/* HTML Method */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-icon">⚡</span>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl p-xl shadow-sm space-y-md">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl bg-surface-container p-2 rounded-lg border border-outline-variant">⚡</span>
                 <div>
-                  <h3>Standard HTML Embedding (Recommended)</h3>
-                  <p className="card-subtitle">Paste before the closing <code>&lt;/body&gt;</code> tag of your external site.</p>
+                  <h3 className="font-headline-md text-headline-md text-on-surface font-bold">Standard HTML Embedding (Recommended)</h3>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Paste before the closing <code className="font-mono-sm text-mono-sm text-primary">&lt;/body&gt;</code> tag of your external site.</p>
                 </div>
               </div>
 
-              <div className="code-container">
-                <pre>{htmlSnippet}</pre>
+              <div className="relative bg-surface border border-outline-variant rounded-xl p-lg overflow-x-auto">
+                <pre className="font-mono-sm text-mono-sm text-primary whitespace-pre-wrap break-all">{htmlSnippet}</pre>
                 <button
                   onClick={() => copyToClipboard(htmlSnippet, 'html')}
-                  className="copy-btn"
+                  className="absolute top-md right-md px-md py-1.5 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm"
                 >
                   {copied ? '✅ Copied!' : '📋 Copy Snippet'}
                 </button>
@@ -108,20 +108,20 @@ export default function WidgetSetupPage() {
             </div>
 
             {/* JS Init Method */}
-            <div className="card">
-              <div className="card-header">
-                <span className="card-icon">⚙️</span>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl p-xl shadow-sm space-y-md">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl bg-surface-container p-2 rounded-lg border border-outline-variant">⚙️</span>
                 <div>
-                  <h3>Programmatic JS Initialization</h3>
-                  <p className="card-subtitle">Customize titles and initial parameters programmatically.</p>
+                  <h3 className="font-headline-md text-headline-md text-on-surface font-bold">Programmatic JS Initialization</h3>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Customize titles and initial parameters programmatically.</p>
                 </div>
               </div>
 
-              <div className="code-container">
-                <pre>{jsSnippet}</pre>
+              <div className="relative bg-surface border border-outline-variant rounded-xl p-lg overflow-x-auto">
+                <pre className="font-mono-sm text-mono-sm text-primary whitespace-pre-wrap break-all">{jsSnippet}</pre>
                 <button
                   onClick={() => copyToClipboard(jsSnippet, 'js')}
-                  className="copy-btn"
+                  className="absolute top-md right-md px-md py-1.5 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm"
                 >
                   {copiedJs ? '✅ Copied!' : '📋 Copy JS Snippet'}
                 </button>
@@ -130,32 +130,32 @@ export default function WidgetSetupPage() {
           </div>
 
           {/* Integration Guide */}
-          <div className="guide-card">
-            <h2>🚀 Quick Integration Checklist</h2>
-            <div className="steps-list">
-              <div className="step-item">
-                <div className="step-num">1</div>
-                <div className="step-body">
-                  <h4>Copy your Tenant Embed Code</h4>
-                  <p>Use the HTML script snippet above which contains your unique tenant key (<code>{tenantId}</code>).</p>
+          <div className="bg-surface-container-low border border-outline-variant rounded-xl p-xl shadow-sm space-y-lg">
+            <h2 className="font-headline-md text-headline-md text-on-surface font-bold">🚀 Quick Integration Checklist</h2>
+            <div className="space-y-md">
+              <div className="flex gap-md items-start">
+                <div className="w-8 h-8 rounded-full bg-primary text-on-primary font-bold flex items-center justify-center flex-shrink-0 font-mono">1</div>
+                <div>
+                  <h4 className="font-headline-md text-body-lg text-on-surface font-semibold">Copy your Tenant Embed Code</h4>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Use the HTML script snippet above which contains your unique tenant key (<code className="font-mono-sm text-mono-sm text-primary">{tenantId}</code>).</p>
                 </div>
               </div>
 
-              <div className="step-item">
-                <div className="step-num">2</div>
-                <div className="step-body">
-                  <h4>Paste into External Webpage</h4>
-                  <p>Insert the snippet into your website source code. The widget automatically initializes a floating bottom-right launcher button.</p>
+              <div className="flex gap-md items-start">
+                <div className="w-8 h-8 rounded-full bg-primary text-on-primary font-bold flex items-center justify-center flex-shrink-0 font-mono">2</div>
+                <div>
+                  <h4 className="font-headline-md text-body-lg text-on-surface font-semibold">Paste into External Webpage</h4>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Insert the snippet into your website source code. The widget automatically initializes a floating bottom-right launcher button.</p>
                 </div>
               </div>
 
-              <div className="step-item">
-                <div className="step-num">3</div>
-                <div className="step-body">
-                  <h4>Test Live Customer Interactions</h4>
-                  <p>
+              <div className="flex gap-md items-start">
+                <div className="w-8 h-8 rounded-full bg-primary text-on-primary font-bold flex items-center justify-center flex-shrink-0 font-mono">3</div>
+                <div>
+                  <h4 className="font-headline-md text-body-lg text-on-surface font-semibold">Test Live Customer Interactions</h4>
+                  <p className="font-body-md text-body-md text-on-surface-variant">
                     Visitors can chat directly with your AI Agent. Try opening the live demo page:
-                    <a href={`${cleanBackendUrl}/demo.html`} target="_blank" rel="noreferrer" className="demo-link">
+                    <a href={`${cleanBackendUrl}/demo.html`} target="_blank" rel="noreferrer" className="inline-block ml-2 text-primary font-semibold hover:underline">
                       Open Live Demo Page ↗
                     </a>
                   </p>
@@ -164,217 +164,6 @@ export default function WidgetSetupPage() {
             </div>
           </div>
         </main>
-
-        <style jsx>{`
-          .page-wrapper {
-            min-height: 100vh;
-            background: #f8fafc;
-          }
-          .main-content {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 1.5rem;
-          }
-          .page-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 2rem;
-          }
-          .page-title {
-            font-size: 1.75rem;
-            font-weight: 800;
-            color: #0f172a;
-            margin: 0;
-          }
-          .page-subtitle {
-            color: #64748b;
-            margin: 0.25rem 0 0 0;
-            font-size: 0.95rem;
-          }
-          .tenant-id-badge {
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            padding: 0.5rem 1rem;
-            border-radius: 10px;
-            font-size: 0.85rem;
-            color: #334155;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-          }
-          .tenant-id-badge code {
-            color: #2563eb;
-            font-weight: 700;
-          }
-          .backend-url-card {
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-          }
-          .backend-url-content {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-          }
-          .url-label {
-            font-weight: 700;
-            font-size: 0.95rem;
-            color: #0f172a;
-            white-space: nowrap;
-          }
-          .url-input {
-            flex: 1;
-            min-width: 280px;
-            padding: 0.6rem 1rem;
-            border: 1px solid #94a3b8;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            font-family: monospace;
-            color: #0f172a;
-            background: #f8fafc;
-            outline: none;
-            transition: border-color 0.2s;
-          }
-          .url-input:focus {
-            border-color: #2563eb;
-            background: #ffffff;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-          }
-          .url-hint {
-            margin: 0.5rem 0 0 0;
-            font-size: 0.8rem;
-            color: #64748b;
-          }
-          .content-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-          }
-          .card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 1.75rem;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-          }
-          .card-header {
-            display: flex;
-            align-items: center;
-            gap: 0.85rem;
-            margin-bottom: 1.25rem;
-          }
-          .card-icon {
-            font-size: 1.5rem;
-            background: #eff6ff;
-            padding: 0.4rem 0.6rem;
-            border-radius: 8px;
-          }
-          .card-header h3 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #0f172a;
-          }
-          .card-subtitle {
-            margin: 0.2rem 0 0 0;
-            font-size: 0.85rem;
-            color: #64748b;
-          }
-          .code-container {
-            position: relative;
-            background: #0f172a;
-            border-radius: 10px;
-            padding: 1.25rem;
-            overflow-x: auto;
-          }
-          .code-container pre {
-            margin: 0;
-            color: #38bdf8;
-            font-family: monospace;
-            font-size: 0.9rem;
-            white-space: pre-wrap;
-            word-break: break-all;
-          }
-          .copy-btn {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 0.4rem 0.85rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .copy-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-          }
-          .guide-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 2rem;
-          }
-          .guide-card h2 {
-            margin: 0 0 1.5rem 0;
-            font-size: 1.25rem;
-            color: #0f172a;
-          }
-          .steps-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-          }
-          .step-item {
-            display: flex;
-            gap: 1rem;
-            align-items: flex-start;
-          }
-          .step-num {
-            background: #2563eb;
-            color: #ffffff;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.85rem;
-            flex-shrink: 0;
-          }
-          .step-body h4 {
-            margin: 0 0 0.25rem 0;
-            font-size: 0.95rem;
-            color: #1e293b;
-          }
-          .step-body p {
-            margin: 0;
-            font-size: 0.875rem;
-            color: #64748b;
-            line-height: 1.5;
-          }
-          .demo-link {
-            display: inline-block;
-            margin-left: 0.5rem;
-            color: #2563eb;
-            font-weight: 600;
-            text-decoration: none;
-          }
-          .demo-link:hover {
-            text-decoration: underline;
-          }
-        `}</style>
       </div>
     </AuthGuard>
   );

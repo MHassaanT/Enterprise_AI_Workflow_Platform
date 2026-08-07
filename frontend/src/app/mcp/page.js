@@ -387,69 +387,71 @@ export default function IntegrationHubPage() {
 
   return (
     <AuthGuard>
-      <div className="hub-page">
+      <div className="min-h-screen bg-background text-on-surface font-body-md antialiased">
         <Header />
 
-        <main className="hub-main">
+        <main className="max-w-container-max mx-auto px-lg py-xl">
           {/* Header Banner */}
-          <div className="page-header">
-            <div>
-              <span className="badge">⚡ Integration Hub</span>
-              <h1>Centralized API & OAuth2 Integration Hub</h1>
-              <p>
-                Connect services (GitHub, Vercel, SafePay, Supabase) with zero-trust AES-256-GCM credential encryption.
-              </p>
-            </div>
-          </div>
+          <header className="mb-xl border-b border-outline-variant pb-lg">
+            <span className="font-label-md text-label-md text-primary bg-primary-container/10 px-3 py-1 rounded-full border border-primary/20 inline-block mb-3">
+              ⚡ Integration Hub
+            </span>
+            <h1 className="font-display-lg text-display-lg text-on-surface mb-2">
+              Centralized API & OAuth2 Integration Hub
+            </h1>
+            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-3xl">
+              Connect services (GitHub, Vercel, SafePay, Supabase) with zero-trust AES-256-GCM credential encryption.
+            </p>
+          </header>
 
           {message.text && (
-            <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}`}>
+            <div className={`p-md rounded-lg mb-lg font-body-md ${message.type === 'error' ? 'bg-error-container/20 text-error border border-error/30' : 'bg-emerald-950/20 text-emerald-400 border border-emerald-800/40'}`}>
               {message.text}
             </div>
           )}
 
           {/* Section 1: Integration Grid */}
-          <section className="section-container">
-            <div className="section-title-bar">
-              <div>
-                <h2>🔌 API Key & OAuth2 Integrations</h2>
-                <p className="sub-txt">Select an integration card to connect via OAuth2 popup or secure input modal.</p>
-              </div>
+          <section className="mb-xl">
+            <div className="mb-md">
+              <h2 className="font-headline-md text-headline-md text-on-surface">🔌 API Key & OAuth2 Integrations</h2>
+              <p className="font-body-md text-body-md text-on-surface-variant">Select an integration card to connect via OAuth2 popup or secure input modal.</p>
             </div>
 
             {loading ? (
-              <p className="loading-txt">Loading Integration Hub...</p>
+              <p className="text-on-surface-variant py-lg">Loading Integration Hub...</p>
             ) : (
-              <div className="integration-grid">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-lg">
                 {integrations.map((item) => (
-                  <div key={item.canonical_name} className="integration-card">
-                    <div className="card-top-bar" style={{ background: item.gradient }}>
-                      <span className="card-icon">{item.icon}</span>
-                      <span className="card-category">{item.category}</span>
+                  <div key={item.canonical_name} className="bg-surface-container-low border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col hover:border-outline transition-colors">
+                    <div className="p-md text-white flex items-center justify-between" style={{ background: item.gradient }}>
+                      <span className="text-2xl">{item.icon}</span>
+                      <span className="font-label-md text-label-md bg-white/20 px-2 py-0.5 rounded uppercase font-mono tracking-wider">
+                        {item.category}
+                      </span>
                     </div>
 
-                    <div className="card-body">
-                      <div className="card-title-row">
-                        <h3>{item.display_name}</h3>
-                        <span className={`status-pill ${item.isConnected ? 'status-connected' : 'status-disconnected'}`}>
+                    <div className="p-md flex-1 flex flex-col">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">{item.display_name}</h3>
+                        <span className={`font-label-md text-label-md px-2 py-0.5 rounded ${item.isConnected ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : 'bg-surface-container text-on-surface-variant border border-outline-variant'}`}>
                           {item.isConnected ? '● Connected' : '○ Not Connected'}
                         </span>
                       </div>
-                      <p className="card-desc">{item.description}</p>
+                      <p className="font-body-md text-body-md text-on-surface-variant flex-1">{item.description}</p>
                     </div>
 
-                    <div className="card-footer">
+                    <div className="p-md bg-surface border-t border-outline-variant">
                       {isAdmin ? (
                         <button
                           onClick={() => handleConnectClick(item)}
-                          className="btn-connect"
+                          className="w-full py-2 px-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm"
                         >
                           {item.isConnected
                             ? item.auth_mode === 'oauth2' ? '🔄 Re-authorize OAuth2' : '⚙️ Reconfigure Credentials'
                             : item.auth_mode === 'oauth2' ? '🔗 Authorize via OAuth2' : '🔌 Connect Integration'}
                         </button>
                       ) : (
-                        <span className="read-only-txt">Admin Access Required to Connect</span>
+                        <span className="font-label-md text-label-md text-on-surface-variant text-center block">Admin Access Required to Connect</span>
                       )}
                     </div>
                   </div>
@@ -459,18 +461,18 @@ export default function IntegrationHubPage() {
           </section>
 
           {/* Section 2: Per-Agent Tool Allowlist */}
-          <section className="section-container card-panel">
-            <div className="card-header">
-              <h2>🤖 Per-Agent Tool Access & Policy Controls</h2>
-              <span className="card-sub">Configure dynamic tool allowlists and human-in-the-loop approvals per agent instance.</span>
+          <section className="bg-surface-container-low border border-outline-variant rounded-xl p-xl shadow-sm space-y-lg">
+            <div>
+              <h2 className="font-headline-md text-headline-md text-on-surface">🤖 Per-Agent Tool Access & Policy Controls</h2>
+              <span className="font-body-md text-body-md text-on-surface-variant">Configure dynamic tool allowlists and human-in-the-loop approvals per agent instance.</span>
             </div>
 
             {agents.length === 0 ? (
-              <p className="loading-txt">No active agent instances found.</p>
+              <p className="text-on-surface-variant">No active agent instances found.</p>
             ) : (
-              <div className="agent-selector">
-                <label>Select Agent Instance:</label>
-                <select value={selectedAgentId} onChange={handleSelectAgent}>
+              <div className="flex flex-col gap-2 max-w-md">
+                <label className="font-label-md text-label-md text-on-surface-variant">Select Agent Instance:</label>
+                <select value={selectedAgentId} onChange={handleSelectAgent} className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary">
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name} ({a.id.slice(0, 8)}...)
@@ -480,60 +482,60 @@ export default function IntegrationHubPage() {
               </div>
             )}
 
-            <hr className="divider" />
+            <hr className="border-outline-variant" />
 
             {/* Add Tool to Allowlist */}
             {isAdmin && (
-              <div className="add-tool-box">
-                <h4>Bind Integration Tool to Agent</h4>
-                <div className="form-row">
-                  <div className="form-group flex-2">
-                    <input
-                      type="text"
-                      placeholder="Tool Name (e.g. get_issues, list_deployments, SafePay)"
-                      value={newToolName}
-                      onChange={(e) => setNewToolName(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group flex-1">
-                    <select
-                      value={newToolConnector}
-                      onChange={(e) => setNewToolConnector(e.target.value)}
-                    >
-                      <option value="builtin">Built-in</option>
-                      <option value="airtable">Airtable</option>
-                      <option value="github">GitHub</option>
-                      <option value="vercel">Vercel</option>
-                      <option value="safepay">SafePay</option>
-                      <option value="supabase">Supabase</option>
-                      <option value="stripe">Stripe</option>
-                      <option value="hubspot">HubSpot</option>
-                      <option value="clickup">ClickUp</option>
-                      <option value="resend">Resend</option>
-                    </select>
-                  </div>
+              <div className="bg-surface border border-dashed border-outline-variant rounded-xl p-lg space-y-md">
+                <h4 className="font-headline-md text-headline-md text-on-surface">Bind Integration Tool to Agent</h4>
+                <div className="flex flex-col md:flex-row gap-md">
+                  <input
+                    type="text"
+                    placeholder="Tool Name (e.g. get_issues, list_deployments, SafePay)"
+                    value={newToolName}
+                    onChange={(e) => setNewToolName(e.target.value)}
+                    className="flex-2 p-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
+                  />
+                  <select
+                    value={newToolConnector}
+                    onChange={(e) => setNewToolConnector(e.target.value)}
+                    className="flex-1 p-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="builtin">Built-in</option>
+                    <option value="airtable">Airtable</option>
+                    <option value="github">GitHub</option>
+                    <option value="vercel">Vercel</option>
+                    <option value="safepay">SafePay</option>
+                    <option value="supabase">Supabase</option>
+                    <option value="stripe">Stripe</option>
+                    <option value="hubspot">HubSpot</option>
+                    <option value="clickup">ClickUp</option>
+                    <option value="resend">Resend</option>
+                  </select>
                 </div>
 
-                <div className="form-group">
+                <div>
                   <input
                     type="text"
                     placeholder="Description for LLM tool selection..."
                     value={newToolDescription}
                     onChange={(e) => setNewToolDescription(e.target.value)}
+                    className="w-full p-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
                   />
                 </div>
 
-                <div className="checkbox-row">
-                  <label>
+                <div className="flex items-center justify-between pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer font-body-md text-on-surface">
                     <input
                       type="checkbox"
                       checked={newToolIsHighRisk}
                       onChange={(e) => setNewToolIsHighRisk(e.target.checked)}
+                      className="rounded border-outline-variant bg-surface text-primary focus:ring-primary"
                     />
                     <span>Require Human Approval (High-Risk Action)</span>
                   </label>
 
-                  <button onClick={handleAddToolBinding} className="btn btn-secondary-sm">
+                  <button onClick={handleAddToolBinding} className="px-md py-2 bg-surface-container border border-outline-variant text-on-surface font-label-md text-label-md rounded-md hover:bg-surface-container-high transition-colors">
                     + Add Tool
                   </button>
                 </div>
@@ -541,55 +543,57 @@ export default function IntegrationHubPage() {
             )}
 
             {/* Current Tool Bindings List */}
-            <h3 className="section-subtitle">Bound Tools Allowlist ({agentBindings.length})</h3>
-            <div className="bindings-list">
-              {agentBindings.length === 0 ? (
-                <div className="empty-box">No tools bound to this agent instance.</div>
-              ) : (
-                agentBindings.map((binding) => (
-                  <div key={binding.tool_name} className="binding-item">
-                    <div className="binding-main">
-                      <div className="binding-title">
-                        <code>{binding.tool_name}</code>
-                        <span className={`type-tag type-${binding.connector_type}`}>
-                          {binding.connector_type}
-                        </span>
+            <div>
+              <h3 className="font-headline-md text-headline-md text-on-surface mb-md">Bound Tools Allowlist ({agentBindings.length})</h3>
+              <div className="space-y-3">
+                {agentBindings.length === 0 ? (
+                  <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">No tools bound to this agent instance.</div>
+                ) : (
+                  agentBindings.map((binding) => (
+                    <div key={binding.tool_name} className="bg-surface border border-outline-variant rounded-lg p-md flex items-center justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono-sm text-mono-sm text-on-surface bg-surface-container px-2 py-0.5 rounded border border-outline-variant">{binding.tool_name}</code>
+                          <span className="font-label-md text-label-md px-2 py-0.5 rounded uppercase font-mono bg-surface-container-high border border-outline-variant text-on-surface-variant">
+                            {binding.connector_type}
+                          </span>
+                        </div>
+                        {binding.config?.description && (
+                          <p className="font-body-md text-body-md text-on-surface-variant">{binding.config.description}</p>
+                        )}
                       </div>
-                      {binding.config?.description && (
-                        <p className="binding-desc">{binding.config.description}</p>
-                      )}
-                    </div>
 
-                    <div className="binding-controls">
-                      <button
-                        onClick={() => handleToggleHighRisk(binding.tool_name)}
-                        className={`risk-btn ${binding.is_high_risk ? 'risk-high' : 'risk-low'}`}
-                        title="Toggle Human Approval Requirement"
-                        disabled={!isAdmin}
-                      >
-                        {binding.is_high_risk ? '🛡️ Approval Required' : '⚡ Auto Execute'}
-                      </button>
-
-                      {isAdmin && (
+                      <div className="flex items-center gap-md">
                         <button
-                          onClick={() => handleRemoveToolBinding(binding.tool_name)}
-                          className="btn-danger-sm"
-                          title="Remove tool from allowlist"
+                          onClick={() => handleToggleHighRisk(binding.tool_name)}
+                          className={`px-3 py-1.5 rounded font-label-md text-label-md border transition-colors ${binding.is_high_risk ? 'bg-tertiary-container/20 text-tertiary border-tertiary/30' : 'bg-emerald-950/30 text-emerald-400 border-emerald-800/40'}`}
+                          title="Toggle Human Approval Requirement"
+                          disabled={!isAdmin}
                         >
-                          ✖
+                          {binding.is_high_risk ? '🛡️ Approval Required' : '⚡ Auto Execute'}
                         </button>
-                      )}
+
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleRemoveToolBinding(binding.tool_name)}
+                            className="px-3 py-1.5 bg-error-container/20 text-error border border-error/30 rounded font-label-md text-label-md hover:bg-error-container/40 transition-colors"
+                            title="Remove tool from allowlist"
+                          >
+                            ✖
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
 
             {isAdmin && (
-              <div className="save-bar">
+              <div className="pt-md border-t border-outline-variant">
                 <button
                   onClick={handleSaveAgentConfig}
-                  className="btn btn-save"
+                  className="w-full py-md px-lg bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50"
                   disabled={submitting || !selectedAgentId}
                 >
                   {submitting ? 'Saving Configuration...' : '💾 Save Agent Runtime Config'}
@@ -599,24 +603,24 @@ export default function IntegrationHubPage() {
           </section>
         </main>
 
-        {/* ── SAFEPAY SECURE INPUT MODAL ── */}
+        {/* SAFEPAY MODAL */}
         {activeModal === 'SafePay' && (
-          <div className="modal-backdrop" onClick={closeModal}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header safepay-header">
-                <div className="modal-title">
-                  <span className="modal-icon">💳</span>
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={closeModal}>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">💳</span>
                   <div>
-                    <h2>Connect SafePay Payment Gateway</h2>
-                    <span className="modal-sub">API-Key Credentials Encryption</span>
+                    <h2 className="font-headline-md text-headline-md text-on-surface">Connect SafePay Payment Gateway</h2>
+                    <span className="font-label-md text-label-md text-on-surface-variant">API-Key Credentials Encryption</span>
                   </div>
                 </div>
-                <button onClick={closeModal} className="modal-close">×</button>
+                <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface text-xl">×</button>
               </div>
 
-              <form onSubmit={handleSafePaySubmit} className="modal-form">
-                <div className="form-group">
-                  <label>SafePay Secret Key</label>
+              <form onSubmit={handleSafePaySubmit} className="p-xl space-y-md">
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-md text-label-md text-on-surface-variant">SafePay Secret Key</label>
                   <input
                     type="password"
                     placeholder="sec_live_sk_xxxxxxxxxxxxxxxx"
@@ -624,15 +628,16 @@ export default function IntegrationHubPage() {
                     onChange={(e) => setSafePaySecret(e.target.value)}
                     required
                     autoFocus
+                    className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
                   />
-                  <small className="field-hint">Key is encrypted with AES-256-GCM before database insertion.</small>
+                  <small className="font-label-md text-label-md text-on-surface-variant">Key is encrypted with AES-256-GCM before database insertion.</small>
                 </div>
 
-                <div className="modal-actions">
-                  <button type="button" onClick={closeModal} className="btn-cancel">
+                <div className="flex justify-end gap-md pt-md">
+                  <button type="button" onClick={closeModal} className="px-lg py-md bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container transition-colors">
                     Cancel
                   </button>
-                  <button type="submit" className="btn-submit safepay-btn" disabled={submitting}>
+                  <button type="submit" className="py-md px-lg bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50" disabled={submitting}>
                     {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
                   </button>
                 </div>
@@ -641,24 +646,24 @@ export default function IntegrationHubPage() {
           </div>
         )}
 
-        {/* ── SUPABASE SECURE INPUT MODAL ── */}
+        {/* SUPABASE MODAL */}
         {activeModal === 'Supabase' && (
-          <div className="modal-backdrop" onClick={closeModal}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header supabase-header">
-                <div className="modal-title">
-                  <span className="modal-icon">⚡</span>
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={closeModal}>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">⚡</span>
                   <div>
-                    <h2>Connect Supabase Database Hub</h2>
-                    <span className="modal-sub">PostgREST & Service Role Credentials</span>
+                    <h2 className="font-headline-md text-headline-md text-on-surface">Connect Supabase Database Hub</h2>
+                    <span className="font-label-md text-label-md text-on-surface-variant">PostgREST & Service Role Credentials</span>
                   </div>
                 </div>
-                <button onClick={closeModal} className="modal-close">×</button>
+                <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface text-xl">×</button>
               </div>
 
-              <form onSubmit={handleSupabaseSubmit} className="modal-form">
-                <div className="form-group">
-                  <label>Project URL</label>
+              <form onSubmit={handleSupabaseSubmit} className="p-xl space-y-md">
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-md text-label-md text-on-surface-variant">Project URL</label>
                   <input
                     type="url"
                     placeholder="https://xyzcompany.supabase.co"
@@ -666,26 +671,28 @@ export default function IntegrationHubPage() {
                     onChange={(e) => setSupabaseUrl(e.target.value)}
                     required
                     autoFocus
+                    className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
                   />
                 </div>
 
-                <div className="form-group">
-                  <label>Service Role Key</label>
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-md text-label-md text-on-surface-variant">Service Role Key</label>
                   <input
                     type="password"
                     placeholder="eyJhbGciOiJIUzI1NiIsInR..."
                     value={supabaseKey}
                     onChange={(e) => setSupabaseKey(e.target.value)}
                     required
+                    className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
                   />
-                  <small className="field-hint">Payload encrypted using AES-256-GCM and scoped to active tenant.</small>
+                  <small className="font-label-md text-label-md text-on-surface-variant">Payload encrypted using AES-256-GCM and scoped to active tenant.</small>
                 </div>
 
-                <div className="modal-actions">
-                  <button type="button" onClick={closeModal} className="btn-cancel">
+                <div className="flex justify-end gap-md pt-md">
+                  <button type="button" onClick={closeModal} className="px-lg py-md bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container transition-colors">
                     Cancel
                   </button>
-                  <button type="submit" className="btn-submit supabase-btn" disabled={submitting}>
+                  <button type="submit" className="py-md px-lg bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50" disabled={submitting}>
                     {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
                   </button>
                 </div>
@@ -694,24 +701,24 @@ export default function IntegrationHubPage() {
           </div>
         )}
 
-        {/* ── STRIPE SECURE INPUT MODAL ── */}
+        {/* STRIPE MODAL */}
         {activeModal === 'Stripe' && (
-          <div className="modal-backdrop" onClick={closeModal}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header stripe-header">
-                <div className="modal-title">
-                  <span className="modal-icon">💳</span>
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={closeModal}>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">💳</span>
                   <div>
-                    <h2>Connect Stripe B2B Billing & Payments</h2>
-                    <span className="modal-sub">Restricted API Key Credentials</span>
+                    <h2 className="font-headline-md text-headline-md text-on-surface">Connect Stripe B2B Billing & Payments</h2>
+                    <span className="font-label-md text-label-md text-on-surface-variant">Restricted API Key Credentials</span>
                   </div>
                 </div>
-                <button onClick={closeModal} className="modal-close">×</button>
+                <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface text-xl">×</button>
               </div>
 
-              <form onSubmit={handleStripeSubmit} className="modal-form">
-                <div className="form-group">
-                  <label>Restricted API Key</label>
+              <form onSubmit={handleStripeSubmit} className="p-xl space-y-md">
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-md text-label-md text-on-surface-variant">Restricted API Key</label>
                   <input
                     type="password"
                     placeholder="rk_live_... / rk_test_..."
@@ -719,15 +726,16 @@ export default function IntegrationHubPage() {
                     onChange={(e) => setStripeApiKey(e.target.value)}
                     required
                     autoFocus
+                    className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
                   />
-                  <small className="field-hint">Payload encrypted using AES-256-GCM and scoped to active tenant. High-risk operations (refunds) require HITL approval.</small>
+                  <small className="font-label-md text-label-md text-on-surface-variant">Payload encrypted using AES-256-GCM and scoped to active tenant. High-risk operations (refunds) require HITL approval.</small>
                 </div>
 
-                <div className="modal-actions">
-                  <button type="button" onClick={closeModal} className="btn-cancel">
+                <div className="flex justify-end gap-md pt-md">
+                  <button type="button" onClick={closeModal} className="px-lg py-md bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container transition-colors">
                     Cancel
                   </button>
-                  <button type="submit" className="btn-submit stripe-btn" disabled={submitting}>
+                  <button type="submit" className="py-md px-lg bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50" disabled={submitting}>
                     {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
                   </button>
                 </div>
@@ -735,568 +743,6 @@ export default function IntegrationHubPage() {
             </div>
           </div>
         )}
-
-        <style jsx>{`
-          .hub-page {
-            min-height: 100vh;
-            background: var(--color-bg);
-          }
-          .hub-main {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 1.5rem;
-            animation: fadeIn 0.4s ease-out;
-          }
-          .page-header {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            color: var(--color-text);
-            border-radius: var(--radius-lg);
-            padding: 2rem 2.5rem;
-            margin-bottom: 2.5rem;
-            box-shadow: var(--shadow-sm);
-          }
-          .badge {
-            background: var(--color-secondary);
-            color: var(--color-muted);
-            border: 1px solid var(--color-border);
-            padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-          }
-          .page-header h1 {
-            margin: 0.75rem 0 0.25rem 0;
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--color-text);
-            letter-spacing: -0.02em;
-          }
-          .page-header p {
-            color: var(--color-muted);
-            margin: 0;
-            font-size: 0.95rem;
-          }
-          .alert {
-            padding: 1rem 1.25rem;
-            border-radius: var(--radius);
-            margin-bottom: 1.5rem;
-            font-weight: 500;
-            font-size: 0.9rem;
-          }
-          .alert-error {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-          }
-          .alert-success {
-            background: #f0fdf4;
-            color: #15803d;
-            border: 1px solid #bbf7d0;
-          }
-          .section-container {
-            margin-bottom: 3rem;
-          }
-          .section-title-bar h2 {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--color-text);
-            margin: 0;
-          }
-          .sub-txt {
-            color: var(--color-muted);
-            font-size: 0.9rem;
-            margin: 0.25rem 0 1.5rem 0;
-          }
-          .integration-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 1.5rem;
-          }
-          .integration-card {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            box-shadow: var(--shadow-card);
-            display: flex;
-            flex-direction: column;
-            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
-          }
-          .integration-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-            border-color: #d1d5db;
-          }
-          .card-top-bar {
-            padding: 1.25rem 1.5rem;
-            color: #ffffff;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-          .card-icon {
-            font-size: 1.5rem;
-          }
-          .card-category {
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: rgba(255,255,255,0.2);
-            padding: 0.2rem 0.6rem;
-            border-radius: var(--radius-sm);
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-          }
-          .card-body {
-            padding: 1.5rem;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-          }
-          .card-title-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 0.75rem;
-          }
-          .card-title-row h3 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--color-text);
-          }
-          .status-pill {
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 0.2rem 0.6rem;
-            border-radius: var(--radius-sm);
-          }
-          .status-connected {
-            background: #f0fdf4;
-            color: #15803d;
-            border: 1px solid #bbf7d0;
-          }
-          .status-disconnected {
-            background: var(--color-bg);
-            color: var(--color-muted);
-            border: 1px solid var(--color-border);
-          }
-          .card-desc {
-            font-size: 0.85rem;
-            color: var(--color-muted);
-            line-height: 1.5;
-            margin: 0;
-            flex: 1;
-          }
-          .card-footer {
-            padding: 1rem 1.5rem;
-            background: var(--color-bg);
-            border-top: 1px solid var(--color-border);
-          }
-          .btn-connect {
-            width: 100%;
-            border: none;
-            background: var(--color-primary);
-            color: #ffffff;
-            padding: 0.75rem;
-            border-radius: var(--radius);
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: var(--shadow-sm);
-          }
-          .btn-connect:hover {
-            background: var(--color-primary-hover);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-1px);
-          }
-          .read-only-txt {
-            font-size: 0.8rem;
-            color: var(--color-muted);
-            font-weight: 500;
-            text-align: center;
-            display: block;
-          }
-          .card-panel {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: 2rem 2.5rem;
-            box-shadow: var(--shadow-card);
-          }
-          .card-header h2 {
-            margin: 0;
-            font-size: 1.25rem;
-            color: var(--color-text);
-            font-weight: 700;
-          }
-          .card-sub {
-            font-size: 0.9rem;
-            color: var(--color-muted);
-            display: block;
-            margin-top: 0.25rem;
-          }
-          .divider {
-            border: 0;
-            border-top: 1px solid var(--color-border);
-            margin: 2rem 0;
-          }
-          .agent-selector {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            margin-top: 1.5rem;
-          }
-          .agent-selector label {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--color-text);
-          }
-          .agent-selector select {
-            padding: 0.75rem;
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius);
-            font-weight: 500;
-            font-size: 0.9rem;
-            color: var(--color-text);
-            background: var(--color-surface);
-            max-width: 400px;
-          }
-          .add-tool-box {
-            background: var(--color-bg);
-            border: 1px dashed var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-          }
-          .add-tool-box h4 {
-            margin: 0;
-            font-size: 0.95rem;
-            color: var(--color-text);
-            font-weight: 600;
-          }
-          .form-row {
-            display: flex;
-            gap: 1rem;
-          }
-          .flex-1 { flex: 1; }
-          .flex-2 { flex: 2; }
-          .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.4rem;
-          }
-          .form-group label {
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--color-text);
-          }
-          .form-group input, .form-group select {
-            padding: 0.75rem;
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius);
-            font-size: 0.9rem;
-            outline: none;
-            background: var(--color-surface);
-            color: var(--color-text);
-          }
-          .form-group input:focus, .form-group select:focus {
-            border-color: var(--color-accent);
-            box-shadow: 0 0 0 1px var(--color-accent);
-          }
-          .checkbox-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            color: var(--color-text);
-            font-weight: 500;
-            margin-top: 0.5rem;
-          }
-          .checkbox-row label {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-          }
-          .btn-secondary-sm {
-            background: var(--color-surface);
-            color: var(--color-text);
-            border: 1px solid var(--color-border);
-            padding: 0.5rem 1rem;
-            border-radius: var(--radius-sm);
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: var(--shadow-sm);
-          }
-          .btn-secondary-sm:hover {
-            background: var(--color-secondary);
-            border-color: #d1d5db;
-          }
-          .section-subtitle {
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--color-text);
-            margin: 0 0 1rem 0;
-          }
-          .bindings-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-          }
-          .binding-item {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius);
-            padding: 1rem 1.25rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          }
-          .binding-title {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-          }
-          .binding-title code {
-            background: var(--color-bg);
-            color: var(--color-text);
-            border: 1px solid var(--color-border);
-            padding: 0.2rem 0.5rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.85rem;
-          }
-          .type-tag {
-            font-size: 0.7rem;
-            font-weight: 600;
-            padding: 0.15rem 0.5rem;
-            border-radius: var(--radius-sm);
-            text-transform: uppercase;
-            border: 1px solid transparent;
-          }
-          .type-github { background: #f3f4f6; color: #111827; border-color: #e5e7eb; }
-          .type-vercel { background: #f3f4f6; color: #111827; border-color: #e5e7eb; }
-          .type-safepay { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
-          .type-supabase { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
-          .type-builtin { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
-          .binding-desc {
-            margin: 0.4rem 0 0 0;
-            font-size: 0.85rem;
-            color: var(--color-muted);
-          }
-          .binding-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-          }
-          .risk-btn {
-            border: none;
-            padding: 0.4rem 0.75rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .risk-high {
-            background: #fef2f2;
-            color: #b91c1c;
-            border: 1px solid #fecaca;
-          }
-          .risk-low {
-            background: #f0fdf4;
-            color: #15803d;
-            border: 1px solid #bbf7d0;
-          }
-          .btn-danger-sm {
-            background: var(--color-surface);
-            color: #dc2626;
-            border: 1px solid var(--color-border);
-            padding: 0.4rem 0.75rem;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-          }
-          .btn-danger-sm:hover {
-            background: #fef2f2;
-            border-color: #fca5a5;
-          }
-          .empty-box {
-            padding: 2rem;
-            text-align: center;
-            background: var(--color-bg);
-            border-radius: var(--radius-lg);
-            border: 1px dashed var(--color-border);
-            color: var(--color-muted);
-            font-size: 0.9rem;
-          }
-          .save-bar {
-            margin-top: 2rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--color-border);
-          }
-          .btn-save {
-            background: var(--color-primary);
-            color: #ffffff;
-            width: 100%;
-            padding: 0.85rem;
-            font-size: 0.95rem;
-            border: none;
-            border-radius: var(--radius);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: var(--shadow-sm);
-          }
-          .btn-save:hover {
-            background: var(--color-primary-hover);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-1px);
-          }
-          .loading-txt {
-            color: var(--color-muted);
-            font-size: 0.9rem;
-          }
-
-          /* ── MODAL STYLES ── */
-          .modal-backdrop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(17, 24, 39, 0.4);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            padding: 1rem;
-          }
-          .modal-content {
-            background: var(--color-surface);
-            border-radius: var(--radius-lg);
-            width: 100%;
-            max-width: 520px;
-            box-shadow: var(--shadow-modal);
-            border: 1px solid var(--color-border);
-            overflow: hidden;
-            animation: modalSlide 0.2s ease-out;
-          }
-          @keyframes modalSlide {
-            from { transform: translateY(10px) scale(0.98); opacity: 0; }
-            to { transform: translateY(0) scale(1); opacity: 1; }
-          }
-          .modal-header {
-            padding: 1.5rem 2rem;
-            color: var(--color-text);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--color-border);
-            background: var(--color-bg);
-          }
-          .safepay-header, .supabase-header, .vercel-header, .stripe-header {
-            background: var(--color-bg);
-            color: var(--color-text);
-          }
-          .modal-title {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-          }
-          .modal-icon {
-            font-size: 1.75rem;
-          }
-          .modal-title h2 {
-            margin: 0;
-            font-size: 1.15rem;
-            font-weight: 700;
-          }
-          .modal-sub {
-            font-size: 0.8rem;
-            color: var(--color-muted);
-            font-weight: 500;
-            margin-top: 0.1rem;
-            display: block;
-          }
-          .modal-close {
-            background: transparent;
-            border: none;
-            color: var(--color-muted);
-            font-size: 1.25rem;
-            width: 32px;
-            height: 32px;
-            border-radius: var(--radius-sm);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-          }
-          .modal-close:hover {
-            background: var(--color-secondary);
-            color: var(--color-text);
-          }
-          .modal-form {
-            padding: 2rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-          }
-          .field-hint {
-            color: var(--color-muted);
-            font-size: 0.8rem;
-            margin-top: 0.4rem;
-          }
-          .modal-actions {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 0.75rem;
-            margin-top: 1rem;
-          }
-          .btn-cancel {
-            border: 1px solid var(--color-border);
-            background: var(--color-surface);
-            color: var(--color-text);
-            padding: 0.65rem 1.25rem;
-            border-radius: var(--radius);
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .btn-cancel:hover {
-            background: var(--color-secondary);
-          }
-          .btn-submit {
-            border: none;
-            color: #ffffff;
-            background: var(--color-primary);
-            padding: 0.65rem 1.25rem;
-            border-radius: var(--radius);
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: var(--shadow-sm);
-          }
-          .btn-submit:hover {
-            background: var(--color-primary-hover);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-1px);
-          }
-        `}</style>
       </div>
     </AuthGuard>
   );

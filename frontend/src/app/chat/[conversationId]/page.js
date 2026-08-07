@@ -4,7 +4,6 @@ import { fetchMessages, sendMessage, patchApproval } from '@/lib/api';
 import MessageBubble from '../../components/MessageBubble';
 import ApprovalCard from '../../components/ApprovalCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import styles from './ChatWindow.module.css';
 
 export default function ConversationPage({ params }) {
   const unwrappedParams = use(params);
@@ -105,24 +104,24 @@ export default function ConversationPage({ params }) {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.headerBar}>
-        <div className={styles.headerInfo}>
-          <span className={styles.convoTag}>ID: {conversationId}</span>
-          <h2 className={styles.convoTitle}>Customer Support Assistant</h2>
+    <div className="flex flex-col h-full bg-surface-container-low overflow-hidden">
+      <header className="p-md bg-surface border-b border-outline-variant flex items-center justify-between">
+        <div>
+          <span className="font-mono-sm text-mono-sm text-on-surface-variant bg-surface-container px-2 py-0.5 rounded border border-outline-variant">ID: {conversationId}</span>
+          <h2 className="font-headline-md text-headline-md text-on-surface font-bold mt-1">Customer Support Assistant</h2>
         </div>
-      </div>
+      </header>
 
-      <div className={styles.messagesArea}>
+      <div className="flex-1 overflow-y-auto p-lg space-y-md">
         {loading ? (
-          <div className={styles.loadingBox}>
+          <div className="p-xl text-center">
             <LoadingSpinner text="Fetching message history..." />
           </div>
         ) : messages.length === 0 ? (
-          <div className={styles.emptyPrompt}>
-            <div className={styles.emptyIcon}>👋</div>
-            <h3>How can we help you today?</h3>
-            <p>Type your inquiry below to start chatting with the Customer Support Agent.</p>
+          <div className="flex flex-col items-center justify-center h-full text-center text-on-surface-variant space-y-2 py-xl">
+            <div className="text-4xl">👋</div>
+            <h3 className="font-headline-md text-headline-md text-on-surface">How can we help you today?</h3>
+            <p className="font-body-md text-body-md max-w-md">Type your inquiry below to start chatting with the Customer Support Agent.</p>
           </div>
         ) : (
           messages.map((msg, index) => {
@@ -143,16 +142,16 @@ export default function ConversationPage({ params }) {
         )}
 
         {sending && (
-          <div className={styles.sendingIndicator}>
+          <div className="py-md text-center">
             <LoadingSpinner text="Agent is thinking & executing tools..." />
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <form className={styles.inputContainer} onSubmit={handleSend}>
+      <form className="p-md bg-surface border-t border-outline-variant flex gap-md items-center" onSubmit={handleSend}>
         <textarea
-          className={styles.textInput}
+          className="flex-1 p-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary resize-none font-body-md"
           rows={1}
           placeholder="Ask a question, request support, or trigger tools (e.g. refund)..."
           value={input}
@@ -162,10 +161,10 @@ export default function ConversationPage({ params }) {
         <button
           type="submit"
           disabled={!input.trim() || sending}
-          className={styles.sendBtn}
+          className="px-lg py-3 bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
         >
           <span>Send</span>
-          <span className={styles.sendIcon}>➔</span>
+          <span>➔</span>
         </button>
       </form>
     </div>
