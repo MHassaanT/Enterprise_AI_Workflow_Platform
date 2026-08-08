@@ -142,6 +142,17 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
       - config.parameters = [{"name": "order_id", "description": "...", "type": "string"}, ...]
     Falls back to a single generic 'query' field if no parameters are defined.
     """
+    if "gmail" in tool_name.lower():
+        from pydantic import BaseModel, Field
+        class GmailDynamicInput(BaseModel):
+            action: str = Field(default="gmail_send_email", description="The action to perform (e.g. 'gmail_send_email')")
+            to: str = Field(default="", description="Recipient email address (required for sending)")
+            subject: str = Field(default="", description="Email subject")
+            body: str = Field(default="", description="Email body text")
+            q: str = Field(default="", description="Search query")
+            limit: int = Field(default=10, description="Max results")
+        return GmailDynamicInput
+
     params_raw = config.get("parameters") or config.get("params") or {}
 
     field_definitions: Dict[str, Any] = {}
