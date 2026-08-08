@@ -112,6 +112,17 @@ const SEEDED_INTEGRATIONS = [
     category: 'Project Management',
     icon: '🎯',
     gradient: 'linear-gradient(135deg, #7b68ee 0%, #5f4bb6 100%)',
+  },
+  {
+    id: 'gmail-card',
+    canonical_name: 'Gmail',
+    display_name: 'Gmail (Google Workspace)',
+    provider_type: 'gmail',
+    auth_mode: 'oauth2',
+    description: 'Query your inbox, read email threads, and send emails securely via Google OAuth2.',
+    category: 'Productivity',
+    icon: '📧',
+    gradient: 'linear-gradient(135deg, #ea4335 0%, #c5221f 100%)',
   }
 ];
 

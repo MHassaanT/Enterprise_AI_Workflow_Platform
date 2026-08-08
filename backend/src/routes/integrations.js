@@ -155,6 +155,21 @@ router.get('/connect/:provider', async (req, res) => {
       }
       const authorizeUrl = `https://app.clickup.com/api?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
       return res.redirect(authorizeUrl);
+    } else if (provider === 'gmail') {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      if (!clientId || clientId.startsWith('dummy_')) {
+        return res.status(400).send(`
+          <html><body style="font-family: system-ui, sans-serif; padding: 2rem; background: #0f172a; color: #f8fafc; line-height: 1.6;">
+            <h2 style="color: #ea4335;">⚙️ Google OAuth Configuration Required</h2>
+            <p>Please configure <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your server environment variables.</p>
+            <p>Set your Google OAuth Client Authorized redirect URIs to:</p>
+            <pre style="background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155; color: #ea4335;">${redirectUri}</pre>
+          </body></html>
+        `);
+      }
+      const scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send');
+      const authorizeUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&state=${state}&access_type=offline&prompt=consent`;
+      return res.redirect(authorizeUrl);
     } else {
       return res.status(400).send(`<h2>Unsupported Provider</h2><p>Provider '${provider}' is not supported for OAuth2.</p>`);
     }
@@ -378,6 +393,38 @@ router.get(['/callback', '/callback/'], async (req, res) => {
         access_token: tokenData.access_token,
         token_type: 'bearer',
         provider: 'clickup',
+      };
+    } else if (provider === 'gmail') {
+      const clientId = process.env.GOOGLE_CLIENT_ID || 'dummy_google_client_id';
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET || 'dummy_google_client_secret';
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      });
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.error) {
+        throw new Error(tokenData.error_description || tokenData.error);
+      }
+
+      tokenPayload = {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token, // Provided because of access_type=offline & prompt=consent
+        token_type: tokenData.token_type || 'Bearer',
+        expires_in: tokenData.expires_in,
+        provider: 'gmail',
       };
     } else {
       return res.status(400).send(`Unsupported provider '${provider}'`);

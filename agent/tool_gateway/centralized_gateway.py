@@ -15,6 +15,7 @@ from tool_gateway.adapters.github_adapter import execute_github_tool
 from tool_gateway.adapters.vercel_adapter import execute_vercel_tool
 from tool_gateway.adapters.clickup_adapter import execute_clickup_tool
 from tool_gateway.adapters.stripe_adapter import execute_stripe_tool
+from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
 
 
 def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
@@ -99,6 +100,8 @@ async def execute_mcp_tool(
             return await execute_resend_tool(tool_name, arguments, credentials)
         elif provider_type == "hubspot" or "hubspot" in tool_name.lower():
             return await execute_hubspot_tool(tool_name, arguments, credentials)
+        elif provider_type == "gmail" or "gmail" in tool_name.lower():
+            return await execute_gmail_tool(tool_name, arguments, credentials)
         elif provider_type == "builtin" or tool_name in TOOL_REGISTRY or "order" in tool_name.lower() or "escalat" in tool_name.lower():
             norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
             tool_fn = TOOL_REGISTRY.get(norm_name) or TOOL_REGISTRY.get(tool_name)
