@@ -143,7 +143,6 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
     Falls back to a single generic 'query' field if no parameters are defined.
     """
     if "gmail" in tool_name.lower():
-        from pydantic import BaseModel, Field
         class GmailDynamicInput(BaseModel):
             action: str = Field(default="gmail_send_email", description="The action to perform (e.g. 'gmail_send_email')")
             to: str = Field(default="", description="Recipient email address (required for sending)")
