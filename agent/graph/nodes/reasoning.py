@@ -15,17 +15,28 @@ from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 HIGH_RISK_TOOLS = {"issue_refund", "process_payment", "submit_refund_request"}
 
 
-def _build_system_prompt(context: list[dict]) -> str:
+def _build_system_prompt(context: list[dict], has_recent_tool_call: bool = False) -> str:
     prompt = """You are a helpful Customer Support AI agent for an enterprise platform.
 
 CRITICAL RULES (in priority order):
-
+"""
+    if not has_recent_tool_call:
+        prompt += """
 1. CONTEXT EVALUATION RULE:
    - First, evaluate the user's question against the provided DOCUMENT EXCERPTS and available tools.
    - If the question is in context (covered by the provided document excerpts or relates to available support tools/greetings), answer it using ONLY the provided document excerpts or tools.
    - If the question is NOT in context (not covered by the provided document excerpts and not a tool request or greeting), you MUST respond with: "The query is out of context."
    - Do NOT use outside general knowledge (such as recipes like how to make tea, general trivia, or unprovided topics) to answer questions.
+"""
+    else:
+        prompt += """
+1. POST-TOOL RULE:
+   - You have just executed a tool. Summarize the tool result into a helpful, conversational response.
+   - Never say the query is out of context when summarizing a tool result.
+   - For refund flows, carefully follow the REFUND FLOW RULE.
+"""
 
+    prompt += """
 2. TOOL-FIRST RULE: When a user asks about order status, order tracking, order details,
    customer lookups, shipment tracking, or ANY data that can be retrieved via an available
    tool — you MUST call that tool IMMEDIATELY. Do NOT answer from document excerpts for
@@ -157,7 +168,7 @@ async def reasoning_node(state: AgentState) -> dict:
     else:
         llm_with_tools = llm
 
-    system_msg = SystemMessage(content=_build_system_prompt(context))
+    system_msg = SystemMessage(content=_build_system_prompt(context, has_recent_tool_call))
     history = list(state["messages"])
 
     response: AIMessage = await llm_with_tools.ainvoke([system_msg] + history)
