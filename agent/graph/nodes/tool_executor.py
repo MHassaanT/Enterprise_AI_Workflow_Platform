@@ -38,11 +38,13 @@ async def tool_executor_node(state: AgentState) -> dict:
             tool_name=tool_name,
             arguments=arguments,
         )
+        
+        print(f"[TOOL EXECUTOR] Executed '{tool_name}' with args {arguments} | Result: {result_str}")
 
         # Detect error results returned as strings (gateway catches exceptions internally)
         is_error_result = any(
             result_str.startswith(prefix)
-            for prefix in ["Error executing tool", "Security Error:", "Tool '"]
+            for prefix in ["Error", "Security Error:", "Tool '", "Gmail API Error"]
         )
 
         # ── Stage 3: Tenant-Scoped Audit Logging ──
