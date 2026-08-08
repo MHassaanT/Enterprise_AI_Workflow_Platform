@@ -172,17 +172,20 @@ async def resume_agent(
     config = {"configurable": {"thread_id": request.conversation_id}}
 
     try:
+        existing_state = await customer_support_graph.aget_state(config)
+        prior_messages = existing_state.values.get("messages", []) if existing_state else []
+
         resume_update = {
             "approval_status": request.decision,
             "approval_id": request.approval_id,
             "question": "SYSTEM NOTIFICATION",
         }
         if request.decision == "rejected":
-            resume_update["messages"] = [
+            resume_update["messages"] = prior_messages + [
                 HumanMessage(content=f"SYSTEM NOTIFICATION: Action (Reference ID: {request.approval_id}) was rejected by a human reviewer. If this was a refund request, use the Gmail tool (with action 'gmail_send_email') to notify the customer.")
             ]
         elif request.decision == "approved":
-            resume_update["messages"] = [
+            resume_update["messages"] = prior_messages + [
                 HumanMessage(content=f"SYSTEM NOTIFICATION: Action (Reference ID: {request.approval_id}) was approved by a human reviewer. If this was a refund request, use the Gmail tool (with action 'gmail_send_email') to notify the customer.")
             ]
 
