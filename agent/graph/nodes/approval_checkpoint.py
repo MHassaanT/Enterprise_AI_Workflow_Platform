@@ -6,7 +6,7 @@ notifies the reviewer dashboard, and appends a user-facing pending message.
 
 Graph resumes via POST /agent/resume when a reviewer approves/rejects.
 """
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from graph.state import AgentState
 from services.db_client import create_approval_request, write_audit_log
 
@@ -47,12 +47,14 @@ async def approval_checkpoint_node(state: AgentState) -> dict:
     )
 
     # Inform the user that a reviewer has been notified
-    pending_msg = AIMessage(
+    pending_msg = ToolMessage(
         content=(
             f"This action requires approval from a human reviewer before it can proceed. "
             f"A reviewer has been notified and will respond shortly. "
             f"(Reference ID: {approval_id})"
-        )
+        ),
+        tool_call_id=tool_call["id"],
+        name=tool_call["name"]
     )
 
     return {
