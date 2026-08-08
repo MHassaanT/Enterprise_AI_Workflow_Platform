@@ -101,9 +101,12 @@ async def run_agent(
     try:
         final_state = await customer_support_graph.ainvoke(initial_state, config=config)
 
-        # Extract last AI message as the answer
-        ai_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "ai"]
-        answer = ai_msgs[-1].content if ai_msgs else "Unable to process your request."
+        if final_state.get("approval_status") == "pending":
+            answer = final_state["messages"][-1].content
+        else:
+            # Extract last AI message as the answer
+            ai_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "ai"]
+            answer = ai_msgs[-1].content if ai_msgs else "Unable to process your request."
 
         # Determine which tool was used (if any)
         tool_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "tool"]
