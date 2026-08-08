@@ -146,6 +146,12 @@ async def reasoning_node(state: AgentState) -> dict:
         llm_with_tools = llm.bind_tools(tools, tool_choice="any")
         context = []  # Clear RAG context to prevent document-based answers
         print(f"[REASONING] TOOL-INTENT detected for '{question_lower}' — forcing tool_choice='any', clearing RAG context")
+    elif is_system and has_tool_context:
+        # System notification detected (e.g. graph resume from human approval):
+        # Force the LLM to pick a tool (like Gmail) to carry out the system's instructions
+        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+        context = []
+        print(f"[REASONING] SYSTEM-INTENT detected — forcing tool_choice='any', clearing RAG context")
     elif has_tool_context:
         llm_with_tools = llm.bind_tools(tools)
     else:
