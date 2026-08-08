@@ -175,19 +175,30 @@ async def resume_agent(
         existing_state = await customer_support_graph.aget_state(config)
         prior_messages = existing_state.values.get("messages", []) if existing_state else []
 
+        import re
+        def _extract_customer_email(messages) -> str:
+            email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+            for msg in reversed(messages):
+                content = getattr(msg, "content", "")
+                if isinstance(content, str):
+                    matches = re.findall(email_pattern, content)
+                    if matches:
+                        return matches[-1]
+            return "customer"
+            
+        customer_email = _extract_customer_email(prior_messages)
+
         resume_update = {
             "approval_status": request.decision,
             "approval_id": request.approval_id,
             "question": "SYSTEM NOTIFICATION",
         }
         if request.decision == "rejected":
-            resume_update["messages"] = prior_messages + [
-                HumanMessage(content=f"SYSTEM NOTIFICATION: Action (Reference ID: {request.approval_id}) was rejected by a human reviewer. If this was a refund request, use the Gmail tool (with action 'gmail_send_email') to notify the customer.")
-            ]
+            notification = f"SYSTEM NOTIFICATION: Refund request (Reference ID: {request.approval_id}) was REJECTED by human reviewer. YOU MUST immediately use the Gmail tool with action='gmail_send_email' to send a rejection notice to: {customer_email}. Include the reference ID and reason in the email."
+            resume_update["messages"] = prior_messages + [HumanMessage(content=notification)]
         elif request.decision == "approved":
-            resume_update["messages"] = prior_messages + [
-                HumanMessage(content=f"SYSTEM NOTIFICATION: Action (Reference ID: {request.approval_id}) was approved by a human reviewer. If this was a refund request, use the Gmail tool (with action 'gmail_send_email') to notify the customer.")
-            ]
+            notification = f"SYSTEM NOTIFICATION: Refund request (Reference ID: {request.approval_id}) was APPROVED by human reviewer. YOU MUST immediately use the Gmail tool with action='gmail_send_email' to send approval notice to: {customer_email}. Include reference ID and next steps."
+            resume_update["messages"] = prior_messages + [HumanMessage(content=notification)]
 
         final_state = await customer_support_graph.ainvoke(resume_update, config=config)
 
