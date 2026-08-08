@@ -30,7 +30,7 @@ async def intent_classifier_node(state: AgentState) -> dict:
     question = (state.get("question") or "").strip().lower()
 
     # Skip RAG retrieval only for pure conversational greetings
-    if question in GREETINGS:
+    if question in GREETINGS or question == "system notification":
         return {"needs_retrieval": False}
 
     # Skip RAG for queries that clearly need tool execution (order lookups, etc.)

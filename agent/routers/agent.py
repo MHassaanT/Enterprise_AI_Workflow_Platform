@@ -175,6 +175,7 @@ async def resume_agent(
         resume_update = {
             "approval_status": request.decision,
             "approval_id": request.approval_id,
+            "question": "SYSTEM NOTIFICATION",
         }
         if request.decision == "rejected":
             resume_update["messages"] = [

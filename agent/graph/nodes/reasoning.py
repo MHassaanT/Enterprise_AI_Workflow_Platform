@@ -116,6 +116,7 @@ async def reasoning_node(state: AgentState) -> dict:
     question_lower = (state.get("question") or "").strip().lower()
     is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
     is_greeting = any(g in question_lower for g in GREETINGS)
+    is_system = question_lower == "system notification"
 
     # Check if a tool has already been executed for the current user turn
     has_recent_tool_call = False
@@ -127,7 +128,7 @@ async def reasoning_node(state: AgentState) -> dict:
             break
 
     # If no document context was retrieved from RAG, and query is neither a tool intent nor a greeting nor post-tool turn:
-    if not context and not is_tool_intent and not has_recent_tool_call and not is_greeting:
+    if not context and not is_tool_intent and not has_recent_tool_call and not is_greeting and not is_system:
         return {
             "messages": [AIMessage(content="The query is out of context.")],
             "next_step": "respond",
