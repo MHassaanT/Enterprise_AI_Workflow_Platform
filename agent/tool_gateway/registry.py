@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, create_model
 
 from tool_gateway.tools.check_order_status import check_order_status_impl, CheckOrderStatusInput
 from tool_gateway.tools.escalate_to_human import escalate_to_human_impl, EscalateToHumanInput
+from tool_gateway.tools.submit_refund_request import submit_refund_request_impl, SubmitRefundRequestInput
 from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import get_agent_tool_bindings
 
@@ -29,6 +30,18 @@ _escalate_desc = (
     "or when an irreversible/high-risk action (such as refunds or credits) is requested."
 )
 
+_escalate_desc = (
+    "Escalates an issue or high-risk action to a human supervisor for approval. "
+    "Use when an ungrounded inquiry cannot be answered accurately from documents, "
+    "or when an irreversible/high-risk action (such as refunds or credits) is requested."
+)
+
+_submit_refund_desc = (
+    "Submits a refund request for an order. "
+    "This is a high-risk tool and will require human approval. "
+    "You MUST gather the customer's confirmed name, email, the refund reason, and the order details from check_order_status before calling this."
+)
+
 TOOL_REGISTRY: Dict[str, Callable] = {
     "check_order_status": check_order_status_impl,
     "check_order_details": check_order_status_impl,
@@ -37,6 +50,7 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "escalate_to_human": escalate_to_human_impl,
     "human_escalation": escalate_to_human_impl,
     "escalate": escalate_to_human_impl,
+    "submit_refund_request": submit_refund_request_impl,
 }
 
 TOOL_INPUT_MODELS: Dict[str, type] = {
@@ -47,6 +61,7 @@ TOOL_INPUT_MODELS: Dict[str, type] = {
     "escalate_to_human": EscalateToHumanInput,
     "human_escalation": EscalateToHumanInput,
     "escalate": EscalateToHumanInput,
+    "submit_refund_request": SubmitRefundRequestInput,
 }
 
 BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
@@ -91,6 +106,12 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         name="escalate",
         description=_escalate_desc,
         args_schema=EscalateToHumanInput,
+    ),
+    "submit_refund_request": StructuredTool.from_function(
+        coroutine=submit_refund_request_impl,
+        name="submit_refund_request",
+        description=_submit_refund_desc,
+        args_schema=SubmitRefundRequestInput,
     ),
 }
 

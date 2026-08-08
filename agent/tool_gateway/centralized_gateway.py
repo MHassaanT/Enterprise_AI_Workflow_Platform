@@ -29,6 +29,8 @@ def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
             return b
         if "escalat" in b_norm and "escalat" in norm_req:
             return b
+        if "refund" in b_norm and "refund" in norm_req:
+            return b
     return None
 
 
@@ -109,6 +111,8 @@ async def execute_mcp_tool(
                 tool_fn = TOOL_REGISTRY.get("check_order_status")
             elif not tool_fn and "escalat" in norm_name:
                 tool_fn = TOOL_REGISTRY.get("escalate_to_human")
+            elif not tool_fn and "refund" in norm_name:
+                tool_fn = TOOL_REGISTRY.get("submit_refund_request")
 
             if tool_fn:
                 res = await tool_fn(**arguments, tenant_id=tenant_id, binding_id=binding_id, credentials=credentials)

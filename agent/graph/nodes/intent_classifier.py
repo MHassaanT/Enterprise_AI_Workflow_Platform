@@ -22,6 +22,7 @@ TOOL_INTENT_KEYWORDS = {
     "check order", "where is my order", "track my", "tracking number",
     "order number", "order update", "check my order", "look up order",
     "lookup order", "find my order", "order info",
+    "refund", "apply for refund", "request refund", "return order", "want a refund"
 }
 
 

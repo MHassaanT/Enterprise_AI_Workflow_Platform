@@ -151,6 +151,16 @@ export async function fetchPendingApprovals() {
   return data.approvals || [];
 }
 
+export async function fetchPendingApprovalsFull() {
+  const res = await fetch('/api/approvals/pending', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch full pending approvals');
+  const data = await res.json();
+  return data.approvals || [];
+}
+
 export async function patchApproval(approvalId, decision) {
   const res = await fetch(`/api/conversations/approvals/${approvalId}`, {
     method: 'PATCH',

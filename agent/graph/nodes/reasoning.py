@@ -12,7 +12,7 @@ from services.llm_gateway import get_llm
 from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 
 # Actions that default to high risk requiring human approval before execution if not configured in UI
-HIGH_RISK_TOOLS = {"issue_refund", "process_payment"}
+HIGH_RISK_TOOLS = {"issue_refund", "process_payment", "submit_refund_request"}
 
 
 def _build_system_prompt(context: list[dict]) -> str:
@@ -36,6 +36,15 @@ CRITICAL RULES (in priority order):
    If the answer is not in the document excerpts, state that the query is out of context.
 
 4. ESCALATION RULE: For high-risk or irreversible actions (refunds, payments), call the escalate_to_human tool. DO NOT escalate when asked for order details — you MUST always call the data lookup tools (like Airtable or check_order_status) first!
+
+5. REFUND FLOW RULE: When the user asks for a refund, strictly follow this flow:
+   a. Ask for order ID or email if not provided.
+   b. Use `check_order_status` (or similar lookup tool) to fetch order details dynamically.
+   c. Inspect the returned data to determine if the order is delivered or shipped.
+   d. If not delivered, politely refuse the refund. If delivered, ask for the reason for the refund.
+   e. Before submitting, you MUST explicitly ask the user to confirm their name, email, and refund reason.
+   f. Upon confirmation, call the `submit_refund_request` tool with all collected data.
+   g. If a previous action was a refund decision, use the `Gmail` tool (with action `gmail_send_email`) to notify the user.
 
 Response format:
 - Keep answers concise, direct, and focused (1-2 sentences).
@@ -94,6 +103,7 @@ async def reasoning_node(state: AgentState) -> dict:
         "check order", "where is my order", "track my", "tracking number",
         "order number", "order update", "check my order", "look up order",
         "lookup order", "find my order", "order info",
+        "refund", "apply for refund", "request refund", "return order", "want a refund"
     }
 
     GREETINGS = {
