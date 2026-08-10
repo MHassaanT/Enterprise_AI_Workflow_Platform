@@ -1,6 +1,6 @@
 import json
 import asyncpg
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from config import settings
 from models import WorkflowDefinition, WorkflowExecutionState, StepLog, PendingApproval
 from datetime import datetime
@@ -85,7 +85,6 @@ async def create_approval_request(tenant_id: str, approval: PendingApproval):
     """Create a pending approval request that links to the workflow run."""
     pool = await get_db_pool()
     async with pool.acquire() as conn:
-        # Save to approval_requests
         await conn.execute(
             """
             INSERT INTO approval_requests 
@@ -112,3 +111,97 @@ async def load_workflow_run_state(run_id: str) -> WorkflowExecutionState:
             
         state_dict = json.loads(record['execution_state'])
         return WorkflowExecutionState(**state_dict)
+
+# ---- CRUD and Analytics Methods (Deliverable 4, 7) ----
+
+async def list_workflows(tenant_id: str, status: Optional[str] = None) -> List[dict]:
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        query = "SELECT workflow_id, name, description, status, created_at, updated_at FROM workflows WHERE tenant_id = $1"
+        args = [tenant_id]
+        if status:
+            query += " AND status = $2"
+            args.append(status)
+        query += " ORDER BY updated_at DESC"
+        
+        records = await conn.fetch(query, *args)
+        return [dict(r) for r in records]
+
+async def create_workflow(tenant_id: str, name: str, description: str, definition: dict, created_by: Optional[str] = None) -> str:
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        workflow_id = await conn.fetchval(
+            """
+            INSERT INTO workflows (tenant_id, name, description, definition, status, created_by)
+            VALUES ($1, $2, $3, $4, 'draft', $5)
+            RETURNING workflow_id
+            """,
+            tenant_id, name, description, json.dumps(definition), created_by
+        )
+        return str(workflow_id)
+
+async def update_workflow(workflow_id: str, definition: dict, status: Optional[str] = None):
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        if status:
+            await conn.execute(
+                "UPDATE workflows SET definition = $1, status = $2, updated_at = NOW() WHERE workflow_id = $3",
+                json.dumps(definition), status, workflow_id
+            )
+        else:
+            await conn.execute(
+                "UPDATE workflows SET definition = $1, updated_at = NOW() WHERE workflow_id = $2",
+                json.dumps(definition), workflow_id
+            )
+
+async def get_workflow_runs(workflow_id: str, limit: int = 50, offset: int = 0) -> List[dict]:
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        records = await conn.fetch(
+            """
+            SELECT run_id, status, triggered_by, created_at, completed_at 
+            FROM workflow_runs 
+            WHERE workflow_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT $2 OFFSET $3
+            """,
+            workflow_id, limit, offset
+        )
+        return [dict(r) for r in records]
+
+async def get_run_steps(run_id: str) -> List[dict]:
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        records = await conn.fetch(
+            """
+            SELECT step_id, node_id, node_type, input_data, output_data, status, duration_ms, executed_at, error_message
+            FROM workflow_run_steps 
+            WHERE run_id = $1 
+            ORDER BY executed_at ASC
+            """,
+            run_id
+        )
+        return [dict(r) for r in records]
+
+async def get_analytics(tenant_id: str) -> dict:
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        total_runs = await conn.fetchval("SELECT COUNT(*) FROM workflow_runs WHERE tenant_id = $1", tenant_id)
+        
+        if total_runs == 0:
+            return {"totalRuns": 0, "successRate": 0, "avgDurationMs": 0}
+            
+        success_runs = await conn.fetchval("SELECT COUNT(*) FROM workflow_runs WHERE tenant_id = $1 AND status = 'success'", tenant_id)
+        
+        # Calculate avg duration for successful runs
+        avg_duration = await conn.fetchval("""
+            SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) * 1000) 
+            FROM workflow_runs 
+            WHERE tenant_id = $1 AND status = 'success' AND completed_at IS NOT NULL
+        """, tenant_id)
+        
+        return {
+            "totalRuns": total_runs,
+            "successRate": success_runs / total_runs,
+            "avgDurationMs": float(avg_duration or 0)
+        }

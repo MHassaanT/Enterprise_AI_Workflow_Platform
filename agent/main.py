@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from tool_gateway.server import mcp
 from routers.agent import router as agent_router
+from routers.workflows import router as workflows_router
 
 # Build MCP HTTP app (Streamable HTTP transport)
 mcp_http_app = mcp.http_app(path="/mcp")
@@ -40,6 +41,9 @@ app.add_middleware(
 
 # Agent orchestration routes
 app.include_router(agent_router, prefix="/agent", tags=["Agent"])
+
+# Workflow Engine routes
+app.include_router(workflows_router, prefix="/api/v1/workflows", tags=["Workflows"])
 
 # MCP gateway (external tool clients can connect here)
 app.mount("/mcp", mcp_http_app)

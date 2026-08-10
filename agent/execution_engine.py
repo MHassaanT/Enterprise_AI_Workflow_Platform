@@ -26,16 +26,32 @@ from db_workflows import (
     create_approval_request,
     load_workflow_run_state
 )
-# For MCP tools and agents (mocked for now, as deliverable 4/5 integration comes later)
-# We will create placeholders for call_agent and call_mcp_tool.
+from tool_gateway.centralized_gateway import execute_mcp_tool
 
 async def call_agent(module_type: str, tenant_id: str, input_data: dict) -> dict:
-    """Mock agent call."""
+    """Mock agent call for now."""
     return {"response": f"Agent {module_type} processed input: {input_data}"}
 
 async def call_mcp_tool(mcp_server: str, tool_name: str, parameters: dict, tenant_id: str) -> dict:
-    """Mock MCP tool call."""
-    return {"result": f"Executed {tool_name} on {mcp_server} with {parameters}"}
+    """Invoke Centralized Gateway to call the MCP tool."""
+    # We pass the workflow_id or a dummy agent_instance_id since the gateway expects an agent
+    # In a real impl, workflows would have their own bindings or bypass agent checks
+    # Here we bypass the 'execute_mcp_tool' bindings by assuming the tool is allowed 
+    # Or just passing a dummy for the FYP scope. The execution_engine currently just calls it.
+    
+    # execute_mcp_tool returns a string response
+    response_str = await execute_mcp_tool(
+        tenant_id=tenant_id,
+        agent_instance_id="workflow-builder", # Dummy for workflow orchestration
+        tool_name=tool_name,
+        arguments=parameters
+    )
+    
+    # Simple check for security errors returned by the gateway
+    if response_str.startswith("Security Error:"):
+        raise PermissionError(response_str)
+    
+    return {"result": response_str}
 
 def get_next_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict[str, list]) -> str | None:
     """Determine the next node ID to execute."""
