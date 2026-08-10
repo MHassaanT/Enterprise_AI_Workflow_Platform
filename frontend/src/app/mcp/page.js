@@ -123,6 +123,28 @@ const SEEDED_INTEGRATIONS = [
     category: 'Productivity',
     icon: '📧',
     gradient: 'linear-gradient(135deg, #ea4335 0%, #c5221f 100%)',
+  },
+  {
+    id: 'google-docs-card',
+    canonical_name: 'Google Docs',
+    display_name: 'Google Docs (Google Workspace)',
+    provider_type: 'google_docs',
+    auth_mode: 'oauth2',
+    description: 'Read document text, append text, and create new documents via Google OAuth2.',
+    category: 'Productivity',
+    icon: '📄',
+    gradient: 'linear-gradient(135deg, #4285f4 0%, #1a73e8 100%)',
+  },
+  {
+    id: 'google-sheets-card',
+    canonical_name: 'Google Sheets',
+    display_name: 'Google Sheets (Google Workspace)',
+    provider_type: 'google_sheets',
+    auth_mode: 'oauth2',
+    description: 'Read cell ranges, update spreadsheet rows, and create new spreadsheets via Google OAuth2.',
+    category: 'Productivity',
+    icon: '📊',
+    gradient: 'linear-gradient(135deg, #34a853 0%, #1e8e3e 100%)',
   }
 ];
 
@@ -227,19 +249,20 @@ export default function IntegrationHubPage() {
 
   const handleConnectClick = (integration) => {
     if (integration.auth_mode === 'oauth2') {
-      handleOAuthConnect(integration.canonical_name);
+      handleOAuthConnect(integration.provider_type || integration.canonical_name);
     } else {
       openConnectModal(integration);
     }
   };
 
   const handleOAuthConnect = (provider) => {
+    const providerKey = provider.toLowerCase().replace(/\s+/g, '_');
     const token = getToken() || localStorage.getItem('ai_platform_token');
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
-    const popupUrl = `/api/integrations/connect/${provider.toLowerCase()}?token=${encodeURIComponent(token || '')}`;
+    const popupUrl = `/api/integrations/connect/${providerKey}?token=${encodeURIComponent(token || '')}`;
 
     const popup = window.open(
       popupUrl,
@@ -519,6 +542,9 @@ export default function IntegrationHubPage() {
                     <option value="hubspot">HubSpot</option>
                     <option value="clickup">ClickUp</option>
                     <option value="resend">Resend</option>
+                    <option value="gmail">Gmail</option>
+                    <option value="google_docs">Google Docs</option>
+                    <option value="google_sheets">Google Sheets</option>
                   </select>
                 </div>
 

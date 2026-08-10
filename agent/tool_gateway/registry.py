@@ -151,6 +151,21 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
             q: str = Field(default="", description="Search query")
             limit: int = Field(default=10, description="Max results")
         return GmailDynamicInput
+    elif "google_doc" in tool_name.lower() or "docs" in tool_name.lower():
+        class GoogleDocsDynamicInput(BaseModel):
+            action: str = Field(description="Action to perform: 'read_document', 'append_text', or 'create_document'")
+            document_id: str = Field(default=None, description="Google Document ID")
+            text: str = Field(default=None, description="Text content to append")
+            title: str = Field(default=None, description="Title for new document")
+        return GoogleDocsDynamicInput
+    elif "google_sheet" in tool_name.lower() or "sheets" in tool_name.lower():
+        class GoogleSheetsDynamicInput(BaseModel):
+            action: str = Field(description="Action to perform: 'read_range', 'update_rows', or 'create_spreadsheet'")
+            spreadsheet_id: str = Field(default=None, description="Google Spreadsheet ID")
+            range: str = Field(default=None, description="Cell range in A1 notation (e.g. Sheet1!A1:B10)")
+            values: Any = Field(default=None, description="Values/rows data (2D array)")
+            title: str = Field(default=None, description="Title for new spreadsheet")
+        return GoogleSheetsDynamicInput
 
     params_raw = config.get("parameters") or config.get("params") or {}
 
