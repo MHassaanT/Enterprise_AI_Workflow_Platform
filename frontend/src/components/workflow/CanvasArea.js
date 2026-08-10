@@ -17,31 +17,31 @@ import '@xyflow/react/dist/style.css';
 const CustomNode = ({ data, type }) => {
   const getColors = () => {
     switch (type) {
-      case 'TRIGGER': return 'border-blue-500 bg-blue-50';
-      case 'AGENT': return 'border-green-500 bg-green-50';
-      case 'ACTION': return 'border-orange-500 bg-orange-50';
-      case 'APPROVAL': return 'border-red-500 bg-red-50';
-      case 'CONDITION': return 'border-purple-500 bg-purple-50';
-      case 'DELAY': return 'border-gray-500 bg-gray-50';
-      case 'WEBHOOK_REPLY': return 'border-cyan-500 bg-cyan-50';
-      case 'END': return 'border-black bg-gray-100';
-      default: return 'border-gray-300 bg-white';
+      case 'TRIGGER': return 'border-blue-500 bg-blue-900/20 text-blue-100';
+      case 'AGENT': return 'border-green-500 bg-green-900/20 text-green-100';
+      case 'ACTION': return 'border-orange-500 bg-orange-900/20 text-orange-100';
+      case 'APPROVAL': return 'border-red-500 bg-red-900/20 text-red-100';
+      case 'CONDITION': return 'border-purple-500 bg-purple-900/20 text-purple-100';
+      case 'DELAY': return 'border-gray-500 bg-gray-800 text-gray-200';
+      case 'WEBHOOK_REPLY': return 'border-cyan-500 bg-cyan-900/20 text-cyan-100';
+      case 'END': return 'border-outline-variant bg-surface-container-highest text-on-surface';
+      default: return 'border-outline bg-surface-container text-on-surface';
     }
   };
 
   return (
-    <div className={`px-4 py-3 shadow-md rounded-lg border-2 min-w-[150px] transition-all hover:shadow-lg ${getColors()}`}>
+    <div className={`px-4 py-3 shadow-md rounded-lg border-2 min-w-[150px] transition-all hover:shadow-lg backdrop-blur-sm ${getColors()}`}>
       {type !== 'TRIGGER' && (
-        <Handle type="target" position={Position.Top} className="w-3 h-3 border-2 bg-white" />
+        <Handle type="target" position={Position.Top} className="w-3 h-3 border-2 bg-surface-container" />
       )}
       
       <div className="flex flex-col">
-        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{type}</div>
-        <div className="text-sm font-semibold text-gray-800">{data.label}</div>
+        <div className="text-xs font-bold opacity-70 uppercase tracking-wider mb-1">{type}</div>
+        <div className="text-sm font-bold">{data.label}</div>
       </div>
 
       {type !== 'END' && (
-        <Handle type="source" position={Position.Bottom} className="w-3 h-3 border-2 bg-white" />
+        <Handle type="source" position={Position.Bottom} className="w-3 h-3 border-2 bg-surface-container" />
       )}
     </div>
   );
@@ -75,7 +75,7 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
   );
 
   return (
-    <div className="flex-1 h-full w-full bg-gray-50 relative">
+    <div className="flex-1 h-full w-full bg-background relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -87,8 +87,8 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
         fitView
         className="w-full h-full"
       >
-        <Background color="#ccc" gap={16} />
-        <Controls className="bg-white shadow-md border-gray-200 rounded overflow-hidden" />
+        <Background color="#444" gap={16} />
+        <Controls className="bg-surface shadow-md border border-outline-variant rounded overflow-hidden" />
         <MiniMap 
           nodeColor={(node) => {
             switch (node.type) {
@@ -97,12 +97,12 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
               case 'ACTION': return '#f97316';
               case 'APPROVAL': return '#ef4444';
               case 'CONDITION': return '#a855f7';
-              case 'END': return '#000000';
-              default: return '#eee';
+              case 'END': return '#555555';
+              default: return '#333333';
             }
           }}
-          maskColor="rgba(240, 240, 240, 0.7)"
-          className="bg-white shadow-lg border border-gray-200 rounded-lg"
+          maskColor="rgba(20, 20, 20, 0.7)"
+          className="bg-surface shadow-lg border border-outline-variant rounded-lg"
         />
       </ReactFlow>
     </div>

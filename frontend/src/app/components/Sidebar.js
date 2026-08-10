@@ -28,6 +28,7 @@ export default function Sidebar() {
     { label: 'MCP Tools', href: '/mcp', icon: 'hub' },
     { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications' },
     { label: 'Human Approvals', href: '/admin/approvals', icon: 'fact_check' },
+    { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree' },
     ...(isAdmin ? [{ label: 'Team Users', href: '/users', icon: 'group' }] : []),
   ];
 

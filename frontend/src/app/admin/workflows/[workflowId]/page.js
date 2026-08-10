@@ -1,5 +1,6 @@
 import React from 'react';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
+import AuthGuard from '../../../components/AuthGuard';
 
 export default function WorkflowEditorPage({ params }) {
   // In a real implementation, we would fetch the workflow data using params.workflowId
@@ -16,13 +17,19 @@ export default function WorkflowEditorPage({ params }) {
   ];
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="h-14 bg-gray-800 text-white flex items-center px-6 shadow-md z-20">
-        <h1 className="text-lg font-bold tracking-wide">Workflow Editor <span className="font-normal text-gray-400 text-sm ml-2">/ {params.workflowId}</span></h1>
+    <AuthGuard>
+      <div className="h-screen flex flex-col bg-background text-on-surface font-body-md antialiased overflow-hidden">
+        <div className="h-14 bg-surface-container-highest border-b border-outline-variant flex items-center px-6 shadow-sm z-20">
+          <h1 className="font-title-md text-title-md font-bold text-on-surface tracking-wide flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">account_tree</span>
+            Workflow Editor 
+            <span className="font-normal text-on-surface-variant text-sm ml-2">/ {params.workflowId}</span>
+          </h1>
+        </div>
+        <div className="flex-1 relative bg-surface-container-lowest">
+          <WorkflowBuilder initialNodes={initialNodes} initialEdges={[]} />
+        </div>
       </div>
-      <div className="flex-1 relative">
-        <WorkflowBuilder initialNodes={initialNodes} initialEdges={[]} />
-      </div>
-    </div>
+    </AuthGuard>
   );
 }
