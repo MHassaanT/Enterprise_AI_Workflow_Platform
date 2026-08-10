@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export default function InspectorPanel({ selectedNode, onUpdateNode, onClose }) {
+export default function InspectorPanel({ selectedNode, onUpdateNode, onClose, connectedTools = [] }) {
   if (!selectedNode) {
     return (
       <div className="w-80 bg-surface border-l border-outline-variant p-6 flex flex-col items-center justify-center text-center text-on-surface-variant h-full relative">
@@ -104,10 +104,13 @@ export default function InspectorPanel({ selectedNode, onUpdateNode, onClose }) 
                   value={selectedNode.data.eventSource || ''}
                   onChange={(e) => handleChange('eventSource', e.target.value)}
                 >
-                  <option value="">Select Source</option>
-                  <option value="slack">Slack Message</option>
-                  <option value="github">GitHub PR Created</option>
-                  <option value="jira">Jira Ticket Updated</option>
+                  <option value="">Select App Integration</option>
+                  {connectedTools.map((tool) => (
+                    <option key={tool.id} value={tool.canonical_name}>
+                      {tool.custom_name || tool.canonical_name}
+                    </option>
+                  ))}
+                  {connectedTools.length === 0 && <option disabled>No connected tools</option>}
                 </select>
               </div>
             )}
@@ -117,16 +120,19 @@ export default function InspectorPanel({ selectedNode, onUpdateNode, onClose }) 
         {selectedNode.type === 'ACTION' && (
           <>
             <div>
-              <label className="block text-sm font-bold text-on-surface-variant mb-1">MCP Server</label>
+              <label className="block text-sm font-bold text-on-surface-variant mb-1">MCP Server Integration</label>
               <select 
                 className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm bg-surface-container text-on-surface shadow-sm"
                 value={selectedNode.data.mcp || ''}
                 onChange={(e) => handleChange('mcp', e.target.value)}
               >
                 <option value="">Select Server</option>
-                <option value="Stripe">Stripe</option>
-                <option value="Gmail">Gmail</option>
-                <option value="Airtable">Airtable</option>
+                {connectedTools.map((tool) => (
+                  <option key={tool.id} value={tool.canonical_name}>
+                    {tool.custom_name || tool.canonical_name}
+                  </option>
+                ))}
+                {connectedTools.length === 0 && <option disabled>No connected tools</option>}
               </select>
             </div>
             <div>

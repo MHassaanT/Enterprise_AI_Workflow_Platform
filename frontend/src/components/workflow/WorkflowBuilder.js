@@ -5,13 +5,25 @@ import ToolbarPanel from './ToolbarPanel';
 import CanvasArea from './CanvasArea';
 import InspectorPanel from './InspectorPanel';
 import RunHistoryPanel from './RunHistoryPanel';
+import { fetchGatewayBindings } from '@/lib/api';
 
 export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [connectedTools, setConnectedTools] = useState([]);
   
+  // Fetch connected tools for Action/Trigger node configuration
+  React.useEffect(() => {
+    fetchGatewayBindings()
+      .then(bindings => {
+        // bindings are the agent's or global tools connected by the tenant
+        setConnectedTools(bindings || []);
+      })
+      .catch(err => console.error('Failed to load connected tools:', err));
+  }, []);
+
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
   const handleAddNode = useCallback((type) => {
@@ -90,6 +102,7 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
             selectedNode={selectedNode}
             onUpdateNode={handleUpdateNode}
             onClose={() => setIsInspectorOpen(false)}
+            connectedTools={connectedTools}
           />
         )}
       </div>
