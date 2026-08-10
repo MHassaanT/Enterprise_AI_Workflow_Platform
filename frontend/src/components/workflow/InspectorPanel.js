@@ -2,10 +2,18 @@
 
 import React from 'react';
 
-export default function InspectorPanel({ selectedNode, onUpdateNode }) {
+export default function InspectorPanel({ selectedNode, onUpdateNode, onClose }) {
   if (!selectedNode) {
     return (
-      <div className="w-80 bg-surface border-l border-outline-variant p-6 flex flex-col items-center justify-center text-center text-on-surface-variant h-full">
+      <div className="w-80 bg-surface border-l border-outline-variant p-6 flex flex-col items-center justify-center text-center text-on-surface-variant h-full relative">
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 text-on-surface-variant hover:text-on-surface"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        )}
         <svg className="w-12 h-12 mb-4 text-outline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
         </svg>
@@ -24,8 +32,15 @@ export default function InspectorPanel({ selectedNode, onUpdateNode }) {
   return (
     <div className="w-80 bg-surface border-l border-outline-variant h-full overflow-y-auto flex flex-col shadow-[-4px_0_15px_rgba(0,0,0,0.03)] z-10">
       <div className="p-4 border-b border-outline-variant bg-surface-container-lowest flex justify-between items-center">
-        <h2 className="text-lg font-bold text-on-surface">{selectedNode.type} Node</h2>
-        <span className="text-xs font-mono bg-surface-container px-2 py-1 rounded border border-outline text-on-surface-variant">ID: {selectedNode.id.substring(0,6)}</span>
+        <div>
+          <h2 className="text-lg font-bold text-on-surface">{selectedNode.type} Node</h2>
+          <span className="text-xs font-mono bg-surface-container px-2 py-1 rounded border border-outline text-on-surface-variant mt-1 inline-block">ID: {selectedNode.id.substring(0,6)}</span>
+        </div>
+        {onClose && (
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface p-1 rounded hover:bg-surface-container">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        )}
       </div>
       
       <div className="p-5 space-y-5">
@@ -38,6 +53,66 @@ export default function InspectorPanel({ selectedNode, onUpdateNode }) {
             onChange={(e) => handleChange('label', e.target.value)}
           />
         </div>
+
+        {selectedNode.type === 'TRIGGER' && (
+          <>
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant mb-1">Trigger Type</label>
+              <select 
+                className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm bg-surface-container text-on-surface shadow-sm"
+                value={selectedNode.data.triggerType || 'manual'}
+                onChange={(e) => handleChange('triggerType', e.target.value)}
+              >
+                <option value="manual">Manual Trigger (API/Button)</option>
+                <option value="webhook">Webhook (Catch HTTP Request)</option>
+                <option value="schedule">Schedule (Cron Timer)</option>
+                <option value="event">App Event (Slack, GitHub, etc.)</option>
+              </select>
+            </div>
+            
+            {selectedNode.data.triggerType === 'webhook' && (
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant mb-1">Webhook URL Path</label>
+                <input
+                  type="text"
+                  placeholder="e.g. /my-custom-webhook"
+                  className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface"
+                  value={selectedNode.data.webhookPath || ''}
+                  onChange={(e) => handleChange('webhookPath', e.target.value)}
+                />
+              </div>
+            )}
+            
+            {selectedNode.data.triggerType === 'schedule' && (
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant mb-1">Cron Expression</label>
+                <input
+                  type="text"
+                  placeholder="* * * * *"
+                  className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface font-mono"
+                  value={selectedNode.data.cron || ''}
+                  onChange={(e) => handleChange('cron', e.target.value)}
+                />
+              </div>
+            )}
+            
+            {selectedNode.data.triggerType === 'event' && (
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant mb-1">Event Source</label>
+                <select 
+                  className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm bg-surface-container text-on-surface shadow-sm"
+                  value={selectedNode.data.eventSource || ''}
+                  onChange={(e) => handleChange('eventSource', e.target.value)}
+                >
+                  <option value="">Select Source</option>
+                  <option value="slack">Slack Message</option>
+                  <option value="github">GitHub PR Created</option>
+                  <option value="jira">Jira Ticket Updated</option>
+                </select>
+              </div>
+            )}
+          </>
+        )}
 
         {selectedNode.type === 'ACTION' && (
           <>

@@ -30,18 +30,18 @@ const CustomNode = ({ data, type }) => {
   };
 
   return (
-    <div className={`px-4 py-3 shadow-md rounded-lg border-2 min-w-[150px] transition-all hover:shadow-lg backdrop-blur-sm ${getColors()}`}>
+    <div className={`px-3 py-2 shadow-sm rounded border min-w-[120px] transition-all hover:shadow-md backdrop-blur-sm ${getColors()}`}>
       {type !== 'TRIGGER' && (
-        <Handle type="target" position={Position.Top} className="w-3 h-3 border-2 bg-surface-container" />
+        <Handle type="target" position={Position.Top} className="w-2 h-2 border bg-surface-container" />
       )}
       
       <div className="flex flex-col">
-        <div className="text-xs font-bold opacity-70 uppercase tracking-wider mb-1">{type}</div>
-        <div className="text-sm font-bold">{data.label}</div>
+        <div className="text-[10px] font-bold opacity-70 uppercase tracking-wider mb-0.5">{type}</div>
+        <div className="text-xs font-bold leading-tight">{data.label}</div>
       </div>
 
       {type !== 'END' && (
-        <Handle type="source" position={Position.Bottom} className="w-3 h-3 border-2 bg-surface-container" />
+        <Handle type="source" position={Position.Bottom} className="w-2 h-2 border bg-surface-container" />
       )}
     </div>
   );
@@ -88,22 +88,7 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
         className="w-full h-full"
       >
         <Background color="#444" gap={16} />
-        <Controls className="bg-surface shadow-md border border-outline-variant rounded overflow-hidden" />
-        <MiniMap 
-          nodeColor={(node) => {
-            switch (node.type) {
-              case 'TRIGGER': return '#3b82f6';
-              case 'AGENT': return '#22c55e';
-              case 'ACTION': return '#f97316';
-              case 'APPROVAL': return '#ef4444';
-              case 'CONDITION': return '#a855f7';
-              case 'END': return '#555555';
-              default: return '#333333';
-            }
-          }}
-          maskColor="rgba(20, 20, 20, 0.7)"
-          className="bg-surface shadow-lg border border-outline-variant rounded-lg"
-        />
+        <Controls className="bg-surface-container shadow-md border border-outline-variant rounded overflow-hidden [&>button]:bg-surface-container [&>button]:border-outline-variant [&>button]:text-on-surface hover:[&>button]:bg-surface-container-high" />
       </ReactFlow>
     </div>
   );

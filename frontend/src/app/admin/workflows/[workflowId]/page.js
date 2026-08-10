@@ -19,13 +19,6 @@ export default function WorkflowEditorPage({ params }) {
   return (
     <AuthGuard>
       <div className="h-screen flex flex-col bg-background text-on-surface font-body-md antialiased overflow-hidden">
-        <div className="h-14 bg-surface-container-highest border-b border-outline-variant flex items-center px-6 shadow-sm z-20">
-          <h1 className="font-title-md text-title-md font-bold text-on-surface tracking-wide flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">account_tree</span>
-            Workflow Editor 
-            <span className="font-normal text-on-surface-variant text-sm ml-2">/ {params.workflowId}</span>
-          </h1>
-        </div>
         <div className="flex-1 relative bg-surface-container-lowest">
           <WorkflowBuilder initialNodes={initialNodes} initialEdges={[]} />
         </div>

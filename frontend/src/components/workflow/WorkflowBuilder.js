@@ -10,6 +10,7 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
@@ -36,6 +37,7 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
 
   const handleNodeClick = useCallback((node) => {
     setSelectedNodeId(node.id);
+    setIsInspectorOpen(true);
   }, []);
 
   const handleSave = () => {
@@ -71,12 +73,25 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
             setEdges={setEdges}
             onNodeClick={handleNodeClick}
           />
+          
+          {/* Toggle Inspector Button */}
+          {!isInspectorOpen && (
+            <button 
+              onClick={() => setIsInspectorOpen(true)}
+              className="absolute top-4 right-4 z-10 bg-surface shadow-md border border-outline-variant p-2 rounded-lg text-on-surface hover:bg-surface-container"
+            >
+              <span className="material-symbols-outlined">last_page</span>
+            </button>
+          )}
         </div>
         
-        <InspectorPanel 
-          selectedNode={selectedNode}
-          onUpdateNode={handleUpdateNode}
-        />
+        {isInspectorOpen && (
+          <InspectorPanel 
+            selectedNode={selectedNode}
+            onUpdateNode={handleUpdateNode}
+            onClose={() => setIsInspectorOpen(false)}
+          />
+        )}
       </div>
       
       {/* Bottom Panel for Run History */}
