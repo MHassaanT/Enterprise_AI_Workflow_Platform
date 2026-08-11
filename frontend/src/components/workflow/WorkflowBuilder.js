@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import CanvasArea from './CanvasArea';
 import RunHistoryPanel from './RunHistoryPanel';
-import { fetchGatewayBindings, updateWorkflow, publishWorkflow, runWorkflow, createWorkflow } from '@/lib/api';
+import { fetchToolRegistry, updateWorkflow, publishWorkflow, runWorkflow, createWorkflow } from '@/lib/api';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useRouter } from 'next/navigation';
 
@@ -20,8 +20,12 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
   const [isTesting, setIsTesting] = useState(false);
   
   useEffect(() => {
-    fetchGatewayBindings()
-      .then(bindings => setConnectedTools(bindings || []))
+    fetchToolRegistry()
+      .then(registry => {
+        // Filter tools that are connected (have credentials) or don't require them (like built-ins)
+        const availableTools = (registry || []).filter(t => t.credential_id || t.provider_type === 'builtin' || t.provider_type === 'mcp_stdio');
+        setConnectedTools(availableTools);
+      })
       .catch(err => console.error('Failed to load connected tools:', err));
   }, []);
 
@@ -151,7 +155,7 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
       type: finalType,
       position: { x: window.innerWidth / 2 - 50, y: isFirstNode ? window.innerHeight / 2 - 100 : 0 },
       data: { 
-        label: toolData ? (toolData.custom_name || toolData.canonical_name) : finalType,
+        label: toolData ? (toolData.display_name || toolData.canonical_name) : finalType,
         mcp: toolData ? toolData.canonical_name : undefined,
         isInitialTrigger: isFirstNode
       }
@@ -253,7 +257,7 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
                       <div className="w-8 h-8 rounded bg-orange-900/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
                         <span className="material-symbols-outlined text-[18px]">build</span>
                       </div>
-                      <span className="text-sm font-bold text-on-surface">{tool.custom_name || tool.canonical_name}</span>
+                      <span className="text-sm font-bold text-on-surface">{tool.display_name || tool.canonical_name || tool.tool_name || 'Unknown Tool'}</span>
                     </button>
                   ))}
                   
