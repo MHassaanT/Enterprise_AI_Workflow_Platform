@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import WorkflowBuilder from '@/components/workflow/WorkflowBuilder';
 import AuthGuard from '../../../components/AuthGuard';
 import { fetchWorkflow } from '@/lib/api';
 
-export default function WorkflowEditorPage({ params }) {
+export default function WorkflowEditorPage() {
+  const params = useParams();
   const [workflow, setWorkflow] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { workflowId } = params;
+    const workflowId = params?.workflowId;
     setLoading(true);
     
     if (workflowId && !workflowId.startsWith('new-')) {
@@ -27,7 +29,7 @@ export default function WorkflowEditorPage({ params }) {
       setWorkflow(null);
       setLoading(false);
     }
-  }, [params.workflowId]);
+  }, [params?.workflowId]);
 
   if (loading) {
     return <div className="p-8 text-on-surface bg-background h-screen">Loading workflow...</div>;
@@ -59,8 +61,8 @@ export default function WorkflowEditorPage({ params }) {
       <div className="h-screen flex flex-col bg-background text-on-surface font-body-md antialiased overflow-hidden">
         <div className="flex-1 relative bg-surface-container-lowest">
           <WorkflowBuilder 
-            key={params.workflowId}
-            workflowId={params.workflowId} 
+            key={params?.workflowId}
+            workflowId={params?.workflowId} 
             initialNodes={initialNodes} 
             initialEdges={initialEdges} 
           />
