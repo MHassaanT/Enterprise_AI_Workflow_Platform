@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
-import { fetchWorkflows, createWorkflow } from '@/lib/api';
+import { fetchWorkflows, createWorkflow, deleteWorkflow } from '@/lib/api';
 
 export default function WorkflowsListPage() {
   const router = useRouter();
@@ -26,7 +26,18 @@ export default function WorkflowsListPage() {
       router.push(`/admin/workflows/${newWorkflow.id}`);
     } catch (err) {
       console.error(err);
-      alert('Failed to create workflow');
+      alert(err.message || 'Failed to create workflow');
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!confirm(`Are you sure you want to delete workflow "${name}"?`)) return;
+    try {
+      await deleteWorkflow(id);
+      setWorkflows(workflows.filter(wf => wf.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete workflow');
     }
   };
 
@@ -77,7 +88,8 @@ export default function WorkflowsListPage() {
                       {new Date(wf.updated_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold">
-                      <Link href={`/admin/workflows/${wf.id}`} className="text-primary hover:text-primary/80">Edit</Link>
+                      <Link href={`/admin/workflows/${wf.id}`} className="text-primary hover:text-primary/80 mr-4">Edit</Link>
+                      <button onClick={() => handleDelete(wf.id, wf.name)} className="text-error hover:text-error/80">Delete</button>
                     </td>
                   </tr>
                 ))}
