@@ -23,7 +23,7 @@ export default function RootLayout({ children }) {
         <AuthGuard>
           <div className="flex min-h-screen bg-background text-on-surface">
             <Sidebar />
-            <div className="flex-1 md:ml-64 pt-16 md:pt-0 min-h-screen">
+            <div className="flex-1 pt-16 md:pt-0 min-h-screen min-w-0 flex flex-col">
               {children}
             </div>
           </div>

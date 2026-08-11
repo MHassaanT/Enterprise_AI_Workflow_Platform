@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function ToolbarPanel({ onAddNode, onSave, onPublish, onTest, isSaving, isPublishing, isTesting }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   const nodeTypes = [
     { type: 'TRIGGER', label: 'Trigger (Start)', color: 'bg-blue-500' },
     { type: 'AGENT', label: 'Agent', color: 'bg-green-500' },
@@ -14,11 +16,34 @@ export default function ToolbarPanel({ onAddNode, onSave, onPublish, onTest, isS
     { type: 'END', label: 'End', color: 'bg-black' }
   ];
 
+  if (isCollapsed) {
+    return (
+      <div className="w-12 bg-surface border-r border-outline-variant flex flex-col items-center py-4 h-full z-10 shadow-sm transition-all duration-300">
+        <button 
+          onClick={() => setIsCollapsed(false)} 
+          className="p-2 rounded hover:bg-surface-container text-on-surface-variant"
+          title="Expand Toolbar"
+        >
+          <span className="material-symbols-outlined">menu</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-64 bg-surface border-r border-outline-variant flex flex-col h-full overflow-y-auto z-10 shadow-sm">
-      <div className="p-4 border-b border-outline-variant bg-surface-container-lowest">
-        <h2 className="text-lg font-bold text-on-surface">Workflow Builder</h2>
-        <div className="mt-4 flex gap-2 flex-wrap">
+    <div className="w-64 bg-surface border-r border-outline-variant flex flex-col h-full overflow-y-auto z-10 shadow-sm transition-all duration-300">
+      <div className="p-4 border-b border-outline-variant bg-surface-container-lowest flex flex-col relative">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-bold text-on-surface">Workflow Builder</h2>
+          <button 
+            onClick={() => setIsCollapsed(true)} 
+            className="p-1 rounded hover:bg-surface-container text-on-surface-variant"
+            title="Collapse Toolbar"
+          >
+            <span className="material-symbols-outlined text-sm">keyboard_double_arrow_left</span>
+          </button>
+        </div>
+        <div className="mt-2 flex gap-2 flex-wrap">
           <button onClick={onSave} disabled={isSaving} className="flex-1 px-3 py-2 bg-surface-container hover:bg-surface-container-high border border-outline rounded text-sm text-on-surface font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
             {isSaving ? 'Saving...' : 'Save'}
           </button>

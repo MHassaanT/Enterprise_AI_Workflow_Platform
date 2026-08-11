@@ -5,10 +5,12 @@ import ToolbarPanel from './ToolbarPanel';
 import CanvasArea from './CanvasArea';
 import InspectorPanel from './InspectorPanel';
 import RunHistoryPanel from './RunHistoryPanel';
-import { fetchGatewayBindings, updateWorkflow, publishWorkflow, runWorkflow } from '@/lib/api';
+import { fetchGatewayBindings, updateWorkflow, publishWorkflow, runWorkflow, createWorkflow } from '@/lib/api';
 import { ReactFlowProvider } from '@xyflow/react';
+import { useRouter } from 'next/navigation';
 
 export default function WorkflowBuilder({ workflowId, initialNodes = [], initialEdges = [] }) {
+  const router = useRouter();
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -89,7 +91,20 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
         setIsSaving(false);
       }
     } else {
-      alert('Save logic for new workflows should be handled in creation. DAG saved locally.');
+      const name = prompt("Enter a name for the new workflow:", "New Workflow");
+      if (!name) return; // User cancelled
+
+      setIsSaving(true);
+      try {
+        const newWorkflow = await createWorkflow(name, 'Created from builder', { nodes, edges });
+        alert('Workflow created successfully!');
+        router.push(`/admin/workflows/${newWorkflow.id}`);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to create workflow.');
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
