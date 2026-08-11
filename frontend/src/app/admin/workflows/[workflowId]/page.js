@@ -11,6 +11,8 @@ export default function WorkflowEditorPage({ params }) {
 
   useEffect(() => {
     const { workflowId } = params;
+    setLoading(true);
+    
     if (workflowId && !workflowId.startsWith('new-')) {
       fetchWorkflow(workflowId)
         .then(data => {
@@ -22,6 +24,7 @@ export default function WorkflowEditorPage({ params }) {
           setLoading(false);
         });
     } else {
+      setWorkflow(null);
       setLoading(false);
     }
   }, [params.workflowId]);
@@ -30,7 +33,17 @@ export default function WorkflowEditorPage({ params }) {
     return <div className="p-8 text-on-surface bg-background h-screen">Loading workflow...</div>;
   }
 
-  const initialNodes = workflow?.definition?.nodes?.length > 0 ? workflow.definition.nodes : [
+  let definition = workflow?.definition;
+  if (typeof definition === 'string') {
+    try {
+      definition = JSON.parse(definition);
+    } catch (e) {
+      console.error('Failed to parse workflow definition:', e);
+      definition = null;
+    }
+  }
+
+  const initialNodes = definition?.nodes?.length > 0 ? definition.nodes : [
     {
       id: 'trigger-1',
       type: 'TRIGGER',
@@ -39,7 +52,7 @@ export default function WorkflowEditorPage({ params }) {
     }
   ];
   
-  const initialEdges = workflow?.definition?.edges || [];
+  const initialEdges = definition?.edges || [];
 
   return (
     <AuthGuard>
