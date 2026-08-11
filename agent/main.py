@@ -21,12 +21,27 @@ from routers.workflows import router as workflows_router
 # Build MCP HTTP app (Streamable HTTP transport)
 mcp_http_app = mcp.http_app(path="/mcp")
 
+from polling_engine import start_polling_engine
+import asyncio
+from contextlib import asynccontextmanager
+
 # Main app — lifespan from mcp_http_app for proper MCP session management
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start polling engine
+    polling_task = asyncio.create_task(start_polling_engine())
+    
+    # Delegate to MCP lifespan
+    async with mcp_http_app.lifespan(app):
+        yield
+        
+    polling_task.cancel()
+
 app = FastAPI(
     title="Enterprise AI Agent Orchestration Service",
     description="LangGraph-powered customer support agent with MCP tool integration",
     version="1.0.0",
-    lifespan=mcp_http_app.lifespan,
+    lifespan=lifespan,
 )
 
 # CORS — Node.js API Gateway & external tools allowed

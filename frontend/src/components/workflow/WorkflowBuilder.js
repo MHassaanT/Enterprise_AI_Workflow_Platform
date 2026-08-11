@@ -313,6 +313,7 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
                         <option value="event">Trigger Event</option>
                         <option value="schedule">Schedule (Cron)</option>
                         <option value="interval">Interval (Repeat)</option>
+                        <option value="app_event">App Integration Polling</option>
                       </select>
                     </div>
                     
@@ -351,6 +352,51 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
                           value={selectedNode.data.intervalMinutes || ''}
                           onChange={(e) => handleUpdateNode(selectedNode.id, { ...selectedNode.data, intervalMinutes: parseInt(e.target.value) || 0 })}
                         />
+                      </div>
+                    )}
+
+                    {selectedNode.data.triggerMode === 'app_event' && (
+                      <div className="space-y-3 mt-3">
+                        <div>
+                          <label className="block text-sm font-bold text-on-surface-variant mb-1">Select App</label>
+                          <select 
+                            className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                            value={selectedNode.data.appIntegration || ''}
+                            onChange={(e) => handleUpdateNode(selectedNode.id, { ...selectedNode.data, appIntegration: e.target.value })}
+                          >
+                            <option value="">-- Select App --</option>
+                            <option value="airtable">Airtable</option>
+                            <option value="gmail">Gmail</option>
+                            <option value="sheets">Google Sheets</option>
+                          </select>
+                        </div>
+
+                        {selectedNode.data.appIntegration === 'airtable' && (
+                          <div className="space-y-2">
+                            <input type="text" placeholder="Base ID" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.baseId || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, baseId: e.target.value })} />
+                            <input type="text" placeholder="Table Name (e.g. Orders)" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.tableName || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, tableName: e.target.value })} />
+                            <input type="text" placeholder="Condition (e.g. Delivered)" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.query || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, query: e.target.value })} />
+                          </div>
+                        )}
+
+                        {selectedNode.data.appIntegration === 'gmail' && (
+                          <div className="space-y-2">
+                            <input type="text" placeholder="Search Query (e.g. is:unread)" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.query || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, query: e.target.value })} />
+                          </div>
+                        )}
+
+                        {selectedNode.data.appIntegration === 'sheets' && (
+                          <div className="space-y-2">
+                            <input type="text" placeholder="Spreadsheet ID" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.spreadsheetId || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, spreadsheetId: e.target.value })} />
+                            <input type="text" placeholder="Range (e.g. Sheet1!A:Z)" className="w-full px-3 py-2 border border-outline rounded bg-surface-container text-sm shadow-sm"
+                              value={selectedNode.data.range || ''} onChange={e => handleUpdateNode(selectedNode.id, { ...selectedNode.data, range: e.target.value })} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
