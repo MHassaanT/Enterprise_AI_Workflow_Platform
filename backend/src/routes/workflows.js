@@ -32,7 +32,7 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
       `INSERT INTO workflows (tenant_id, name, description, definition, status, created_by) 
        VALUES ($1, $2, $3, $4, 'draft', $5) 
        RETURNING workflow_id as id, name, description, status, updated_at`,
-      [tenantId, name, description || '', dag_json || { nodes: [], edges: [] }, req.user.id]
+      [tenantId, name, description || '', JSON.stringify(dag_json || { nodes: [], edges: [] }), req.user.id]
     );
     res.status(201).json({ workflow: result.rows[0] });
   } catch (error) {
@@ -85,7 +85,7 @@ router.patch('/:id', authenticate, authorize('admin'), async (req, res) => {
     }
     if (dag_json !== undefined) {
       updates.push(`definition = $${count++}`);
-      values.push(dag_json);
+      values.push(JSON.stringify(dag_json));
     }
 
     if (updates.length === 0) {

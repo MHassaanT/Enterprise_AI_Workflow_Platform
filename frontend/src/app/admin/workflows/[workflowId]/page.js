@@ -46,6 +46,7 @@ export default function WorkflowEditorPage({ params }) {
       <div className="h-screen flex flex-col bg-background text-on-surface font-body-md antialiased overflow-hidden">
         <div className="flex-1 relative bg-surface-container-lowest">
           <WorkflowBuilder 
+            key={params.workflowId}
             workflowId={params.workflowId} 
             initialNodes={initialNodes} 
             initialEdges={initialEdges} 
