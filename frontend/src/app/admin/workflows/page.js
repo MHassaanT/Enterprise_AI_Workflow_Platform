@@ -4,25 +4,30 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '../../components/AuthGuard';
+import { fetchWorkflows, createWorkflow } from '@/lib/api';
 
 export default function WorkflowsListPage() {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workflowName, setWorkflowName] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
-  const [workflows, setWorkflows] = useState([]); // Removed hardcoded data
+  const [workflows, setWorkflows] = useState([]);
 
-  const handleCreate = (e) => {
+  useEffect(() => {
+    fetchWorkflows().then(setWorkflows).catch(console.error);
+  }, []);
+
+  const handleCreate = async (e) => {
     e.preventDefault();
     if (!workflowName) return;
     
-    // In a real implementation, we would call the Deliverable 4 POST API here
-    // const newWorkflow = await api.createWorkflow({ name, description })
-    // router.push(`/admin/workflows/${newWorkflow.id}`)
-    
-    // For now, redirect to a mock ID to show the canvas
-    const newId = `new-${Date.now()}`;
-    router.push(`/admin/workflows/${newId}`);
+    try {
+      const newWorkflow = await createWorkflow(workflowName, workflowDescription);
+      router.push(`/admin/workflows/${newWorkflow.id}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create workflow');
+    }
   };
 
   return (
@@ -69,7 +74,7 @@ export default function WorkflowsListPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-on-surface-variant">
-                      {wf.updated}
+                      {new Date(wf.updated_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold">
                       <Link href={`/admin/workflows/${wf.id}`} className="text-primary hover:text-primary/80">Edit</Link>

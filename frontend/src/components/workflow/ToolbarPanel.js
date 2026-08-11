@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export default function ToolbarPanel({ onAddNode, onSave, onPublish, onTest }) {
+export default function ToolbarPanel({ onAddNode, onSave, onPublish, onTest, isSaving, isPublishing, isTesting }) {
   const nodeTypes = [
     { type: 'TRIGGER', label: 'Trigger (Start)', color: 'bg-blue-500' },
     { type: 'AGENT', label: 'Agent', color: 'bg-green-500' },
@@ -19,9 +19,15 @@ export default function ToolbarPanel({ onAddNode, onSave, onPublish, onTest }) {
       <div className="p-4 border-b border-outline-variant bg-surface-container-lowest">
         <h2 className="text-lg font-bold text-on-surface">Workflow Builder</h2>
         <div className="mt-4 flex gap-2 flex-wrap">
-          <button onClick={onSave} className="flex-1 px-3 py-2 bg-surface-container hover:bg-surface-container-high border border-outline rounded text-sm text-on-surface font-bold transition-colors shadow-sm">Save</button>
-          <button onClick={onPublish} className="flex-1 px-3 py-2 bg-primary text-on-primary rounded text-sm hover:bg-primary/90 transition-colors shadow-sm font-bold">Publish</button>
-          <button onClick={onTest} className="w-full px-3 py-2 bg-primary-container/20 text-primary border border-primary/30 rounded text-sm hover:bg-primary-container/40 mt-2 font-bold transition-colors">Test Run</button>
+          <button onClick={onSave} disabled={isSaving} className="flex-1 px-3 py-2 bg-surface-container hover:bg-surface-container-high border border-outline rounded text-sm text-on-surface font-bold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+          <button onClick={onPublish} disabled={isPublishing} className="flex-1 px-3 py-2 bg-primary text-on-primary rounded text-sm hover:bg-primary/90 transition-colors shadow-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+            {isPublishing ? 'Publishing...' : 'Publish'}
+          </button>
+          <button onClick={onTest} disabled={isTesting} className="w-full px-3 py-2 bg-primary-container/20 text-primary border border-primary/30 rounded text-sm hover:bg-primary-container/40 mt-2 font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            {isTesting ? 'Running...' : 'Test Run'}
+          </button>
         </div>
       </div>
       

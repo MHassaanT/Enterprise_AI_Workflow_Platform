@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export default function InspectorPanel({ selectedNode, onUpdateNode, onClose, connectedTools = [] }) {
+export default function InspectorPanel({ selectedNode, onUpdateNode, onDeleteNode, onClose, connectedTools = [] }) {
   if (!selectedNode) {
     return (
       <div className="w-80 bg-surface border-l border-outline-variant p-6 flex flex-col items-center justify-center text-center text-on-surface-variant h-full relative">
@@ -171,10 +171,82 @@ export default function InspectorPanel({ selectedNode, onUpdateNode, onClose, co
           </div>
         )}
 
-        <div className="pt-4 border-t border-outline-variant mt-6">
+        {selectedNode.type === 'AGENT' && (
+          <>
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant mb-1">Agent Name</label>
+              <input
+                type="text"
+                placeholder="e.g. customer_support_agent"
+                className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface"
+                value={selectedNode.data.agentName || ''}
+                onChange={(e) => handleChange('agentName', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant mb-1">Prompt / Input</label>
+              <textarea
+                className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface"
+                rows="3"
+                placeholder="Instructions for the agent..."
+                value={selectedNode.data.prompt || ''}
+                onChange={(e) => handleChange('prompt', e.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        {selectedNode.type === 'APPROVAL' && (
+          <div>
+            <label className="block text-sm font-bold text-on-surface-variant mb-1">Approval Message</label>
+            <input
+              type="text"
+              placeholder="Please approve this action"
+              className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface"
+              value={selectedNode.data.approvalMessage || ''}
+              onChange={(e) => handleChange('approvalMessage', e.target.value)}
+            />
+          </div>
+        )}
+
+        {selectedNode.type === 'DELAY' && (
+          <div>
+            <label className="block text-sm font-bold text-on-surface-variant mb-1">Delay Duration (ms)</label>
+            <input
+              type="number"
+              placeholder="e.g. 5000"
+              className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface"
+              value={selectedNode.data.delayMs || ''}
+              onChange={(e) => handleChange('delayMs', parseInt(e.target.value) || 0)}
+            />
+          </div>
+        )}
+
+        {selectedNode.type === 'WEBHOOK_REPLY' && (
+          <div>
+            <label className="block text-sm font-bold text-on-surface-variant mb-1">Response JSON</label>
+            <textarea
+              className="w-full px-3 py-2 border border-outline rounded focus:ring-primary focus:border-primary text-sm shadow-sm bg-surface-container text-on-surface font-mono"
+              rows="4"
+              placeholder='{"status": "success"}'
+              value={selectedNode.data.responseJson || ''}
+              onChange={(e) => handleChange('responseJson', e.target.value)}
+            />
+          </div>
+        )}
+
+        <div className="pt-4 border-t border-outline-variant mt-6 space-y-3">
           <button className="w-full px-4 py-2 border border-outline shadow-sm text-sm font-bold rounded text-on-surface-variant bg-surface-container hover:bg-surface-container-high focus:outline-none transition-colors">
             Advanced Editor
           </button>
+          {onDeleteNode && (
+            <button 
+              onClick={() => onDeleteNode(selectedNode.id)}
+              className="w-full px-4 py-2 border border-error text-error shadow-sm text-sm font-bold rounded hover:bg-error/10 focus:outline-none transition-colors"
+            >
+              Delete Node
+            </button>
+          )}
         </div>
       </div>
     </div>

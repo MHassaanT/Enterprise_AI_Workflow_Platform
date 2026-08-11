@@ -16,6 +16,7 @@ const mcpRoutes = require('./routes/mcp');
 const mcpGatewayRoutes = require('./routes/mcp_gateway');
 const integrationRoutes = require('./routes/integrations');
 const approvalRoutes = require('./routes/approvals');
+const workflowRoutes = require('./routes/workflows');
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/v1/mcp', mcpRoutes);
 app.use('/api/mcp-gateway', mcpGatewayRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/approvals', approvalRoutes);
+app.use('/api/workflows', workflowRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded

@@ -450,5 +450,81 @@ export async function connectStripeCredentials(apiKey) {
   return res.json();
 }
 
+// ── WORKFLOWS API ──
+export async function fetchWorkflows() {
+  const res = await fetch('/api/workflows', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch workflows');
+  const data = await res.json();
+  return data.workflows || [];
+}
+
+export async function createWorkflow(name, description, dag_json = null) {
+  const res = await fetch('/api/workflows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name, description, dag_json })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to create workflow');
+  const data = await res.json();
+  return data.workflow;
+}
+
+export async function fetchWorkflow(id) {
+  const res = await fetch(`/api/workflows/${id}`, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch workflow');
+  const data = await res.json();
+  return data.workflow;
+}
+
+export async function updateWorkflow(id, name, description, dag_json) {
+  const res = await fetch(`/api/workflows/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name, description, dag_json })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to update workflow');
+  const data = await res.json();
+  return data.workflow;
+}
+
+export async function publishWorkflow(id) {
+  const res = await fetch(`/api/workflows/${id}/publish`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to publish workflow');
+  const data = await res.json();
+  return data.workflow;
+}
+
+export async function runWorkflow(id) {
+  const res = await fetch(`/api/workflows/${id}/run`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to run workflow');
+  const data = await res.json();
+  return data.run;
+}
+
+export async function fetchWorkflowRuns(id) {
+  const res = await fetch(`/api/workflows/${id}/runs`, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch workflow runs');
+  const data = await res.json();
+  return data.runs || [];
+}
 
 

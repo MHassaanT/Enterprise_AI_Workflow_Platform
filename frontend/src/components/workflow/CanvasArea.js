@@ -74,6 +74,20 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
     [setEdges]
   );
 
+  const onNodesDelete = useCallback(
+    (deleted) => {
+      setNodes((nds) => nds.filter((node) => !deleted.find((d) => d.id === node.id)));
+    },
+    [setNodes]
+  );
+
+  const onEdgesDelete = useCallback(
+    (deleted) => {
+      setEdges((eds) => eds.filter((edge) => !deleted.find((d) => d.id === edge.id)));
+    },
+    [setEdges]
+  );
+
   return (
     <div className="flex-1 h-full w-full bg-background relative">
       <ReactFlow
@@ -81,6 +95,8 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
         onConnect={onConnect}
         onNodeClick={(_, node) => onNodeClick(node)}
         nodeTypes={nodeTypes}

@@ -5,14 +5,18 @@ import ToolbarPanel from './ToolbarPanel';
 import CanvasArea from './CanvasArea';
 import InspectorPanel from './InspectorPanel';
 import RunHistoryPanel from './RunHistoryPanel';
-import { fetchGatewayBindings } from '@/lib/api';
+import { fetchGatewayBindings, updateWorkflow, publishWorkflow, runWorkflow } from '@/lib/api';
+import { ReactFlowProvider } from '@xyflow/react';
 
-export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }) {
+export default function WorkflowBuilder({ workflowId, initialNodes = [], initialEdges = [] }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [connectedTools, setConnectedTools] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   
   // Fetch connected tools for Action/Trigger node configuration
   React.useEffect(() => {
@@ -27,13 +31,15 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
 
   const handleAddNode = useCallback((type) => {
-    const newNode = {
-      id: `${type.toLowerCase()}-${Date.now()}`,
-      type,
-      position: { x: 250, y: 150 },
-      data: { label: `New ${type} Node` }
-    };
-    setNodes((nds) => nds.concat(newNode));
+    setNodes((nds) => {
+      const newNode = {
+        id: `${type.toLowerCase()}-${Date.now()}`,
+        type,
+        position: { x: 250 + (nds.length * 30), y: 150 + (nds.length * 30) },
+        data: { label: `New ${type} Node` }
+      };
+      return nds.concat(newNode);
+    });
   }, []);
 
   const handleUpdateNode = useCallback((id, newData) => {
@@ -52,29 +58,93 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
     setIsInspectorOpen(true);
   }, []);
 
-  const handleSave = () => {
-    console.log('Saved Workflow DAG:', { nodes, edges });
-    alert('Workflow saved successfully!');
+  const handleDeleteNode = useCallback((id) => {
+    setNodes((nds) => nds.filter(n => n.id !== id));
+    setEdges((eds) => eds.filter(e => e.source !== id && e.target !== id));
+    if (selectedNodeId === id) setSelectedNodeId(null);
+  }, [selectedNodeId]);
+
+  const validateDAG = () => {
+    if (!nodes.some(n => n.type === 'TRIGGER')) return 'Workflow must have at least one TRIGGER node.';
+    if (!nodes.some(n => n.type === 'END')) return 'Workflow must have at least one END node.';
+    return null;
   };
 
-  const handlePublish = () => {
-    console.log('Published Workflow DAG:', { nodes, edges });
-    alert('Workflow published and is now active!');
+  const handleSave = async () => {
+    const error = validateDAG();
+    if (error) {
+      alert(error);
+      return;
+    }
+
+    if (workflowId && !workflowId.startsWith('new-')) {
+      setIsSaving(true);
+      try {
+        await updateWorkflow(workflowId, undefined, undefined, { nodes, edges });
+        alert('Workflow saved successfully!');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to save workflow.');
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      alert('Save logic for new workflows should be handled in creation. DAG saved locally.');
+    }
   };
 
-  const handleTest = () => {
-    console.log('Simulating Test Run...');
-    alert('Test run initiated! Check the console and run history.');
+  const handlePublish = async () => {
+    const error = validateDAG();
+    if (error) {
+      alert(error);
+      return;
+    }
+
+    if (workflowId && !workflowId.startsWith('new-')) {
+      setIsPublishing(true);
+      try {
+        await publishWorkflow(workflowId);
+        alert('Workflow published and is now active!');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to publish workflow.');
+      } finally {
+        setIsPublishing(false);
+      }
+    } else {
+      alert('Cannot publish an unsaved workflow.');
+    }
+  };
+
+  const handleTest = async () => {
+    if (workflowId && !workflowId.startsWith('new-')) {
+      setIsTesting(true);
+      try {
+        await runWorkflow(workflowId);
+        alert('Test run initiated! Check the run history.');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to trigger workflow run.');
+      } finally {
+        setIsTesting(false);
+      }
+    } else {
+      alert('Cannot test an unsaved workflow.');
+    }
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden font-sans">
-      <div className="flex flex-1 h-[calc(100vh-250px)]">
+    <ReactFlowProvider>
+      <div className="flex flex-col h-screen w-full bg-background overflow-hidden font-sans">
+        <div className="flex flex-1 h-[calc(100vh-250px)]">
         <ToolbarPanel 
           onAddNode={handleAddNode} 
           onSave={handleSave}
           onPublish={handlePublish}
           onTest={handleTest}
+          isSaving={isSaving}
+          isPublishing={isPublishing}
+          isTesting={isTesting}
         />
         
         <div className="flex-1 relative">
@@ -101,6 +171,7 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
           <InspectorPanel 
             selectedNode={selectedNode}
             onUpdateNode={handleUpdateNode}
+            onDeleteNode={handleDeleteNode}
             onClose={() => setIsInspectorOpen(false)}
             connectedTools={connectedTools}
           />
@@ -108,7 +179,8 @@ export default function WorkflowBuilder({ initialNodes = [], initialEdges = [] }
       </div>
       
       {/* Bottom Panel for Run History */}
-      <RunHistoryPanel />
-    </div>
+      <RunHistoryPanel workflowId={workflowId} />
+      </div>
+    </ReactFlowProvider>
   );
 }

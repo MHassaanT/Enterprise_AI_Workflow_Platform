@@ -1,12 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchWorkflowRuns } from '@/lib/api';
 
-export default function RunHistoryPanel() {
+export default function RunHistoryPanel({ workflowId }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [runs, setRuns] = useState([]);
 
-  // Mock data for runs (removed hardcoded)
-  const mockRuns = [];
+  useEffect(() => {
+    if (isOpen && workflowId && !workflowId.startsWith('new-')) {
+      fetchWorkflowRuns(workflowId)
+        .then(setRuns)
+        .catch(console.error);
+    }
+  }, [isOpen, workflowId]);
 
   if (!isOpen) {
     return (
@@ -45,11 +52,11 @@ export default function RunHistoryPanel() {
       <div className="flex-1 overflow-y-auto p-4 flex">
         {/* Run List */}
         <div className="w-1/3 border-r border-outline-variant pr-4 space-y-2">
-          {mockRuns.map(run => (
+          {runs.map(run => (
             <div key={run.id} className="p-3 border border-outline rounded-lg hover:bg-surface-container cursor-pointer flex justify-between items-center transition-colors shadow-sm bg-surface-container-lowest">
               <div>
-                <div className="text-xs text-on-surface-variant font-bold">{run.date}</div>
-                <div className="text-sm font-bold text-on-surface">{run.id}</div>
+                <div className="text-xs text-on-surface-variant font-bold">{new Date(run.date).toLocaleString()}</div>
+                <div className="text-sm font-bold text-on-surface">{run.id.substring(0,8)}</div>
               </div>
               <div className="text-right">
                 <span className={`text-xs px-2 py-1 rounded-full font-bold ${
@@ -59,11 +66,11 @@ export default function RunHistoryPanel() {
                 }`}>
                   {run.status}
                 </span>
-                <div className="text-xs text-on-surface-variant mt-1 font-bold">{run.duration}</div>
+                {run.completed_at && <div className="text-xs text-on-surface-variant mt-1 font-bold">{new Date(run.completed_at).toLocaleTimeString()}</div>}
               </div>
             </div>
           ))}
-          {mockRuns.length === 0 && (
+          {runs.length === 0 && (
             <div className="h-full flex items-center justify-center text-on-surface-variant text-sm font-bold text-center">
               No runs yet. Click "Test Run" to trigger a simulation.
             </div>
