@@ -83,7 +83,7 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
         router.push(`/admin/workflows/${newWorkflow.id}`);
       } catch (err) {
         console.error(err);
-        alert('Failed to create workflow.');
+        alert(err.message || 'Failed to create workflow.');
       } finally {
         setIsSaving(false);
       }

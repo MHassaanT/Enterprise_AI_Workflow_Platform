@@ -468,7 +468,13 @@ export async function createWorkflow(name, description, dag_json = null) {
     body: JSON.stringify({ name, description, dag_json })
   });
   handleUnauthorized(res);
-  if (!res.ok) throw new Error('Failed to create workflow');
+  if (!res.ok) {
+    let errData = { error: 'Failed to create workflow' };
+    try {
+      errData = await res.json();
+    } catch (e) {}
+    throw new Error(errData.error || 'Failed to create workflow');
+  }
   const data = await res.json();
   return data.workflow;
 }
@@ -481,6 +487,16 @@ export async function fetchWorkflow(id) {
   if (!res.ok) throw new Error('Failed to fetch workflow');
   const data = await res.json();
   return data.workflow;
+}
+
+export async function deleteWorkflow(id) {
+  const res = await fetch(`/api/workflows/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete workflow');
+  return res.json();
 }
 
 export async function updateWorkflow(id, name, description, dag_json) {

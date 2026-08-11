@@ -37,6 +37,9 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
     res.status(201).json({ workflow: result.rows[0] });
   } catch (error) {
     console.error('Error creating workflow:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'A workflow with this name already exists. Please choose a different name.' });
+    }
     res.status(500).json({ error: 'Failed to create workflow' });
   }
 });
@@ -61,6 +64,28 @@ router.get('/:id', authenticate, authorize('admin', 'employee'), async (req, res
   } catch (error) {
     console.error('Error fetching workflow:', error);
     res.status(500).json({ error: 'Failed to fetch workflow' });
+  }
+});
+
+// DELETE /api/workflows/:id - Delete a workflow
+router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    
+    const result = await query(
+      `DELETE FROM workflows WHERE workflow_id = $1 AND tenant_id = $2 RETURNING workflow_id`,
+      [id, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
+    
+    res.json({ message: 'Workflow deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting workflow:', error);
+    res.status(500).json({ error: 'Failed to delete workflow' });
   }
 });
 
