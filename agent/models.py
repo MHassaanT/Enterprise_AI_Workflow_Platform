@@ -8,11 +8,10 @@ class BaseNode(BaseModel):
 
 class TriggerNode(BaseNode):
     type: Literal["TRIGGER"] = "TRIGGER"
-    trigger_type: Literal["MANUAL", "SCHEDULE", "WEBHOOK", "APP_EVENT", "FORM", "CHAT"]
-    cron_expression: Optional[str] = None
-    event_type: Optional[str] = None
-    form_fields: Optional[List[Dict[str, Any]]] = None
-    system_prompt_override: Optional[str] = None
+    triggerMode: Literal["event", "schedule", "interval"] = "event"
+    triggerDescription: Optional[str] = None
+    cronExpression: Optional[str] = None
+    intervalMinutes: Optional[int] = None
 
 class AgentConfig(BaseModel):
     systemPrompt: Optional[str] = None
@@ -26,13 +25,12 @@ class AgentNode(BaseNode):
     inputMapping: Dict[str, str] = Field(default_factory=dict)
     outputVariable: str
 
-class ActionNode(BaseNode):
-    type: Literal["ACTION"] = "ACTION"
-    toolName: str
-    mcp: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+class ToolNode(BaseNode):
+    type: Literal["TOOL"] = "TOOL"
+    mcp: Optional[str] = None
+    actionDescription: Optional[str] = None
     fallbackAction: Optional[str] = None
-    outputVariable: str
+    outputVariable: Optional[str] = "tool_output"
 
 class ApprovalNode(BaseNode):
     type: Literal["APPROVAL"] = "APPROVAL"
@@ -70,7 +68,7 @@ class EndNode(BaseNode):
 NodeDef = Union[
     TriggerNode, 
     AgentNode, 
-    ActionNode, 
+    ToolNode, 
     ApprovalNode, 
     ConditionNode, 
     DelayNode, 
@@ -103,7 +101,7 @@ class WorkflowDefinition(BaseModel):
             node = nodes[node_id]
             outgoing = list(edges.get(node_id, []))
             
-            if isinstance(node, ActionNode) and node.fallbackAction:
+            if isinstance(node, ToolNode) and node.fallbackAction:
                 outgoing.append(node.fallbackAction)
             elif isinstance(node, ApprovalNode):
                 outgoing.extend([node.onApprove, node.onReject, node.onTimeout])

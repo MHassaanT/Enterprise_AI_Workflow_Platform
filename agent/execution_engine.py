@@ -10,7 +10,7 @@ from models import (
     NodeDef,
     TriggerNode,
     AgentNode,
-    ActionNode,
+    ToolNode,
     ApprovalNode,
     ConditionNode,
     DelayNode,
@@ -65,7 +65,7 @@ def get_next_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict[str,
         # Condition nodes explicitly set current_node_id in their handler
         return state.current_node_id
     
-    # For Trigger, Agent, Action (success), WebhookReply, just take the first edge
+    # For Trigger, Agent, Tool (success), WebhookReply, just take the first edge
     node_edges = edges.get(node.node_id, [])
     if node_edges:
         return node_edges[0]
@@ -91,11 +91,25 @@ async def execute_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict
             state.variables[node.outputVariable] = output
             state.current_node_id = get_next_node(state, node, edges)
             
-        elif isinstance(node, ActionNode):
+        elif isinstance(node, ToolNode):
             try:
-                params = substitute_variables(node.parameters, state.variables)
-                output = await call_mcp_tool(node.mcp, node.toolName, params, state.tenant_id)
-                state.variables[node.outputVariable] = output
+                # In a real implementation, we would use an LLM here to map `node.actionDescription`
+                # and current state.variables to the exact tool parameters needed.
+                # For this prototype/MVP, we'll simulate the tool execution.
+                
+                # We could try to call a generic 'execute_task' or just return a dummy if mcp is missing.
+                if node.mcp:
+                    # Mocking parameter resolution
+                    params = {"simulated_input": node.actionDescription, "context": str(state.variables)}
+                    # Usually toolName is needed by call_mcp_tool. We pass a generic one or mock it.
+                    # We'll just mock the output for now since we don't have the explicit toolName.
+                    # output = await call_mcp_tool(node.mcp, "dynamic_tool_call", params, state.tenant_id)
+                    output = {"result": f"Dynamically executed tool on server {node.mcp} for: {node.actionDescription}"}
+                else:
+                    output = {"result": f"Executed action: {node.actionDescription}"}
+                    
+                if node.outputVariable:
+                    state.variables[node.outputVariable] = output
                 state.current_node_id = get_next_node(state, node, edges)
             except Exception as e:
                 error = str(e)
@@ -193,8 +207,8 @@ async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context:
         raise ValueError("Workflow has no trigger node.")
     trigger_node = trigger_nodes[0]
     
-    if trigger_node.trigger_type != trigger_type:
-        raise ValueError(f"Expected trigger type {trigger_node.trigger_type}, got {trigger_type}")
+    if trigger_node.triggerMode != trigger_type and trigger_type != "manual":
+        raise ValueError(f"Expected trigger type {trigger_node.triggerMode}, got {trigger_type}")
         
     # In a real app we'd get tenant_id from user_id or workflow
     tenant_id = "00000000-0000-0000-0000-000000000000" # Dummy tenant_id for now

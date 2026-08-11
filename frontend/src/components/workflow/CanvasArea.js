@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   ReactFlow,
   Controls,
   Background,
-  MiniMap,
   applyNodeChanges,
   applyEdgeChanges,
   addEdge,
@@ -14,51 +13,68 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-const CustomNode = ({ data, type }) => {
+const CustomNode = ({ data, type, id }) => {
+  const getIcon = () => {
+    switch (type) {
+      case 'TRIGGER': return 'bolt';
+      case 'TOOL': return 'build';
+      case 'CONDITION': return 'call_split';
+      case 'DELAY': return 'schedule';
+      case 'END': return 'stop_circle';
+      default: return 'widgets';
+    }
+  };
+
   const getColors = () => {
     switch (type) {
-      case 'TRIGGER': return 'border-blue-500 bg-blue-900/20 text-blue-100';
-      case 'AGENT': return 'border-green-500 bg-green-900/20 text-green-100';
-      case 'ACTION': return 'border-orange-500 bg-orange-900/20 text-orange-100';
-      case 'APPROVAL': return 'border-red-500 bg-red-900/20 text-red-100';
-      case 'CONDITION': return 'border-purple-500 bg-purple-900/20 text-purple-100';
-      case 'DELAY': return 'border-gray-500 bg-gray-800 text-gray-200';
-      case 'WEBHOOK_REPLY': return 'border-cyan-500 bg-cyan-900/20 text-cyan-100';
-      case 'END': return 'border-outline-variant bg-surface-container-highest text-on-surface';
+      case 'TRIGGER': return 'border-blue-500 bg-blue-900/20 text-blue-400';
+      case 'TOOL': return 'border-orange-500 bg-orange-900/20 text-orange-400';
+      case 'CONDITION': return 'border-purple-500 bg-purple-900/20 text-purple-400';
+      case 'DELAY': return 'border-gray-500 bg-gray-800 text-gray-400';
+      case 'END': return 'border-red-500 bg-red-900/20 text-red-400';
       default: return 'border-outline bg-surface-container text-on-surface';
     }
   };
 
+  const isEndNode = type === 'END';
+  
   return (
-    <div className={`px-3 py-2 shadow-sm rounded border min-w-[120px] transition-all hover:shadow-md backdrop-blur-sm ${getColors()}`}>
+    <div className="relative flex flex-col items-center">
       {type !== 'TRIGGER' && (
         <Handle type="target" position={Position.Top} className="w-2 h-2 border bg-surface-container" />
       )}
       
-      <div className="flex flex-col">
-        <div className="text-[10px] font-bold opacity-70 uppercase tracking-wider mb-0.5">{type}</div>
-        <div className="text-xs font-bold leading-tight">{data.label}</div>
+      <div 
+        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shadow-md transition-all hover:shadow-lg backdrop-blur-sm cursor-pointer ${getColors()}`}
+        title={data.label || type}
+      >
+        <span className="material-symbols-outlined text-[20px]">{getIcon()}</span>
       </div>
 
-      {type !== 'END' && (
-        <Handle type="source" position={Position.Bottom} className="w-2 h-2 border bg-surface-container" />
+      {!isEndNode && (
+        <>
+          <Handle type="source" position={Position.Bottom} className="w-2 h-2 border bg-surface-container" />
+          
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (data.onAddNodeClick) {
+                data.onAddNodeClick(id);
+              }
+            }}
+            className="absolute -bottom-8 w-5 h-5 rounded-full bg-primary hover:bg-primary/90 text-on-primary flex items-center justify-center shadow shadow-black/50 z-10 transition-transform hover:scale-110"
+            title="Add Node"
+          >
+            <span className="material-symbols-outlined text-[14px]">add</span>
+          </button>
+        </>
       )}
     </div>
   );
 };
 
-const nodeTypes = {
-  TRIGGER: CustomNode,
-  AGENT: CustomNode,
-  ACTION: CustomNode,
-  APPROVAL: CustomNode,
-  CONDITION: CustomNode,
-  DELAY: CustomNode,
-  WEBHOOK_REPLY: CustomNode,
-  END: CustomNode
-};
 
-export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeClick }) {
+export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeClick, onAddNodeClick }) {
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
@@ -88,10 +104,29 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
     [setEdges]
   );
 
+  const nodeTypes = useMemo(() => ({
+    TRIGGER: CustomNode,
+    TOOL: CustomNode,
+    CONDITION: CustomNode,
+    DELAY: CustomNode,
+    END: CustomNode
+  }), []);
+
+  // Inject onAddNodeClick into node data
+  const processedNodes = useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        onAddNodeClick
+      }
+    }));
+  }, [nodes, onAddNodeClick]);
+
   return (
     <div className="flex-1 h-full w-full bg-background relative">
       <ReactFlow
-        nodes={nodes}
+        nodes={processedNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -109,3 +144,4 @@ export default function CanvasArea({ nodes, edges, setNodes, setEdges, onNodeCli
     </div>
   );
 }
+

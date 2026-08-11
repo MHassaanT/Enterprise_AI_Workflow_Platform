@@ -48,9 +48,12 @@ async function executeWorkflow(workflowId, runId, tenantId) {
         } else if (currentNode.type === 'CONDITION') {
           await sleep(200);
           outputData.result = true; // Hardcoded simulation
-        } else if (currentNode.type === 'ACTION') {
+        } else if (currentNode.type === 'TOOL') {
           await sleep(800);
-          outputData.result = 'Action simulated successfully';
+          outputData.result = 'Tool execution simulated successfully';
+        } else if (currentNode.type === 'TRIGGER') {
+          await sleep(300);
+          outputData.result = 'Trigger validated and event received';
         } else {
           await sleep(300); // default processing time
         }
