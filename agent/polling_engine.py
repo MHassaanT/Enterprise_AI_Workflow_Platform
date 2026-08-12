@@ -151,35 +151,68 @@ async def poll_active_workflows():
             # Fetch active workflows
             workflows = await conn.fetch("SELECT workflow_id, definition, tenant_id, created_by FROM workflows WHERE status = 'active'")
             
+            print(f"[POLLING] Poll cycle: found {len(workflows)} active workflow(s)")
+            
+            if not workflows:
+                return
+            
             for wf in workflows:
                 workflow_id = str(wf['workflow_id'])
                 tenant_id = str(wf['tenant_id'])
-                definition = json.loads(wf['definition'])
+                raw_definition = wf['definition']
+                
+                # Handle both string and dict (JSONB auto-parses in asyncpg)
+                if isinstance(raw_definition, str):
+                    definition = json.loads(raw_definition)
+                else:
+                    definition = raw_definition
                 
                 # Find Trigger Node
                 nodes = definition.get('nodes', [])
                 if isinstance(nodes, dict):
                     nodes = list(nodes.values())
+                
+                print(f"[POLLING] Workflow {workflow_id[:8]}: {len(nodes)} node(s), node types: {[n.get('type') for n in nodes]}")
                     
                 trigger_nodes = [n for n in nodes if n.get('type') == 'TRIGGER']
                 
+                if not trigger_nodes:
+                    print(f"[POLLING] Workflow {workflow_id[:8]}: No TRIGGER node found — skipping")
+                    continue
+                
                 for node in trigger_nodes:
-                    trigger_mode = node.get('data', {}).get('triggerMode')
+                    node_data = node.get('data', {})
+                    trigger_mode = node_data.get('triggerMode')
+                    print(f"[POLLING] Workflow {workflow_id[:8]}: triggerMode={trigger_mode!r}, data keys={list(node_data.keys())}")
+                    
                     if trigger_mode == 'app_event':
-                        app_name = node.get('data', {}).get('appIntegration', '').lower()
+                        app_name = node_data.get('appIntegration', '').lower()
+                        
+                        if not app_name:
+                            print(f"[POLLING] Workflow {workflow_id[:8]}: triggerMode is 'app_event' but appIntegration is empty — skipping")
+                            continue
                         
                         # Use the workflow creator as the user context for execution
                         user_id = str(wf['created_by']) if wf['created_by'] else "11111111-1111-1111-1111-111111111111"
                         
-                        if app_name:
-                            await _poll_app_integration(workflow_id, node, tenant_id, user_id, app_name)
+                        print(f"[POLLING] Workflow {workflow_id[:8]}: Polling app={app_name}, tenant={tenant_id[:8]}, user={user_id[:8]}")
+                        await _poll_app_integration(workflow_id, node, tenant_id, user_id, app_name)
+                    else:
+                        print(f"[POLLING] Workflow {workflow_id[:8]}: triggerMode={trigger_mode!r} is not 'app_event' — skipping")
                             
     except Exception as e:
+        import traceback
         print(f"[POLLING] Engine error: {e}")
+        traceback.print_exc()
 
 async def start_polling_engine():
     """Start the infinite polling loop."""
     print(f"[POLLING] Engine started. Polling every {POLLING_INTERVAL_SECONDS} seconds.")
     while True:
-        await poll_active_workflows()
+        try:
+            await poll_active_workflows()
+        except Exception as e:
+            import traceback
+            print(f"[POLLING] Unexpected error in poll loop: {e}")
+            traceback.print_exc()
         await asyncio.sleep(POLLING_INTERVAL_SECONDS)

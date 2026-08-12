@@ -164,3 +164,59 @@ async def get_mcp_tools():
             ]
         }
     ]
+
+@router.get("/debug/polling")
+async def debug_polling_state():
+    """Debug endpoint: shows what the polling engine sees for active workflows."""
+    from db_workflows import get_db_pool
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        workflows = await conn.fetch(
+            "SELECT workflow_id, name, status, definition, tenant_id, created_by FROM workflows ORDER BY updated_at DESC LIMIT 20"
+        )
+        
+        results = []
+        for wf in workflows:
+            raw_def = wf['definition']
+            if isinstance(raw_def, str):
+                definition = json.loads(raw_def)
+            else:
+                definition = raw_def
+            
+            nodes = definition.get('nodes', [])
+            if isinstance(nodes, dict):
+                nodes = list(nodes.values())
+            
+            trigger_info = []
+            for n in nodes:
+                if n.get('type') == 'TRIGGER':
+                    data = n.get('data', {})
+                    trigger_info.append({
+                        "node_id": n.get('id'),
+                        "triggerMode": data.get('triggerMode'),
+                        "appIntegration": data.get('appIntegration'),
+                        "baseId": data.get('baseId'),
+                        "tableName": data.get('tableName'),
+                        "query": data.get('query'),
+                        "all_data_keys": list(data.keys()),
+                    })
+            
+            results.append({
+                "workflow_id": str(wf['workflow_id']),
+                "name": wf['name'],
+                "status": wf['status'],
+                "tenant_id": str(wf['tenant_id']),
+                "created_by": str(wf['created_by']) if wf['created_by'] else None,
+                "total_nodes": len(nodes),
+                "node_types": [n.get('type') for n in nodes],
+                "trigger_configs": trigger_info,
+            })
+        
+        # Also get polling state
+        polling_states = await conn.fetch("SELECT * FROM workflow_polling_state ORDER BY last_checked_timestamp DESC LIMIT 20")
+        
+        return {
+            "workflows": results,
+            "polling_states": [dict(p) for p in polling_states],
+        }
+
