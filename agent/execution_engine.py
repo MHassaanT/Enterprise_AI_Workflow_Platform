@@ -82,11 +82,14 @@ async def execute_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict
     output = None
     status = "completed"
     
+    print(f"[EXEC] Executing node {node.node_id} (type={node.type}, run={state.run_id[:8]})")
+    
     try:
         if isinstance(node, TriggerNode):
             # Triggers don't execute, just validate
             state.current_node_id = get_next_node(state, node, edges)
             output = state.trigger_context
+            print(f"[EXEC] Trigger node passed. Next node: {state.current_node_id}")
             
         elif isinstance(node, AgentNode):
             input_data = substitute_variables(node.inputMapping, state.variables)
@@ -96,6 +99,7 @@ async def execute_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict
             
         elif isinstance(node, ToolNode):
             try:
+                print(f"[EXEC] ToolNode: mcp={node.mcp}, action={node.actionDescription}")
                 if node.mcp:
                     # Fetch the schema for the tool to guide the LLM
                     from tool_gateway.registry import get_allowed_tool_bindings
@@ -121,7 +125,8 @@ Current Workflow Variables:
 Instructions:
 1. Determine the best API arguments needed to perform the action in the specified app.
 2. If variables are needed (e.g. an email address from the trigger), extract them from the Current Workflow Variables.
-3. Return ONLY a valid JSON object containing the arguments matching the schema (if provided). Do not include markdown formatting or backticks.
+3. Do NOT use placeholder values like 'your_base_id_here'. Use real values from the workflow variables.
+4. Return ONLY a valid JSON object containing the arguments matching the schema (if provided). Do not include markdown formatting or backticks.
 """
                     llm_response = await llm.ainvoke(prompt)
                     content = llm_response.content.strip()
@@ -134,6 +139,8 @@ Instructions:
                         params = json.loads(content)
                     except json.JSONDecodeError:
                         params = {"action": node.actionDescription} # fallback
+                    
+                    print(f"[EXEC] LLM generated params for {node.mcp}: {json.dumps(params, default=str)[:300]}")
                         
                     # Call the actual MCP tool
                     response_str = await execute_mcp_tool(
@@ -143,7 +150,11 @@ Instructions:
                         arguments=params
                     )
                     
-                    if response_str.startswith("Error") or "API Error" in response_str:
+                    print(f"[EXEC] Tool response ({node.mcp}): {response_str[:200]}")
+                    
+                    # Only treat Security Errors and explicit API errors as fatal
+                    # "Error: No matching records" is a data issue, not a tool failure
+                    if response_str.startswith("Security Error") or "API Error" in response_str:
                         raise Exception(response_str)
                         
                     output = {"result": response_str}
@@ -153,9 +164,11 @@ Instructions:
                 if node.outputVariable:
                     state.variables[node.outputVariable] = output
                 state.current_node_id = get_next_node(state, node, edges)
+                print(f"[EXEC] ToolNode {node.node_id} completed. Next node: {state.current_node_id}")
             except Exception as e:
                 error = str(e)
                 status = "failed"
+                print(f"[EXEC] ToolNode {node.node_id} FAILED: {error[:200]}")
                 if node.fallbackAction:
                     state.current_node_id = node.fallbackAction
                 else:
@@ -241,6 +254,9 @@ Instructions:
 
 async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context: dict, user_id: str) -> str:
     """Main entry point for workflow execution."""
+    print(f"[EXEC] === Starting workflow {workflow_id[:8]} (trigger={trigger_type}) ===")
+    print(f"[EXEC] Trigger context: {json.dumps(trigger_context, default=str)[:300]}")
+    
     workflow = await load_workflow(workflow_id)
     
     # Ensure there is exactly 1 trigger node and its type matches
@@ -256,6 +272,7 @@ async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context:
     tenant_id = await get_workflow_tenant_id(workflow_id)
     
     run_id = await create_workflow_run(workflow_id, tenant_id, trigger_type, trigger_context)
+    print(f"[EXEC] Created run {run_id[:8]} for workflow {workflow_id[:8]}")
     
     state = WorkflowExecutionState(
         workflow_id=workflow_id,
@@ -274,7 +291,8 @@ async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context:
         
         state = await execute_node(state, node, workflow.edges)
         await update_workflow_run(run_id, state)
-        
+    
+    print(f"[EXEC] === Workflow {workflow_id[:8]} run {run_id[:8]} finished: status={state.status}, error={state.error_message} ===")
     return run_id
 
 async def resume_workflow_after_approval(approval_id: str, approved: bool) -> str:
