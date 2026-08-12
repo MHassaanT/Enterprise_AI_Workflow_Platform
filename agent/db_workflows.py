@@ -71,7 +71,7 @@ async def get_workflow_tenant_id(workflow_id: str) -> str:
         )
         if not tenant_id:
             raise ValueError(f"Workflow {workflow_id} not found")
-        return tenant_id
+        return str(tenant_id)
 
 async def create_workflow_run(
     workflow_id: str, 
