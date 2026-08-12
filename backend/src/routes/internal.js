@@ -1,7 +1,41 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { query } = require('../db');
 const { answerWithRAG } = require('../services/rag');
+
+// ── AES-256-GCM ENCRYPTION HELPERS ──
+const getAesKey = () => {
+  const keyStr = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  if (keyStr.length === 64) {
+    return Buffer.from(keyStr, 'hex');
+  }
+  return Buffer.from(keyStr.padEnd(32, '\0').slice(0, 32));
+};
+
+const encryptPayload = (payload) => {
+  const key = getAesKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const data = JSON.stringify(payload);
+  const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const ciphertextWithTag = Buffer.concat([encrypted, tag]);
+  return `${iv.toString('hex')}:${ciphertextWithTag.toString('hex')}`;
+};
+
+const decryptPayload = (encryptedStr) => {
+  const [ivHex, cipherHex] = encryptedStr.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const cipherBytes = Buffer.from(cipherHex, 'hex');
+  const authTag = cipherBytes.slice(cipherBytes.length - 16);
+  const encryptedText = cipherBytes.slice(0, cipherBytes.length - 16);
+  
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getAesKey(), iv);
+  decipher.setAuthTag(authTag);
+  const decrypted = Buffer.concat([decipher.update(encryptedText), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
+};
 
 // ── INTERNAL TOKEN GUARD ──
 // This router is never mounted on the public API — only the agent service calls it.
@@ -156,7 +190,7 @@ router.post('/credentials', async (req, res) => {
 
   try {
     const result = await query(
-      `SELECT tc.encrypted_payload, tc.auth_type
+      `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
        FROM tool_credentials tc
        LEFT JOIN tool_bindings tb ON tc.binding_id = tb.id OR tc.tool_id = tb.tool_id
        LEFT JOIN tool_registry tr ON tc.tool_id = tr.id OR tb.tool_id = tr.id
@@ -176,9 +210,62 @@ router.post('/credentials', async (req, res) => {
       return res.json({ encrypted_payload: null, auth_type: null });
     }
 
+    let { credential_id, encrypted_payload, auth_type, updated_at } = result.rows[0];
+
+    // Check if token needs refresh (older than 50 mins = 3000 seconds)
+    if (auth_type === 'oauth2' && updated_at) {
+      const ageSeconds = (Date.now() - new Date(updated_at).getTime()) / 1000;
+      if (ageSeconds > 3000) {
+        try {
+          const payload = decryptPayload(encrypted_payload);
+          if (payload.refresh_token) {
+            const provider = payload.provider || '';
+            if (['gmail', 'google_docs', 'google_sheets'].includes(provider)) {
+              console.log(`[CREDENTIALS] Token age ${Math.round(ageSeconds)}s > 3000s. Refreshing Google OAuth token...`);
+              const clientId = process.env.GOOGLE_CLIENT_ID;
+              const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+              
+              const params = new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                refresh_token: payload.refresh_token,
+                grant_type: 'refresh_token'
+              });
+
+              const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+              });
+
+              if (tokenRes.ok) {
+                const tokenData = await tokenRes.json();
+                payload.access_token = tokenData.access_token;
+                if (tokenData.refresh_token) payload.refresh_token = tokenData.refresh_token; // Sometimes they rotate it
+                
+                encrypted_payload = encryptPayload(payload);
+                await query(
+                  `UPDATE tool_credentials SET encrypted_payload = $1, updated_at = NOW() WHERE id = $2`,
+                  [encrypted_payload, credential_id],
+                  tenantId
+                );
+                console.log(`[CREDENTIALS] Google token refreshed successfully.`);
+              } else {
+                console.warn(`[CREDENTIALS] Failed to refresh Google token: ${tokenRes.status} ${await tokenRes.text()}`);
+              }
+            } else if (provider === 'hubspot') {
+               // Extend for hubspot etc if needed
+            }
+          }
+        } catch (e) {
+          console.error('[CREDENTIALS] Error during token auto-refresh:', e.message);
+        }
+      }
+    }
+
     res.json({
-      encrypted_payload: result.rows[0].encrypted_payload,
-      auth_type: result.rows[0].auth_type,
+      encrypted_payload: encrypted_payload,
+      auth_type: auth_type,
     });
   } catch (error) {
     console.error(`Error fetching credentials for tenant ${tenantId}:`, error);

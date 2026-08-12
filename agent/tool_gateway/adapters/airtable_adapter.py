@@ -104,7 +104,14 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
                         print(f"[AIRTABLE ADAPTER] Unfiltered fetch response: status={fallback_res.status_code}")
                         if fallback_res.is_success:
                             all_records = fallback_res.json().get("records", [])
-                            query_lower = query_str.lower()
+                            query_lower = query_str.lower().strip()
+                            
+                            # Self-healing: if LLM sent a formula like "OrderId = '123'", extract the '123'
+                            if "=" in query_lower:
+                                query_lower = query_lower.split("=", 1)[1].strip(" '\"")
+                            elif ":" in query_lower:
+                                query_lower = query_lower.split(":", 1)[1].strip(" '\"")
+                                
                             records = [
                                 r for r in all_records
                                 if any(query_lower in str(v).lower() for v in (r.get("fields") or {}).values())
