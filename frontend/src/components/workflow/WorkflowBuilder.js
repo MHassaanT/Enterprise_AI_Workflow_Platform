@@ -100,8 +100,10 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
     if (workflowId && !workflowId.startsWith('new-')) {
       setIsPublishing(true);
       try {
+        // Save the latest canvas state first to ensure the DB has the current definition
+        await updateWorkflow(workflowId, undefined, undefined, { nodes, edges });
         await publishWorkflow(workflowId);
-        alert('Workflow published and is now active!');
+        alert('Workflow saved and published — it is now active!');
       } catch (err) {
         console.error(err);
         alert('Failed to publish workflow.');
@@ -109,7 +111,7 @@ export default function WorkflowBuilder({ workflowId, initialNodes = [], initial
         setIsPublishing(false);
       }
     } else {
-      alert('Cannot publish an unsaved workflow.');
+      alert('Cannot publish an unsaved workflow. Please save it first.');
     }
   };
 

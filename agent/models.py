@@ -8,7 +8,7 @@ class BaseNode(BaseModel):
 
 class TriggerNode(BaseNode):
     type: Literal["TRIGGER"] = "TRIGGER"
-    triggerMode: Literal["event", "schedule", "interval"] = "event"
+    triggerMode: Literal["event", "schedule", "interval", "app_event"] = "event"
     triggerDescription: Optional[str] = None
     cronExpression: Optional[str] = None
     intervalMinutes: Optional[int] = None

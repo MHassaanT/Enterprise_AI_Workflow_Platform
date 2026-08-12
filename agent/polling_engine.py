@@ -149,7 +149,7 @@ async def poll_active_workflows():
         pool = await get_db_pool()
         async with pool.acquire() as conn:
             # Fetch active workflows
-            workflows = await conn.fetch("SELECT workflow_id, definition, tenant_id FROM workflows WHERE status = 'published' OR status = 'active'")
+            workflows = await conn.fetch("SELECT workflow_id, definition, tenant_id, created_by FROM workflows WHERE status = 'active'")
             
             for wf in workflows:
                 workflow_id = str(wf['workflow_id'])
@@ -168,8 +168,8 @@ async def poll_active_workflows():
                     if trigger_mode == 'app_event':
                         app_name = node.get('data', {}).get('appIntegration', '').lower()
                         
-                        # In a real environment, we'd look up the user who created this workflow
-                        user_id = "11111111-1111-1111-1111-111111111111"
+                        # Use the workflow creator as the user context for execution
+                        user_id = str(wf['created_by']) if wf['created_by'] else "11111111-1111-1111-1111-111111111111"
                         
                         if app_name:
                             await _poll_app_integration(workflow_id, node, tenant_id, user_id, app_name)
