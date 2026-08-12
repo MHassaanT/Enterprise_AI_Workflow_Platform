@@ -97,6 +97,15 @@ async def execute_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict
         elif isinstance(node, ToolNode):
             try:
                 if node.mcp:
+                    # Fetch the schema for the tool to guide the LLM
+                    from tool_gateway.registry import get_allowed_tool_bindings
+                    from tool_gateway.centralized_gateway import _find_matching_binding
+                    bindings = await get_allowed_tool_bindings(agent_instance_id="workflow-builder", tenant_id=state.tenant_id)
+                    target_binding = _find_matching_binding(bindings, node.mcp)
+                    schema_str = ""
+                    if target_binding and target_binding.get("schema_json"):
+                        schema_str = f"Expected JSON Schema:\n{json.dumps(target_binding.get('schema_json'), indent=2)}\n"
+
                     # Use LLM to map `node.actionDescription` and state variables to specific JSON parameters
                     llm = get_llm()
                     prompt = f"""
@@ -108,10 +117,11 @@ Action Description: {node.actionDescription}
 Current Workflow Variables:
 {json.dumps(state.variables, default=str, indent=2)}
 
+{schema_str}
 Instructions:
 1. Determine the best API arguments needed to perform the action in the specified app.
 2. If variables are needed (e.g. an email address from the trigger), extract them from the Current Workflow Variables.
-3. Return ONLY a valid JSON object containing the arguments. Do not include markdown formatting or backticks.
+3. Return ONLY a valid JSON object containing the arguments matching the schema (if provided). Do not include markdown formatting or backticks.
 """
                     llm_response = await llm.ainvoke(prompt)
                     content = llm_response.content.strip()
