@@ -24,6 +24,11 @@ def parse_reactflow_to_workflow_def(raw_def: Dict[str, Any]) -> Dict[str, Any]:
         
         # Merge data with node_id at root
         node_dict = {"node_id": node_id}
+        
+        # Ensure type is explicitly set from the ReactFlow root
+        if "type" in rn:
+            node_dict["type"] = str(rn["type"]).upper()
+            
         node_dict.update(data)
         
         parsed_nodes[node_id] = node_dict
