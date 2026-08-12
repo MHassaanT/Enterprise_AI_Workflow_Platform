@@ -13,7 +13,8 @@ from db_workflows import (
     load_workflow,
     get_workflow_runs,
     get_run_steps,
-    get_analytics
+    get_analytics,
+    parse_reactflow_to_workflow_def
 )
 
 router = APIRouter()
@@ -49,7 +50,8 @@ async def create_new_workflow(req: WorkflowCreateRequest):
     """Create a new workflow."""
     # Ensure it's valid
     try:
-        WorkflowDefinition(**req.definition)
+        parsed_def = parse_reactflow_to_workflow_def(req.definition)
+        WorkflowDefinition(**parsed_def)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
@@ -71,7 +73,8 @@ async def get_workflow(workflow_id: str):
 async def update_existing_workflow(workflow_id: str, req: WorkflowUpdateRequest):
     """Update workflow definition."""
     try:
-        WorkflowDefinition(**req.definition)
+        parsed_def = parse_reactflow_to_workflow_def(req.definition)
+        WorkflowDefinition(**parsed_def)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         

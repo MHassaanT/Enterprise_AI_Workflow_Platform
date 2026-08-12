@@ -8,6 +8,39 @@ from datetime import datetime
 async def get_db_pool():
     return await asyncpg.create_pool(settings.DATABASE_URL)
 
+def parse_reactflow_to_workflow_def(raw_def: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert ReactFlow JSON format to WorkflowDefinition expected dict format."""
+    # If it's already in the correct format (dict for nodes), return it directly
+    if isinstance(raw_def.get("nodes"), dict):
+        return raw_def
+        
+    parsed_nodes = {}
+    parsed_edges = {}
+    
+    # Parse nodes
+    for rn in raw_def.get("nodes", []):
+        node_id = rn.get("id")
+        data = rn.get("data", {})
+        
+        # Merge data with node_id at root
+        node_dict = {"node_id": node_id}
+        node_dict.update(data)
+        
+        parsed_nodes[node_id] = node_dict
+        
+    # Parse edges
+    for re in raw_def.get("edges", []):
+        source = re.get("source")
+        target = re.get("target")
+        if source not in parsed_edges:
+            parsed_edges[source] = []
+        parsed_edges[source].append(target)
+        
+    return {
+        "nodes": parsed_nodes,
+        "edges": parsed_edges
+    }
+
 async def load_workflow(workflow_id: str) -> WorkflowDefinition:
     """Load workflow definition from the database."""
     pool = await get_db_pool()
@@ -20,7 +53,8 @@ async def load_workflow(workflow_id: str) -> WorkflowDefinition:
             raise ValueError(f"Workflow {workflow_id} not found")
         
         definition = json.loads(record['definition'])
-        return WorkflowDefinition(**definition)
+        parsed_def = parse_reactflow_to_workflow_def(definition)
+        return WorkflowDefinition(**parsed_def)
 
 async def create_workflow_run(
     workflow_id: str, 
