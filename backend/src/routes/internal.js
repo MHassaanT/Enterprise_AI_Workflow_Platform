@@ -53,6 +53,51 @@ router.get('/agents/:agentInstanceId/tools', async (req, res) => {
   }
 });
 
+// ── GET /internal/tenants/:tenantId/tools ──
+// Returns ALL allowed tools & MCP server endpoints for a tenant (used by Workflow Engine)
+router.get('/tenants/:tenantId/tools', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    // For workflows, we want to return all tools that the tenant has credentials for,
+    // plus all builtin tools.
+    // 1. Built-in tools and tools with credentials
+    const registryResult = await query(
+      `SELECT 
+          tr.id as tool_id, tr.canonical_name as tool_name, tr.provider_type as connector_type, 
+          tr.is_high_risk, tr.schema_json,
+          tc.id as credential_id
+       FROM tool_registry tr
+       LEFT JOIN tool_credentials tc ON tr.id = tc.tool_id AND tc.tenant_id = $1
+       WHERE tr.provider_type = 'builtin' OR tc.id IS NOT NULL`,
+      [tenantId]
+    );
+
+    // 2. Remote MCP Servers (each server is effectively a bundle of tools, but we return the server info)
+    // The Python gateway _find_matching_binding might not match by tool_name perfectly here for dynamic remote tools,
+    // but for now we return them so they are available in the payload.
+    const mcpResult = await query(
+      `SELECT 
+          id as mcp_server_id, name as tool_name, 'mcp' as connector_type,
+          endpoint_url, transport_type, auth_headers
+       FROM mcp_servers
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+
+    const tools = [...registryResult.rows, ...mcpResult.rows];
+
+    res.json({
+      tenant_id: tenantId,
+      tools: tools,
+      is_default_fallback: false,
+    });
+  } catch (error) {
+    console.error(`Error fetching tools for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch tenant tools.' });
+  }
+});
+
 // ── POST /internal/rag/query ──
 // Called by the Python agent's retriever node.
 // Returns raw chunks + citations without creating a conversation message.

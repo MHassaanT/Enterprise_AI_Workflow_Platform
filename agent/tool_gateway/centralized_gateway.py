@@ -67,7 +67,7 @@ async def execute_mcp_tool(
     Handles allowlist verification, credential decryption, and adapter routing.
     """
     # 1. Allowlist Verification & Risk Evaluation
-    bindings = await get_allowed_tool_bindings(agent_instance_id)
+    bindings = await get_allowed_tool_bindings(agent_instance_id, tenant_id=tenant_id)
     target_binding = _find_matching_binding(bindings, tool_name)
 
     if not target_binding:

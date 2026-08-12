@@ -32,6 +32,28 @@ async def get_agent_tool_bindings(agent_instance_id: str) -> dict:
             "is_default_fallback": True,
         }
 
+async def get_tenant_tool_bindings(tenant_id: str) -> dict:
+    """
+    Fetches all authorized tools for a tenant, bypassing agent-specific bindings.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/tools",
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"[TOOL BINDINGS ERROR] Failed to fetch tools for tenant {tenant_id}: {e}")
+        return {
+            "tools": [
+                {"tool_name": "check_order_status", "connector_type": "builtin", "is_high_risk": False},
+                {"tool_name": "escalate_to_human", "connector_type": "builtin", "is_high_risk": True},
+            ],
+            "is_default_fallback": True,
+        }
+
 
 async def create_approval_request(payload: dict) -> str:
     """

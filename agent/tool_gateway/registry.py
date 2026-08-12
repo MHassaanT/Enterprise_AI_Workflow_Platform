@@ -117,13 +117,16 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
 
 # ── Dynamic Allowlist & MCP Tool Resolution ──
 
-async def get_allowed_tool_bindings(agent_instance_id: str) -> List[Dict[str, Any]]:
+async def get_allowed_tool_bindings(agent_instance_id: str, tenant_id: str = None) -> List[Dict[str, Any]]:
     """
-    Queries Postgres via backend internal API to retrieve the explicit ToolBinding records
-    for this specific agent_instance_id.
+    Fetch the list of allowed tool dictionaries for a specific agent instance or tenant.
     """
-    result = await get_agent_tool_bindings(agent_instance_id)
-    return result.get("tools", [])
+    from services.db_client import get_agent_tool_bindings, get_tenant_tool_bindings
+    if agent_instance_id == "workflow-builder" and tenant_id:
+        res = await get_tenant_tool_bindings(tenant_id)
+    else:
+        res = await get_agent_tool_bindings(agent_instance_id)
+    return res.get("tools", [])
 
 
 async def get_allowed_tools(agent_instance_id: str) -> List[str]:
