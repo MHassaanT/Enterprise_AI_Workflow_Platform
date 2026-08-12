@@ -25,7 +25,8 @@ from db_workflows import (
     update_workflow_run,
     save_step_log,
     create_approval_request,
-    load_workflow_run_state
+    load_workflow_run_state,
+    get_workflow_tenant_id
 )
 from tool_gateway.centralized_gateway import execute_mcp_tool
 from services.llm_gateway import get_llm
@@ -237,8 +238,8 @@ async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context:
     if trigger_node.triggerMode != trigger_type and trigger_type.lower() != "manual":
         raise ValueError(f"Expected trigger type {trigger_node.triggerMode}, got {trigger_type}")
         
-    # In a real app we'd get tenant_id from user_id or workflow
-    tenant_id = "00000000-0000-0000-0000-000000000000" # Dummy tenant_id for now
+    # Get real tenant_id from database
+    tenant_id = await get_workflow_tenant_id(workflow_id)
     
     run_id = await create_workflow_run(workflow_id, tenant_id, trigger_type, trigger_context)
     

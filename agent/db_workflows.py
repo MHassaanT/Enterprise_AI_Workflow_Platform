@@ -61,6 +61,18 @@ async def load_workflow(workflow_id: str) -> WorkflowDefinition:
         parsed_def = parse_reactflow_to_workflow_def(definition)
         return WorkflowDefinition(**parsed_def)
 
+async def get_workflow_tenant_id(workflow_id: str) -> str:
+    """Get the tenant_id for a given workflow."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        tenant_id = await conn.fetchval(
+            "SELECT tenant_id FROM workflows WHERE workflow_id = $1", 
+            workflow_id
+        )
+        if not tenant_id:
+            raise ValueError(f"Workflow {workflow_id} not found")
+        return tenant_id
+
 async def create_workflow_run(
     workflow_id: str, 
     tenant_id: str, 
