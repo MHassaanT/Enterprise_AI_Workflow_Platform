@@ -120,9 +120,8 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
                         records = res.json().get("records", [])
                     else:
                         return f"Airtable API Error ({res.status_code}): {res.text[:300]}"
-
                 if not records:
-                    return f"No matching records found in Airtable table '{table_name}' for '{query_str}'."
+                    return f"Error: No matching records found in Airtable table '{table_name}' for '{query_str}'."
 
                 formatted = [f"Record ID: {r.get('id')} | Fields: {r.get('fields')}" for r in records[:10]]
                 return f"Successfully retrieved {len(records)} record(s) from Airtable '{table_name}':\n" + "\n".join(formatted)
