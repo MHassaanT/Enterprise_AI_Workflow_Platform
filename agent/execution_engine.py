@@ -234,7 +234,7 @@ async def execute_workflow(workflow_id: str, trigger_type: str, trigger_context:
         raise ValueError("Workflow has no trigger node.")
     trigger_node = trigger_nodes[0]
     
-    if trigger_node.triggerMode != trigger_type and trigger_type != "manual":
+    if trigger_node.triggerMode != trigger_type and trigger_type.lower() != "manual":
         raise ValueError(f"Expected trigger type {trigger_node.triggerMode}, got {trigger_type}")
         
     # In a real app we'd get tenant_id from user_id or workflow
