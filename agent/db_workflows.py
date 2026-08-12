@@ -5,8 +5,13 @@ from config import settings
 from models import WorkflowDefinition, WorkflowExecutionState, StepLog, PendingApproval
 from datetime import datetime
 
+_pool = None
+
 async def get_db_pool():
-    return await asyncpg.create_pool(settings.DATABASE_URL)
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=10)
+    return _pool
 
 def parse_reactflow_to_workflow_def(raw_def: Dict[str, Any]) -> Dict[str, Any]:
     """Convert ReactFlow JSON format to WorkflowDefinition expected dict format."""
