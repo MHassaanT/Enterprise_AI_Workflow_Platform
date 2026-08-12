@@ -24,9 +24,10 @@ async def _get_polling_state(workflow_id: str, integration_name: str) -> Dict[st
         if record:
             return {
                 "last_processed_ids": json.loads(record['last_processed_ids']),
-                "last_checked_timestamp": record['last_checked_timestamp']
+                "last_checked_timestamp": record['last_checked_timestamp'],
+                "is_first_run": False
             }
-        return {"last_processed_ids": [], "last_checked_timestamp": None}
+        return {"last_processed_ids": [], "last_checked_timestamp": None, "is_first_run": True}
 
 async def _save_polling_state(workflow_id: str, integration_name: str, processed_ids: List[str]):
     pool = await get_db_pool()
@@ -48,6 +49,7 @@ async def _poll_app_integration(workflow_id: str, node: Dict[str, Any], tenant_i
     integration_name = app_name.capitalize()
     state = await _get_polling_state(workflow_id, integration_name)
     processed_ids = set(state['last_processed_ids'])
+    is_first_run = state['is_first_run']
     
     # Extract arguments from node data for the search/list action
     data = node.get('data', {})
@@ -67,7 +69,7 @@ async def _poll_app_integration(workflow_id: str, node: Dict[str, Any], tenant_i
         # Pass all data for generic integrations
         arguments.update(data)
     
-    print(f"[POLLING] Checking {integration_name} for workflow {workflow_id}...")
+    print(f"[POLLING] Checking {integration_name} for workflow {workflow_id[:8]} (First Run: {is_first_run})...")
     
     try:
         # 1. Execute the tool to get the latest records
@@ -103,7 +105,7 @@ Instructions:
 3. Exclude any item whose state-aware unique ID is in the 'Previously Processed IDs' list.
 4. Return ONLY a valid JSON array of objects. Each object must have:
    - "id": a string representing the state-aware unique ID.
-   - "data": a dictionary containing the extracted fields of the item.
+   - "data": a dictionary containing ALL extracted fields of the item (e.g. Primary ID, Name, Email, Status, Date). This data is passed to the workflow as the trigger context, so make sure it's comprehensive!
 
 If there are no new items, return an empty array `[]`. Do not include markdown formatting or backticks around the JSON.
 """
@@ -124,19 +126,24 @@ If there are no new items, return an empty array `[]`. Do not include markdown f
             print(f"[POLLING] No new events found for {integration_name}.")
             return
             
-        print(f"[POLLING] Found {len(new_events)} new events. Triggering workflow...")
-        
         # 3. Trigger workflow and update state
         new_processed_ids = list(processed_ids)
-        for event in new_events:
-            event_id = str(event.get("id"))
-            event_data = event.get("data", {})
-            
-            try:
-                await execute_workflow(workflow_id, "app_event", event_data, user_id)
-                new_processed_ids.append(event_id)
-            except Exception as w_err:
-                print(f"[POLLING] Error executing workflow for event {event_id}: {w_err}")
+        
+        if is_first_run:
+            print(f"[POLLING] Baselined {len(new_events)} existing events for workflow {workflow_id[:8]} without triggering.")
+            for event in new_events:
+                new_processed_ids.append(str(event.get("id")))
+        else:
+            print(f"[POLLING] Found {len(new_events)} new events. Triggering workflow...")
+            for event in new_events:
+                event_id = str(event.get("id"))
+                event_data = event.get("data", {})
+                
+                try:
+                    await execute_workflow(workflow_id, "app_event", event_data, user_id)
+                    new_processed_ids.append(event_id)
+                except Exception as w_err:
+                    print(f"[POLLING] Error executing workflow for event {event_id}: {w_err}")
                 
         await _save_polling_state(workflow_id, integration_name, new_processed_ids)
 
