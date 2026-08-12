@@ -142,6 +142,10 @@ Instructions:
                         tool_name=node.mcp,
                         arguments=params
                     )
+                    
+                    if response_str.startswith("Error") or "API Error" in response_str:
+                        raise Exception(response_str)
+                        
                     output = {"result": response_str}
                 else:
                     output = {"result": f"Executed generic action: {node.actionDescription}"}

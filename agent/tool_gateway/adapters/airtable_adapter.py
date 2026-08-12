@@ -41,6 +41,15 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
     base_id = arguments.get("base_id") or credentials.get("base_id") or credentials.get("default_base_id")
     table_name = arguments.get("table_name") or credentials.get("table_name") or credentials.get("default_table_name") or "Orders"
 
+    # Self-healing: Ignore dummy placeholders from the UI or LLM
+    if base_id and ("your_base" in base_id.lower() or "dummy" in base_id.lower()):
+        print(f"[AIRTABLE ADAPTER] Ignoring dummy base_id '{base_id}'")
+        base_id = None
+        
+    if table_name and ("your_table" in table_name.lower() or "dummy" in table_name.lower()):
+        print(f"[AIRTABLE ADAPTER] Ignoring dummy table_name '{table_name}'")
+        table_name = "Orders"
+
     # Self-healing: auto-discover base_id from Meta API if missing from credentials
     if not base_id:
         print("[AIRTABLE ADAPTER] base_id missing from credentials — attempting auto-discovery via Meta API")

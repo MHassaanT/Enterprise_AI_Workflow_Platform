@@ -95,11 +95,11 @@ Previously Processed IDs (ignore these):
 {list(processed_ids)}
 
 Instructions:
-1. Extract all discrete items (records, emails, rows, etc.).
-2. Determine a unique ID for each item (e.g. Record ID, Message ID). If there is no explicit ID, use a hash of the content or a unique field.
-3. Exclude any item whose ID is in the 'Previously Processed IDs' list.
+1. Extract all discrete items (records, emails, rows, etc.) that match the intent of the trigger.
+2. Determine a state-aware unique ID for each item. To ensure that updates to existing records trigger the workflow, the unique ID MUST be a combination of the item's primary ID and its current state or hash (e.g. `rec123_status_delivered`, `msg123_unread`, or `row5_hash`).
+3. Exclude any item whose state-aware unique ID is in the 'Previously Processed IDs' list.
 4. Return ONLY a valid JSON array of objects. Each object must have:
-   - "id": a string representing the unique ID.
+   - "id": a string representing the state-aware unique ID.
    - "data": a dictionary containing the extracted fields of the item.
 
 If there are no new items, return an empty array `[]`. Do not include markdown formatting or backticks around the JSON.
