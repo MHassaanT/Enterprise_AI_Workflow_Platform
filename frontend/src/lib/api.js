@@ -543,4 +543,12 @@ export async function fetchWorkflowRuns(id) {
   return data.runs || [];
 }
 
-
+export async function fetchWorkflowRunSteps(workflowId, runId) {
+  const res = await fetch(`/api/workflows/${workflowId}/runs/${runId}/steps`, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch workflow run steps');
+  const data = await res.json();
+  return data.steps || [];
+}

@@ -1,9 +1,51 @@
 const express = require('express');
+const https = require('https');
+const http = require('http');
 const router = express.Router();
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
-const { executeWorkflow } = require('../services/workflowEngine');
+
+// ── AGENT SERVICE HELPER ──
+const callAgentAPI = (method, path, payload = null) => {
+  return new Promise((resolve, reject) => {
+    let body = payload ? JSON.stringify(payload) : '';
+    const agentUrl = new URL(`${process.env.AGENT_SERVICE_URL || 'http://localhost:8000'}${path}`);
+    const transport = agentUrl.protocol === 'https:' ? https : http;
+
+    const options = {
+      hostname: agentUrl.hostname,
+      port: agentUrl.port || (agentUrl.protocol === 'https:' ? 443 : 80),
+      path: agentUrl.pathname,
+      method: method,
+      headers: {
+        'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN || '',
+      },
+    };
+
+    if (payload) {
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Length'] = Buffer.byteLength(body);
+    }
+
+    const req = transport.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try {
+          if (res.statusCode >= 400) {
+            reject(new Error(`Agent service HTTP ${res.statusCode}: ${data}`));
+          } else {
+            resolve(JSON.parse(data));
+          }
+        } catch (e) { reject(new Error('Invalid agent service response: ' + data)); }
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(body);
+    req.end();
+  });
+};
 
 // GET /api/workflows - Get all workflows for tenant
 router.get('/', authenticate, authorize('admin', 'employee'), async (req, res) => {
@@ -173,26 +215,17 @@ router.post('/:id/run', authenticate, authorize('admin', 'employee'), async (req
     
     // Check if workflow exists
     const wfCheck = await query(
-      `SELECT workflow_id as id, definition FROM workflows WHERE workflow_id = $1 AND tenant_id = $2`,
+      `SELECT workflow_id as id FROM workflows WHERE workflow_id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
     if (wfCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Workflow not found' });
     }
 
-    const result = await query(
-      `INSERT INTO workflow_runs (workflow_id, tenant_id, triggered_by, status, execution_state) 
-       VALUES ($1, $2, 'manual', 'running', '{}') 
-       RETURNING run_id as id, status, created_at`,
-      [id, tenantId]
-    );
-
-    // Call execution engine asynchronously (fire and forget)
-    executeWorkflow(id, result.rows[0].id, tenantId).catch(err => {
-      console.error('Execution Engine background error:', err);
-    });
+    // Call real execution engine (proxy to python agent)
+    const result = await callAgentAPI('POST', `/api/v1/workflows/${id}/trigger`, { context: {} });
     
-    res.status(202).json({ message: 'Workflow run initiated', run: result.rows[0] });
+    res.status(202).json({ message: 'Workflow run initiated', run: { id: result.run_id, status: result.status } });
   } catch (error) {
     console.error('Error triggering workflow run:', error);
     res.status(500).json({ error: 'Failed to trigger workflow run' });
@@ -218,6 +251,18 @@ router.get('/:id/runs', authenticate, authorize('admin', 'employee'), async (req
   } catch (error) {
     console.error('Error fetching workflow runs:', error);
     res.status(500).json({ error: 'Failed to fetch workflow runs' });
+  }
+});
+
+// GET /api/workflows/:id/runs/:runId/steps - Fetch run steps
+router.get('/:id/runs/:runId/steps', authenticate, authorize('admin', 'employee'), async (req, res) => {
+  try {
+    const { id, runId } = req.params;
+    const result = await callAgentAPI('GET', `/api/v1/workflows/${id}/runs/${runId}/steps`);
+    res.json({ steps: result.steps });
+  } catch (error) {
+    console.error('Error fetching workflow steps:', error);
+    res.status(500).json({ error: 'Failed to fetch workflow steps' });
   }
 });
 

@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { fetchWorkflowRuns } from '@/lib/api';
+import { fetchWorkflowRuns, fetchWorkflowRunSteps } from '@/lib/api';
 
 export default function RunHistoryPanel({ workflowId }) {
   const [isOpen, setIsOpen] = useState(false);
   const [runs, setRuns] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState(null);
+  const [runSteps, setRunSteps] = useState([]);
+  const [loadingSteps, setLoadingSteps] = useState(false);
 
   useEffect(() => {
     if (isOpen && workflowId && !workflowId.startsWith('new-')) {
@@ -14,6 +17,18 @@ export default function RunHistoryPanel({ workflowId }) {
         .catch(console.error);
     }
   }, [isOpen, workflowId]);
+
+  useEffect(() => {
+    if (selectedRunId && workflowId) {
+      setLoadingSteps(true);
+      fetchWorkflowRunSteps(workflowId, selectedRunId)
+        .then(setRunSteps)
+        .catch(console.error)
+        .finally(() => setLoadingSteps(false));
+    } else {
+      setRunSteps([]);
+    }
+  }, [selectedRunId, workflowId]);
 
   if (!isOpen) {
     return (
@@ -53,7 +68,13 @@ export default function RunHistoryPanel({ workflowId }) {
         {/* Run List */}
         <div className="w-1/3 border-r border-outline-variant pr-4 space-y-2">
           {runs.map(run => (
-            <div key={run.id} className="p-3 border border-outline rounded-lg hover:bg-surface-container cursor-pointer flex justify-between items-center transition-colors shadow-sm bg-surface-container-lowest">
+            <div 
+              key={run.id} 
+              onClick={() => setSelectedRunId(run.id)}
+              className={`p-3 border rounded-lg hover:bg-surface-container cursor-pointer flex justify-between items-center transition-colors shadow-sm ${
+                selectedRunId === run.id ? 'border-primary bg-primary/5' : 'border-outline bg-surface-container-lowest'
+              }`}
+            >
               <div>
                 <div className="text-xs text-on-surface-variant font-bold">{new Date(run.date).toLocaleString()}</div>
                 <div className="text-sm font-bold text-on-surface">{run.id.substring(0,8)}</div>
@@ -78,10 +99,74 @@ export default function RunHistoryPanel({ workflowId }) {
         </div>
         
         {/* Step Trace */}
-        <div className="flex-1 pl-4">
-          <div className="h-full flex items-center justify-center text-on-surface-variant text-sm font-bold">
-            Select a run to view execution step trace.
-          </div>
+        <div className="flex-1 pl-4 overflow-y-auto">
+          {!selectedRunId ? (
+            <div className="h-full flex items-center justify-center text-on-surface-variant text-sm font-bold">
+              Select a run to view execution step trace.
+            </div>
+          ) : loadingSteps ? (
+            <div className="h-full flex items-center justify-center text-on-surface-variant text-sm font-bold">
+              Loading steps...
+            </div>
+          ) : runSteps.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-on-surface-variant text-sm font-bold">
+              No steps found for this run.
+            </div>
+          ) : (
+            <div className="space-y-4 pr-2">
+              <h4 className="text-sm font-bold text-on-surface sticky top-0 bg-surface py-2 border-b border-outline-variant z-10">
+                Step Trace for Run {selectedRunId.substring(0,8)}
+              </h4>
+              <div className="space-y-3 pb-4">
+                {runSteps.map((step, index) => (
+                  <div key={step.step_id || index} className="p-3 border border-outline-variant rounded bg-surface-container-lowest flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2 py-1 bg-surface-container rounded-md text-on-surface">
+                          {step.node_type}
+                        </span>
+                        <span className="text-sm font-bold text-on-surface">{step.node_id}</span>
+                      </div>
+                      <span className={`text-xs font-bold ${
+                        step.status === 'completed' || step.status === 'success' ? 'text-green-500' :
+                        step.status === 'failed' ? 'text-red-500' : 'text-yellow-500'
+                      }`}>
+                        {step.status}
+                      </span>
+                    </div>
+                    
+                    <div className="text-xs text-on-surface-variant flex justify-between">
+                      <span>{new Date(step.executed_at).toLocaleTimeString()}</span>
+                      <span>{step.duration_ms}ms</span>
+                    </div>
+
+                    {step.error_message && (
+                      <div className="mt-2 p-2 bg-error-container/10 border border-error/20 rounded text-error text-xs font-mono break-all">
+                        {step.error_message}
+                      </div>
+                    )}
+                    
+                    {(step.input_data || step.output_data) && (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                        {step.input_data && (
+                          <div className="p-2 bg-surface-container rounded overflow-x-auto">
+                            <div className="text-on-surface-variant font-bold mb-1 border-b border-outline-variant pb-1">Input</div>
+                            <pre className="text-on-surface font-mono whitespace-pre-wrap">{JSON.stringify(step.input_data, null, 2)}</pre>
+                          </div>
+                        )}
+                        {step.output_data && (
+                          <div className="p-2 bg-surface-container rounded overflow-x-auto">
+                            <div className="text-on-surface-variant font-bold mb-1 border-b border-outline-variant pb-1">Output</div>
+                            <pre className="text-on-surface font-mono whitespace-pre-wrap">{JSON.stringify(step.output_data, null, 2)}</pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
