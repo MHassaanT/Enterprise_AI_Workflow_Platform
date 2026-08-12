@@ -1,5 +1,6 @@
 import uuid
 import time
+import json
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
@@ -27,6 +28,7 @@ from db_workflows import (
     load_workflow_run_state
 )
 from tool_gateway.centralized_gateway import execute_mcp_tool
+from services.llm_gateway import get_llm
 
 async def call_agent(module_type: str, tenant_id: str, input_data: dict) -> dict:
     """Mock agent call for now."""
@@ -93,20 +95,45 @@ async def execute_node(state: WorkflowExecutionState, node: NodeDef, edges: Dict
             
         elif isinstance(node, ToolNode):
             try:
-                # In a real implementation, we would use an LLM here to map `node.actionDescription`
-                # and current state.variables to the exact tool parameters needed.
-                # For this prototype/MVP, we'll simulate the tool execution.
-                
-                # We could try to call a generic 'execute_task' or just return a dummy if mcp is missing.
                 if node.mcp:
-                    # Mocking parameter resolution
-                    params = {"simulated_input": node.actionDescription, "context": str(state.variables)}
-                    # Usually toolName is needed by call_mcp_tool. We pass a generic one or mock it.
-                    # We'll just mock the output for now since we don't have the explicit toolName.
-                    # output = await call_mcp_tool(node.mcp, "dynamic_tool_call", params, state.tenant_id)
-                    output = {"result": f"Dynamically executed tool on server {node.mcp} for: {node.actionDescription}"}
+                    # Use LLM to map `node.actionDescription` and state variables to specific JSON parameters
+                    llm = get_llm()
+                    prompt = f"""
+You are an AI tool mapper. Your job is to translate a natural language action description into a JSON object of arguments for a tool.
+
+Tool/App: {node.mcp}
+Action Description: {node.actionDescription}
+
+Current Workflow Variables:
+{json.dumps(state.variables, default=str, indent=2)}
+
+Instructions:
+1. Determine the best API arguments needed to perform the action in the specified app.
+2. If variables are needed (e.g. an email address from the trigger), extract them from the Current Workflow Variables.
+3. Return ONLY a valid JSON object containing the arguments. Do not include markdown formatting or backticks.
+"""
+                    llm_response = await llm.ainvoke(prompt)
+                    content = llm_response.content.strip()
+                    if content.startswith("```json"):
+                        content = content[7:-3].strip()
+                    elif content.startswith("```"):
+                        content = content[3:-3].strip()
+                        
+                    try:
+                        params = json.loads(content)
+                    except json.JSONDecodeError:
+                        params = {"action": node.actionDescription} # fallback
+                        
+                    # Call the actual MCP tool
+                    response_str = await execute_mcp_tool(
+                        tenant_id=state.tenant_id,
+                        agent_instance_id="workflow-builder",
+                        tool_name=node.mcp,
+                        arguments=params
+                    )
+                    output = {"result": response_str}
                 else:
-                    output = {"result": f"Executed action: {node.actionDescription}"}
+                    output = {"result": f"Executed generic action: {node.actionDescription}"}
                     
                 if node.outputVariable:
                     state.variables[node.outputVariable] = output
