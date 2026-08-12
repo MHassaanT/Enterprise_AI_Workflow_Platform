@@ -46,7 +46,7 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
         print(f"[AIRTABLE ADAPTER] Ignoring invalid/dummy base_id '{base_id}' (must start with 'app')")
         base_id = None
         
-    if table_name and ("your_" in table_name.lower() or "dummy" in table_name.lower()):
+    if table_name and ("your" in table_name.lower() or "dummy" in table_name.lower() or "placeholder" in table_name.lower()):
         print(f"[AIRTABLE ADAPTER] Ignoring dummy table_name '{table_name}'")
         table_name = "Orders"
 
