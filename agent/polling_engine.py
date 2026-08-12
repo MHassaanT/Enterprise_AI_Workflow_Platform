@@ -88,6 +88,9 @@ async def _poll_app_integration(workflow_id: str, node: Dict[str, Any], tenant_i
 You are an AI polling assistant. 
 Your task is to analyze the text output from a tool and extract a list of NEW events/records that have not been processed yet.
 
+Trigger Configuration:
+{json.dumps(node.get('data', {}), indent=2)}
+
 Tool Output:
 {response_str}
 
