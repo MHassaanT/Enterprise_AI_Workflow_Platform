@@ -26,6 +26,7 @@ export default function Sidebar() {
     { label: 'Dashboard', href: '/', icon: 'dashboard' },
     { label: 'Support Chat', href: '/chat', icon: 'forum' },
     { label: 'Widget Setup', href: '/widget-setup', icon: 'extension' },
+    { label: 'HR Agent', href: '/hr', icon: 'groups' },
     { label: 'MCP Tools', href: '/mcp', icon: 'hub' },
     { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications' },
     { label: 'Human Approvals', href: '/admin/approvals', icon: 'fact_check' },

@@ -552,3 +552,92 @@ export async function fetchWorkflowRunSteps(workflowId, runId) {
   const data = await res.json();
   return data.steps || [];
 }
+
+// ── HR AGENT API ──
+export async function createJobDescription(title, description, requirements) {
+  const res = await fetch('/api/hr/job-descriptions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ title, description, requirements })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to create job description');
+  const data = await res.json();
+  return data.jobDescription;
+}
+
+export async function fetchJobDescriptions() {
+  const res = await fetch('/api/hr/job-descriptions', {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch job descriptions');
+  const data = await res.json();
+  return data.jobDescriptions || [];
+}
+
+export async function fetchJobDescription(id) {
+  const res = await fetch(`/api/hr/job-descriptions/${id}`, {
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch job description');
+  const data = await res.json();
+  return data;
+}
+
+export async function uploadResumes(jobDescriptionId, files) {
+  const formData = new FormData();
+  Array.from(files).forEach((file) => formData.append('files', file));
+
+  const res = await fetch(`/api/hr/job-descriptions/${jobDescriptionId}/resumes`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() },
+    body: formData,
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to upload resumes.');
+  }
+  return res.json();
+}
+
+export async function rankCandidates(jobDescriptionId) {
+  const res = await fetch(`/api/hr/job-descriptions/${jobDescriptionId}/rank`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to rank candidates.');
+  }
+  const data = await res.json();
+  return data.ranked_resumes || [];
+}
+
+export async function scheduleInterview(candidateIds, interviewDetails) {
+  const res = await fetch('/api/hr/schedule-interview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ candidateIds, interviewDetails })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to schedule interviews.');
+  }
+  return res.json();
+}
+
+export async function deleteJobDescription(id) {
+  const res = await fetch(`/api/hr/job-descriptions/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete job description');
+  return res.json();
+}
+

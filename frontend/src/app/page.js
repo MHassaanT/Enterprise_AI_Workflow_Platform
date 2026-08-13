@@ -176,6 +176,20 @@ export default function TenantControlPanelPage() {
                 </Link>
               </div>
 
+              {/* HR Agent Card */}
+              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="material-symbols-outlined text-primary">groups</span>
+                  <h4 className="font-body-md text-body-md font-medium text-on-surface">HR Agent</h4>
+                </div>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
+                  Screen resumes, rank candidates via semantic search, and auto-schedule interviews.
+                </p>
+                <Link href="/hr" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
+                  Open HR Agent ➔
+                </Link>
+              </div>
+
               {/* Widget Setup Card */}
               <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
                 <div className="flex items-center gap-3 mb-2">

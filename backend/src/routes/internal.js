@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { query } = require('../db');
 const { answerWithRAG } = require('../services/rag');
+const { searchResumesForJD } = require('../services/hrQdrant');
 
 // ── AES-256-GCM ENCRYPTION HELPERS ──
 const getAesKey = () => {
@@ -148,6 +149,23 @@ router.post('/rag/query', async (req, res) => {
     citations,                  // structured citations for persistence
     answer,                     // pre-generated answer (fallback if needed)
   });
+});
+
+// ── POST /internal/hr/search-resumes ──
+// Called by the Python HR agent to search resume vectors against JD embedding
+router.post('/hr/search-resumes', async (req, res) => {
+  const { tenantId, jobDescriptionId, queryVector, limit } = req.body;
+  if (!tenantId || !jobDescriptionId || !queryVector) {
+    return res.status(400).json({ error: 'tenantId, jobDescriptionId, and queryVector required.' });
+  }
+
+  try {
+    const chunks = await searchResumesForJD(queryVector, tenantId, jobDescriptionId, { limit: limit || 50 });
+    res.json({ chunks });
+  } catch (error) {
+    console.error(`Error searching resumes for JD ${jobDescriptionId}:`, error);
+    res.status(500).json({ error: 'Failed to search resumes.' });
+  }
 });
 
 // ── POST /internal/approvals ──
