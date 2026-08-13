@@ -124,6 +124,8 @@ If there are no new items, return an empty array `[]`. Do not include markdown f
             
         if not new_events:
             print(f"[POLLING] No new events found for {integration_name}.")
+            # Save state even if empty to baseline first run and update last_checked_timestamp
+            await _save_polling_state(workflow_id, integration_name, list(processed_ids))
             return
             
         # 3. Trigger workflow and update state
