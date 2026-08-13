@@ -3,7 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { query } = require('../db');
 const { answerWithRAG } = require('../services/rag');
-const { searchResumesForJD } = require('../services/hrQdrant');
+const { searchResumesForJD, getAllResumesForJD } = require('../services/hrQdrant');
 const { embedQuery } = require('../services/embeddings');
 
 // ── AES-256-GCM ENCRYPTION HELPERS ──
@@ -167,6 +167,25 @@ router.post('/hr/search-resumes', async (req, res) => {
   } catch (error) {
     console.error(`Error searching resumes for JD ${jobDescriptionId}:`, error);
     res.status(500).json({ error: 'Failed to search resumes.' });
+  }
+});
+
+// ── GET /internal/hr/resumes/:jobDescriptionId ──
+// Called by the Python HR agent to get ALL resume chunks for a given JD
+router.get('/hr/resumes/:jobDescriptionId', async (req, res) => {
+  const { jobDescriptionId } = req.params;
+  const tenantId = req.query.tenantId;
+  
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId required.' });
+  }
+
+  try {
+    const chunks = await getAllResumesForJD(tenantId, jobDescriptionId);
+    res.json({ chunks });
+  } catch (error) {
+    console.error(`Error getting all resumes for JD ${jobDescriptionId}:`, error);
+    res.status(500).json({ error: 'Failed to get resumes.' });
   }
 });
 

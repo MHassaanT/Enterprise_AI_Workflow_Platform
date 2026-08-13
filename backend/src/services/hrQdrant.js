@@ -99,6 +99,29 @@ const searchResumesForJD = async (queryVector, tenantId, jobDescriptionId, { lim
   }));
 };
 
+const getAllResumesForJD = async (tenantId, jobDescriptionId) => {
+  const qdrant = getClient();
+  await ensureHRCollection();
+
+  const results = await qdrant.scroll(COLLECTION_NAME, {
+    limit: 1000,
+    with_payload: true,
+    filter: {
+      must: [
+        { key: 'tenant_id', match: { value: tenantId } },
+        { key: 'job_description_id', match: { value: jobDescriptionId } },
+      ],
+    },
+  });
+
+  return results.points.map((hit) => ({
+    text: hit.payload.text,
+    resumeId: hit.payload.resume_id,
+    candidateName: hit.payload.candidate_name,
+    chunkIndex: hit.payload.chunk_index,
+  }));
+};
+
 const deleteResumeChunks = async (resumeId, tenantId) => {
   const qdrant = getClient();
   await ensureHRCollection();
@@ -133,6 +156,7 @@ module.exports = {
   ensureHRCollection,
   upsertResumeChunks,
   searchResumesForJD,
+  getAllResumesForJD,
   deleteResumeChunks,
   deleteJobDescriptionResumes,
   COLLECTION_NAME,

@@ -6,7 +6,7 @@ import httpx
 from datetime import datetime
 
 from config import settings
-from services.hr_rag_client import query_hr_resumes
+from services.hr_rag_client import get_all_hr_resumes
 from services.llm_gateway import get_llm
 from tool_gateway.centralized_gateway import execute_mcp_tool
 
@@ -36,13 +36,11 @@ async def rank_candidates(
     # 1. Prepare Job Description Text
     jd_text = f"{request.job_title}\n{request.job_description}\n{request.job_requirements}"
 
-    # 2. Search for all relevant resume chunks for this JD via Node backend (which will handle embedding)
+    # 2. Fetch all resume chunks for this JD via Node backend
     try:
-        chunks = await query_hr_resumes(
-            job_description_text=jd_text,
+        chunks = await get_all_hr_resumes(
             tenant_id=request.tenant_id,
             job_description_id=request.job_description_id,
-            limit=100  # get a lot of chunks since multiple resumes
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve resumes: {str(e)}")
@@ -55,9 +53,14 @@ async def rank_candidates(
             if r_id not in resumes_data:
                 resumes_data[r_id] = {
                     "candidate_name": chunk.get("candidateName", "Unknown"),
-                    "text": ""
+                    "chunks": []
                 }
-            resumes_data[r_id]["text"] += chunk.get("text", "") + "\n\n"
+            resumes_data[r_id]["chunks"].append(chunk)
+
+    # Sort chunks by chunkIndex to maintain document order and join text
+    for r_id in resumes_data:
+        resumes_data[r_id]["chunks"].sort(key=lambda x: x.get("chunkIndex", 0))
+        resumes_data[r_id]["text"] = "\n\n".join([c.get("text", "") for c in resumes_data[r_id]["chunks"]])
 
     # 3. Score each resume with the LLM
     llm = get_llm()

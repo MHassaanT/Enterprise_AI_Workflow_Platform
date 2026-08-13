@@ -1,19 +1,13 @@
 import httpx
 from config import settings
 
-async def query_hr_resumes(job_description_text: str, tenant_id: str, job_description_id: str, limit: int = 50) -> list:
+async def get_all_hr_resumes(tenant_id: str, job_description_id: str) -> list:
     """
-    Retrieves relevant resume chunks for a given job description from the Node.js backend.
+    Retrieves ALL resume chunks for a given job description from the Node.js backend to ensure full context for LLM extraction.
     """
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"{settings.BACKEND_URL}/internal/hr/search-resumes",
-            json={
-                "tenantId": tenant_id,
-                "jobDescriptionId": job_description_id,
-                "jobDescriptionText": job_description_text,
-                "limit": limit
-            },
+        response = await client.get(
+            f"{settings.BACKEND_URL}/internal/hr/resumes/{job_description_id}?tenantId={tenant_id}",
             headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
         )
         response.raise_for_status()

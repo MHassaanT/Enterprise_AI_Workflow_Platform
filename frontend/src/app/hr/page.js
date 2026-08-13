@@ -327,19 +327,27 @@ export default function HRAgentPage() {
                           </tr>
                         </thead>
                         <tbody className="align-top text-sm">
-                          {resumes.map(r => (
-                            <tr key={r.id} className="border-b border-outline-variant/50 hover:bg-surface-container-low transition-colors">
-                              <td className="p-3 pt-4">
+                          {resumes.map(r => {
+                            const hasEmail = Boolean(r.candidate_email && r.candidate_email.trim() !== '');
+                            const isSelected = selectedIds.includes(r.id);
+                            return (
+                            <tr 
+                              key={r.id} 
+                              onClick={() => { if (hasEmail) toggleSelection(r.id); }}
+                              className={`border-b border-outline-variant/50 transition-colors ${hasEmail ? 'cursor-pointer hover:bg-surface-container-low' : 'opacity-70'} ${isSelected ? 'bg-primary-container/10' : ''}`}
+                            >
+                              <td className="p-3 pt-4" onClick={(e) => e.stopPropagation()}>
                                 <input 
                                   type="checkbox" 
-                                  checked={selectedIds.includes(r.id)}
+                                  disabled={!hasEmail}
+                                  checked={isSelected}
                                   onChange={() => toggleSelection(r.id)}
-                                  className="accent-primary w-4 h-4 rounded border-outline-variant"
+                                  className="accent-primary w-4 h-4 rounded border-outline-variant cursor-pointer disabled:cursor-not-allowed"
                                 />
                               </td>
                               <td className="p-3">
                                 <div className="font-medium text-on-surface mb-1">{r.candidate_name || r.filename}</div>
-                                <div className="text-on-surface-variant text-xs">{r.candidate_email || 'No email found'}</div>
+                                <div className={`text-xs ${hasEmail ? 'text-on-surface-variant' : 'text-error font-medium'}`}>{r.candidate_email || 'No email found'}</div>
                                 {r.rank_reasoning && (
                                   <div className="mt-2 text-xs text-on-surface-variant italic bg-surface-container p-2 rounded line-clamp-2">
                                     "{r.rank_reasoning}"
@@ -384,7 +392,8 @@ export default function HRAgentPage() {
                                 )}
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
