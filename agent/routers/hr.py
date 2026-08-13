@@ -35,7 +35,7 @@ async def get_embedding(text: str) -> list[float]:
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
     # Since we know GEMINI_API_KEY is available:
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
+        model="models/text-embedding-004",
         google_api_key=settings.GEMINI_API_KEY
     )
     return await embeddings.aembed_query(text)
