@@ -1,7 +1,7 @@
 import httpx
 from config import settings
 
-async def query_hr_resumes(query_vector: list, tenant_id: str, job_description_id: str, limit: int = 50) -> list:
+async def query_hr_resumes(job_description_text: str, tenant_id: str, job_description_id: str, limit: int = 50) -> list:
     """
     Retrieves relevant resume chunks for a given job description from the Node.js backend.
     """
@@ -10,8 +10,8 @@ async def query_hr_resumes(query_vector: list, tenant_id: str, job_description_i
             f"{settings.BACKEND_URL}/internal/hr/search-resumes",
             json={
                 "tenantId": tenant_id,
-                "jobDescriptionId": jobDescriptionId,
-                "queryVector": query_vector,
+                "jobDescriptionId": job_description_id,
+                "jobDescriptionText": job_description_text,
                 "limit": limit
             },
             headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { query } = require('../db');
 const { answerWithRAG } = require('../services/rag');
 const { searchResumesForJD } = require('../services/hrQdrant');
+const { embedQuery } = require('../services/embeddings');
 
 // ── AES-256-GCM ENCRYPTION HELPERS ──
 const getAesKey = () => {
@@ -152,14 +153,15 @@ router.post('/rag/query', async (req, res) => {
 });
 
 // ── POST /internal/hr/search-resumes ──
-// Called by the Python HR agent to search resume vectors against JD embedding
+// Called by the Python HR agent to search resume vectors against JD text
 router.post('/hr/search-resumes', async (req, res) => {
-  const { tenantId, jobDescriptionId, queryVector, limit } = req.body;
-  if (!tenantId || !jobDescriptionId || !queryVector) {
-    return res.status(400).json({ error: 'tenantId, jobDescriptionId, and queryVector required.' });
+  const { tenantId, jobDescriptionId, jobDescriptionText, limit } = req.body;
+  if (!tenantId || !jobDescriptionId || !jobDescriptionText) {
+    return res.status(400).json({ error: 'tenantId, jobDescriptionId, and jobDescriptionText required.' });
   }
 
   try {
+    const queryVector = await embedQuery(jobDescriptionText);
     const chunks = await searchResumesForJD(queryVector, tenantId, jobDescriptionId, { limit: limit || 50 });
     res.json({ chunks });
   } catch (error) {

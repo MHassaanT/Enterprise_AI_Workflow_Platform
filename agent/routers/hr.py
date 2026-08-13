@@ -25,21 +25,6 @@ class ScheduleEmailRequest(BaseModel):
     candidate_ids: List[str]
     interview_details: str
 
-async def get_embedding(text: str) -> list[float]:
-    """Helper to get text embedding via Google GenAI or OpenRouter if needed.
-    For simplicity, if we need it here we'll use a direct fetch, or ideally
-    we can ask the backend to do it. Let's do a direct call to the Node backend
-    or just use the LLM to get embeddings if possible.
-    Actually, to keep it simple and aligned, we can just use the langchain embeddings.
-    """
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    # Since we know GEMINI_API_KEY is available:
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
-        google_api_key=settings.GEMINI_API_KEY
-    )
-    return await embeddings.aembed_query(text)
-
 @router.post("/rank")
 async def rank_candidates(
     request: RankRequest,
@@ -48,17 +33,13 @@ async def rank_candidates(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    # 1. Embed the Job Description
+    # 1. Prepare Job Description Text
     jd_text = f"{request.job_title}\n{request.job_description}\n{request.job_requirements}"
-    try:
-        jd_vector = await get_embedding(jd_text)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate JD embedding: {str(e)}")
 
-    # 2. Search for all relevant resume chunks for this JD
+    # 2. Search for all relevant resume chunks for this JD via Node backend (which will handle embedding)
     try:
         chunks = await query_hr_resumes(
-            query_vector=jd_vector,
+            job_description_text=jd_text,
             tenant_id=request.tenant_id,
             job_description_id=request.job_description_id,
             limit=100  # get a lot of chunks since multiple resumes
