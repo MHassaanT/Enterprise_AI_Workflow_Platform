@@ -52,7 +52,7 @@ async def rank_candidates(
         if r_id and r_id in request.resume_ids:
             if r_id not in resumes_data:
                 resumes_data[r_id] = {
-                    "candidate_name": chunk.get("candidateName", "Unknown"),
+                    "candidate_name": chunk.get("candidateName") or "Unknown",
                     "chunks": []
                 }
             resumes_data[r_id]["chunks"].append(chunk)
@@ -60,17 +60,11 @@ async def rank_candidates(
     # Sort chunks by chunkIndex to maintain document order and join text
     for r_id in resumes_data:
         resumes_data[r_id]["chunks"].sort(key=lambda x: x.get("chunkIndex", 0))
-        resumes_data[r_id]["text"] = "\n\n".join([c.get("text", "") for c in resumes_data[r_id]["chunks"]])
+        resumes_data[r_id]["text"] = "\n\n".join([c.get("text") or "" for c in resumes_data[r_id]["chunks"]])
 
     # 3. Score each resume with the LLM
     llm = get_llm()
     results = []
-
-    # Update database directly from here
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Note: In a real app we'd use a proper DB service, but here we can just update via the backend internal route
-        # Or since this is a proxy from Node, we can just return the scores and let Node do the update.
-        pass
 
     for r_id, data in resumes_data.items():
         prompt = f"""
@@ -82,7 +76,7 @@ Job Description: {request.job_description}
 
 Candidate Name: {data["candidate_name"]}
 Resume Extracts:
-{data["text"][:3000]}  # limit text to avoid token limits
+{data["text"][:3000]}
 
 Output a JSON object with the following fields:
 1. "candidate_name": Extract the real full name of the candidate from the resume if possible, otherwise use "{data["candidate_name"]}".
@@ -100,12 +94,9 @@ Return ONLY valid JSON. No markdown backticks.
                 content = content[7:-3].strip()
             elif content.startswith("```"):
                 content = content[3:-3].strip()
-                
+
             parsed = json.loads(content)
-            
-            # Update Postgres DB using Node internal/DB wrapper
-            # We don't have a direct DB wrapper for this, so we'll just update directly via asyncpg or httpx
-            # Let's write directly to DB to be safe, since we have DATABASE_URL
+
             import asyncpg
             conn = await asyncpg.connect(settings.DATABASE_URL)
             await conn.execute(
@@ -118,22 +109,21 @@ Return ONLY valid JSON. No markdown backticks.
                 float(parsed.get("score", 0)),
                 parsed.get("reasoning", ""),
                 json.dumps(parsed.get("skills_matched", [])),
-                parsed.get("candidate_name", data["candidate_name"]),
-                parsed.get("candidate_email", ""),
+                parsed.get("candidate_name") or data["candidate_name"],
+                parsed.get("candidate_email") or "",
                 r_id,
                 request.tenant_id
             )
             await conn.close()
-            
+
             results.append({
                 "resume_id": r_id,
                 "score": parsed.get("score"),
                 "name": parsed.get("candidate_name")
             })
-            
+
         except Exception as e:
             print(f"Failed to score resume {r_id}: {e}")
-            # Mark as 0 if failed
             import asyncpg
             conn = await asyncpg.connect(settings.DATABASE_URL)
             await conn.execute(
@@ -158,8 +148,7 @@ async def send_interview_emails(
 
     import asyncpg
     conn = await asyncpg.connect(settings.DATABASE_URL)
-    
-    # Get candidate details and job title
+
     candidates = []
     for r_id in request.candidate_ids:
         row = await conn.fetchrow(
@@ -174,16 +163,15 @@ async def send_interview_emails(
         if row and row['candidate_email']:
             candidates.append({
                 "id": r_id,
-                "name": row['candidate_name'],
+                "name": row['candidate_name'] or "Candidate",
                 "email": row['candidate_email'],
-                "title": row['title']
+                "title": row['title'] or "Job Role"
             })
 
     llm = get_llm()
     results = []
 
     for c in candidates:
-        # Draft email
         prompt = f"""
 You are an HR Assistant. Draft a professional interview invitation email for a candidate.
 Candidate Name: {c["name"]}
@@ -203,29 +191,27 @@ Return ONLY valid JSON. No markdown backticks.
                 content = content[7:-3].strip()
             elif content.startswith("```"):
                 content = content[3:-3].strip()
-                
+
             parsed = json.loads(content)
-            
-            # Send email via MCP gateway
+
             tool_args = {
                 "action": "send",
                 "to": c["email"],
-                "subject": parsed.get("subject", f"Interview Invitation: {c['title']}"),
-                "body": parsed.get("body", f"Hello {c['name']},\n\nWe would like to invite you for an interview. Details:\n{request.interview_details}")
+                "subject": parsed.get("subject") or f"Interview Invitation: {c['title']}",
+                "body": parsed.get("body") or f"Hello {c['name']},\n\nWe would like to invite you for an interview. Details:\n{request.interview_details}"
             }
-            
+
             print(f"Sending email to {c['email']}...")
             mcp_response = await execute_mcp_tool(
                 tenant_id=request.tenant_id,
-                agent_instance_id="workflow-builder", # Dummy for bypass
+                agent_instance_id="workflow-builder",
                 tool_name="gmail",
                 arguments=tool_args
             )
-            
+
             if "Error:" in mcp_response or "exception" in mcp_response.lower():
                 raise Exception(mcp_response)
-                
-            # Update DB status
+
             await conn.execute(
                 """
                 UPDATE hr_resumes SET email_status = 'sent', email_sent_at = NOW() 
@@ -234,7 +220,7 @@ Return ONLY valid JSON. No markdown backticks.
                 c["id"], request.tenant_id
             )
             results.append({"id": c["id"], "status": "sent"})
-            
+
         except Exception as e:
             print(f"Failed to send email to {c['name']}: {e}")
             await conn.execute(
@@ -298,6 +284,11 @@ async def scan_talent_pool(
     transferred = []
 
     for prospect in prospects:
+        applicant_name = prospect.get('applicant_name') or 'Unknown'
+        desired_role = prospect.get('desired_role') or 'Not specified'
+        email_subject = prospect.get('email_subject') or ''
+        resume_body = (prospect.get('resume_text') or prospect.get('email_body') or '')[:2000]
+
         # Use LLM to check if prospect matches the new role
         prompt = f"""You are an HR matching assistant. Determine if this candidate is a potential match for a new job opening.
 
@@ -307,10 +298,10 @@ New Open Role:
 - Requirements: {request.role_requirements}
 
 Candidate Profile:
-- Name: {prospect.get('applicant_name', 'Unknown')}
-- Desired Role: {prospect.get('desired_role', 'Not specified')}
-- Email Subject: {prospect.get('email_subject', '')}
-- Resume/Body: {(prospect.get('resume_text', '') or prospect.get('email_body', ''))[:2000]}
+- Name: {applicant_name}
+- Desired Role: {desired_role}
+- Email Subject: {email_subject}
+- Resume/Body: {resume_body}
 
 Is this candidate a reasonable match for the open role? Consider their desired role, skills mentioned in resume/email, and the job requirements.
 
@@ -347,11 +338,11 @@ Do not include markdown backticks.
                         transfer_response.raise_for_status()
 
                     # Send notification email to the applicant
-                    from tool_gateway.centralized_gateway import execute_mcp_tool
+                    applicant_email = prospect.get("applicant_email") or ""
+                    if applicant_email:
+                        email_prompt = f"""You are an HR Assistant. Draft a professional email notifying a candidate that a role they previously applied for is now open.
 
-                    email_prompt = f"""You are an HR Assistant. Draft a professional email notifying a candidate that a role they previously applied for is now open.
-
-Candidate Name: {prospect.get('applicant_name', 'Applicant')}
+Candidate Name: {applicant_name}
 Role Title: {request.role_title}
 Original Application: They applied previously but the role was not available at the time.
 
@@ -363,34 +354,34 @@ Output a JSON object with:
 
 Return ONLY valid JSON. No markdown backticks.
 """
-                    email_response = await llm.ainvoke(email_prompt)
-                    email_content = email_response.content.strip()
-                    if email_content.startswith("```json"):
-                        email_content = email_content[7:-3].strip()
-                    elif email_content.startswith("```"):
-                        email_content = email_content[3:-3].strip()
+                        email_response = await llm.ainvoke(email_prompt)
+                        email_content = email_response.content.strip()
+                        if email_content.startswith("```json"):
+                            email_content = email_content[7:-3].strip()
+                        elif email_content.startswith("```"):
+                            email_content = email_content[3:-3].strip()
 
-                    email_parsed = json.loads(email_content)
+                        email_parsed = json.loads(email_content)
 
-                    await execute_mcp_tool(
-                        tenant_id=request.tenant_id,
-                        agent_instance_id="workflow-builder",
-                        tool_name="gmail",
-                        arguments={
-                            "action": "send",
-                            "to": prospect.get("applicant_email", ""),
-                            "subject": email_parsed.get("subject", f"Update: {request.role_title} is Now Open"),
-                            "body": email_parsed.get("body", ""),
-                        }
-                    )
+                        await execute_mcp_tool(
+                            tenant_id=request.tenant_id,
+                            agent_instance_id="workflow-builder",
+                            tool_name="gmail",
+                            arguments={
+                                "action": "send",
+                                "to": applicant_email,
+                                "subject": email_parsed.get("subject") or f"Update: {request.role_title} is Now Open",
+                                "body": email_parsed.get("body") or "",
+                            }
+                        )
 
                     transferred.append({
                         "prospect_id": prospect["id"],
-                        "name": prospect.get("applicant_name"),
+                        "name": applicant_name,
                         "email": prospect.get("applicant_email"),
                     })
 
-                    print(f"[HR] Transferred prospect {prospect.get('applicant_name')} to role '{request.role_title}'")
+                    print(f"[HR] Transferred prospect {applicant_name} to role '{request.role_title}'")
 
                 except Exception as te:
                     print(f"[HR] Failed to transfer prospect {prospect['id']}: {te}")
@@ -430,7 +421,10 @@ async def rank_applications(
         if not row:
             continue
 
-        resume_text = row.get("resume_text", "") or row.get("email_body", "") or ""
+        row_dict = dict(row)
+        resume_text = (row_dict.get("resume_text") or row_dict.get("email_body") or "")
+
+        applicant_name = row_dict.get('applicant_name') or 'Unknown'
 
         prompt = f"""You are an expert HR Technical Recruiter. Evaluate this candidate's application against the Job Description.
 
@@ -438,13 +432,13 @@ Job Title: {request.role_title}
 Requirements: {request.role_requirements}
 Job Description: {request.role_description}
 
-Candidate Name: {row['applicant_name']}
+Candidate Name: {applicant_name}
 Application Source: Email
 Resume/Application Text:
 {resume_text[:3000]}
 
 Output a JSON object with:
-1. "candidate_name": The candidate's real name (or use "{row['applicant_name']}").
+1. "candidate_name": The candidate's real name (or use "{applicant_name}").
 2. "score": An integer from 0 to 100 representing how well the candidate matches.
 3. "reasoning": A 1-2 sentence explanation for the score.
 4. "skills_matched": A list of key matching skills.
@@ -471,7 +465,7 @@ Return ONLY valid JSON. No markdown backticks.
                 float(parsed.get("score", 0)),
                 parsed.get("reasoning", ""),
                 json.dumps(parsed.get("skills_matched", [])),
-                parsed.get("candidate_name", row["applicant_name"]),
+                parsed.get("candidate_name") or applicant_name,
                 app_id,
                 request.tenant_id,
             )
@@ -479,7 +473,7 @@ Return ONLY valid JSON. No markdown backticks.
             results.append({
                 "application_id": app_id,
                 "score": parsed.get("score"),
-                "name": parsed.get("candidate_name"),
+                "name": parsed.get("candidate_name") or applicant_name,
             })
 
         except Exception as e:

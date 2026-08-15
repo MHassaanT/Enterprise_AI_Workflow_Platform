@@ -179,7 +179,7 @@ async def _classify_application(
     llm = get_llm()
     
     roles_summary = "\n".join([
-        f"- Role ID: {r['id']} | Title: {r['title']} | Description: {r['description'][:200]}..."
+        f"- Role ID: {r['id']} | Title: {r.get('title') or 'Untitled'} | Description: {(r.get('description') or '')[:200]}..."
         for r in open_roles
     ]) if open_roles else "No open roles currently available."
     
@@ -188,9 +188,9 @@ async def _classify_application(
 2. If yes, which open role does it best match?
 
 Email Details:
-- Subject: {email_details.get('subject', '')}
-- From: {email_details.get('sender', '')}
-- Body Preview: {email_details.get('body', '')[:1500]}
+- Subject: {email_details.get('subject') or ''}
+- From: {email_details.get('sender') or ''}
+- Body Preview: {(email_details.get('body') or '')[:1500]}
 
 Resume/CV Text (if available):
 {resume_text[:2000] if resume_text else 'No resume text extracted.'}
@@ -427,22 +427,22 @@ async def poll_hr_mailbox(tenant_id: str):
                         "open_role_id": matched_role_id,
                         "applicant_name": applicant_name,
                         "applicant_email": applicant_email,
-                        "email_subject": email_details.get("subject", ""),
-                        "email_body": email_details.get("body", "")[:5000],
+                        "email_subject": email_details.get("subject") or "",
+                        "email_body": (email_details.get("body") or "")[:5000],
                         "email_message_id": msg_id,
-                        "resume_text": resume_text[:10000],
-                        "resume_filename": resume_filename,
+                        "resume_text": (resume_text or "")[:10000],
+                        "resume_filename": resume_filename or "",
                         "source": "email",
                     })
                     
-                    print(f"[HR POLL] Application stored for role '{matched_role['title']}' from {applicant_email}")
+                    print(f"[HR POLL] Application stored for role '{matched_role.get('title', 'Unknown')}' from {applicant_email}")
                     
                     # Send ack email
                     ack_sent = await _send_ack_email(
                         tenant_id=str(tenant_id),
                         to_email=applicant_email,
                         applicant_name=applicant_name,
-                        role_title=matched_role["title"],
+                        role_title=matched_role.get("title", "Open Position"),
                         matched=True,
                     )
                     
@@ -457,12 +457,12 @@ async def poll_hr_mailbox(tenant_id: str):
                         "tenant_id": str(tenant_id),
                         "applicant_name": applicant_name,
                         "applicant_email": applicant_email,
-                        "email_subject": email_details.get("subject", ""),
-                        "email_body": email_details.get("body", "")[:5000],
+                        "email_subject": email_details.get("subject") or "",
+                        "email_body": (email_details.get("body") or "")[:5000],
                         "email_message_id": msg_id,
-                        "resume_text": resume_text[:10000],
-                        "resume_filename": resume_filename,
-                        "desired_role": classification.get("desired_role", ""),
+                        "resume_text": (resume_text or "")[:10000],
+                        "resume_filename": resume_filename or "",
+                        "desired_role": classification.get("desired_role") or "",
                     })
                     
                     print(f"[HR POLL] Application from {applicant_email} stored in Talent Pool (no matching role)")
