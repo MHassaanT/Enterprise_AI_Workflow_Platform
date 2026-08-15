@@ -155,206 +155,250 @@ export default function TeamProjectsTab() {
     try {
       setPacingChecking(true);
       await checkProjectPacing();
-      alert('Pacing check complete. Email notifications sent for any behind-schedule projects.');
+      alert('Pacing check complete. Email notifications dispatched for behind-schedule projects.');
       if (activeProjectId) loadProjectDetails(activeProjectId);
     } catch (e) { alert(e.message); }
     finally { setPacingChecking(false); }
   };
 
-  const pacingBadge = (status) => {
+  const renderPacingBadge = (status) => {
     const map = {
-      on_track: { label: 'On Track', color: '#22c55e', bg: '#dcfce7' },
-      at_risk: { label: 'At Risk', color: '#f59e0b', bg: '#fef3c7' },
-      behind: { label: 'Behind Schedule', color: '#ef4444', bg: '#fee2e2' },
-      ahead: { label: 'Ahead', color: '#3b82f6', bg: '#dbeafe' },
+      on_track: { label: 'On Track', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+      at_risk: { label: 'At Risk', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+      behind: { label: 'Behind Schedule', cls: 'bg-red-500/10 text-red-400 border-red-500/20' },
+      ahead: { label: 'Ahead', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
     };
-    const item = map[status] || { label: status || 'Unknown', color: '#6b7280', bg: '#f3f4f6' };
+    const item = map[status] || { label: status || 'Active', cls: 'bg-surface-container text-on-surface-variant border-outline-variant' };
     return (
-      <span style={{ background: item.bg, color: item.color, padding: '3px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${item.cls}`}>
         {item.label}
       </span>
     );
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Top Header & Subtabs */}
-      <div style={{ padding: '16px 32px', background: '#fff', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div style={{ display: 'flex', background: '#f3f4f6', padding: 3, borderRadius: 8 }}>
-            <button onClick={() => { setSubTab('projects'); setActiveProjectId(null); }}
-              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: subTab === 'projects' ? '#fff' : 'transparent', fontWeight: 600, fontSize: 13, color: subTab === 'projects' ? 'var(--color-primary)' : 'var(--color-muted)', cursor: 'pointer', boxShadow: subTab === 'projects' ? 'var(--shadow-sm)' : 'none' }}>
-              Projects ({projects.length})
-            </button>
-            <button onClick={() => { setSubTab('employees'); setActiveProjectId(null); }}
-              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: subTab === 'employees' ? '#fff' : 'transparent', fontWeight: 600, fontSize: 13, color: subTab === 'employees' ? 'var(--color-primary)' : 'var(--color-muted)', cursor: 'pointer', boxShadow: subTab === 'employees' ? 'var(--shadow-sm)' : 'none' }}>
-              Team Members ({employees.length})
-            </button>
-          </div>
+    <div className="flex flex-col flex-1 overflow-hidden w-full bg-background">
+      {/* Subtab Navigation Bar */}
+      <div className="px-6 py-3 bg-surface border-b border-outline-variant flex justify-between items-center flex-shrink-0">
+        <div className="flex items-center gap-2 bg-surface-container-low p-1 rounded-xl border border-outline-variant">
+          <button
+            onClick={() => { setSubTab('projects'); setActiveProjectId(null); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              subTab === 'projects'
+                ? 'bg-surface text-primary shadow-sm border border-outline-variant/50'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            Projects ({projects.length})
+          </button>
+          <button
+            onClick={() => { setSubTab('employees'); setActiveProjectId(null); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              subTab === 'employees'
+                ? 'bg-surface text-primary shadow-sm border border-outline-variant/50'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            Team Directory ({employees.length})
+          </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="flex items-center gap-3">
           {subTab === 'projects' && (
             <>
-              <button onClick={handleCheckPacing} disabled={pacingChecking}
-                style={{ padding: '8px 16px', background: '#f0f9ff', color: '#0284c7', border: '1px solid #7dd3fc', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: pacingChecking ? 0.5 : 1 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>speed</span>
+              <button
+                onClick={handleCheckPacing}
+                disabled={pacingChecking}
+                className="px-3.5 py-1.5 bg-secondary text-on-secondary rounded-lg text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">speed</span>
                 {pacingChecking ? 'Checking...' : 'Check Pacing & Notify'}
               </button>
-              <button onClick={() => setShowProjModal(true)}
-                style={{ padding: '8px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                + New Project
+              <button
+                onClick={() => setShowProjModal(true)}
+                className="px-3.5 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-semibold hover:bg-primary-container transition-colors flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span>
+                New Project
               </button>
             </>
           )}
 
           {subTab === 'employees' && (
-            <button onClick={() => setShowEmpModal(true)}
-              style={{ padding: '8px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              + Add Employee / Import
+            <button
+              onClick={() => setShowEmpModal(true)}
+              className="px-3.5 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-semibold hover:bg-primary-container transition-colors flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">person_add</span>
+              Add Employee / Import
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Body */}
-      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--color-bg)' }}>
+      {/* Main Body Container — Spans full width! */}
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8 w-full">
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-muted)' }}>Loading...</div>
+          <div className="text-center py-12 text-on-surface-variant">Loading platform data...</div>
         ) : subTab === 'employees' ? (
-          /* EMPLOYEES VIEW */
-          <div style={{ maxWidth: 1100, margin: '32px auto', padding: '0 24px' }}>
-            <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--color-border)' }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--color-text)' }}>Employee Directory</h3>
+          /* EMPLOYEES DIRECTORY VIEW */
+          <div className="space-y-6 w-full">
+            <div className="bg-surface border border-outline-variant rounded-xl overflow-hidden">
+              <div className="p-6 border-b border-outline-variant flex justify-between items-center">
+                <div>
+                  <h3 className="font-headline-sm text-on-surface">Employee Directory</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">Manage team members, roles, and project assignments.</p>
+                </div>
               </div>
               {employees.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 48, color: 'var(--color-muted)' }}>No employees registered. Add employees manually or import via CSV/XLSX.</div>
+                <div className="text-center py-16 text-on-surface-variant bg-surface-container-low border-dashed">
+                  <span className="material-symbols-outlined text-[48px] opacity-30 mb-2">groups</span>
+                  <p className="text-sm font-medium">No employees registered yet.</p>
+                  <p className="text-xs mt-1">Add employees manually or upload a CSV/XLSX spreadsheet.</p>
+                </div>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--color-border)', textAlign: 'left', background: '#fafbfc' }}>
-                      <th style={{ padding: '12px 16px', color: 'var(--color-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Employee</th>
-                      <th style={{ padding: '12px 16px', color: 'var(--color-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Position & Dept</th>
-                      <th style={{ padding: '12px 16px', color: 'var(--color-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Active Projects</th>
-                      <th style={{ padding: '12px 16px', color: 'var(--color-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Status</th>
-                      <th style={{ padding: '12px 16px', color: 'var(--color-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', width: 60 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {employees.map(emp => (
-                      <tr key={emp.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{emp.name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{emp.email}</div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ color: 'var(--color-text)', fontWeight: 500 }}>{emp.position}</div>
-                          <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{emp.department || 'General'}</div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {emp.projects && emp.projects.length > 0 ? (
-                              emp.projects.map((p, idx) => (
-                                <span key={idx} style={{ background: '#f3f4f6', color: 'var(--color-text)', padding: '2px 8px', borderRadius: 4, fontSize: 11, border: '1px solid #e5e7eb' }}>
-                                  {p.project_name} ({p.role})
-                                </span>
-                              ))
-                            ) : (
-                              <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>Unassigned</span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <span style={{ background: emp.status === 'active' ? '#dcfce7' : '#fee2e2', color: emp.status === 'active' ? '#166534' : '#991b1b', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                            {emp.status}
-                          </span>
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <button onClick={() => handleDeleteEmployee(emp.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
-                          </button>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-outline-variant text-on-surface-variant font-label-sm uppercase tracking-wider bg-surface-container-low">
+                        <th className="p-4">Employee</th>
+                        <th className="p-4">Position & Dept</th>
+                        <th className="p-4">Assigned Projects</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4 w-16"></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="align-top text-sm">
+                      {employees.map(emp => (
+                        <tr key={emp.id} className="border-b border-outline-variant/50 hover:bg-surface-container-low transition-colors">
+                          <td className="p-4">
+                            <div className="font-medium text-on-surface">{emp.name}</div>
+                            <div className="text-xs text-on-surface-variant">{emp.email}</div>
+                          </td>
+                          <td className="p-4">
+                            <div className="text-on-surface font-medium">{emp.position}</div>
+                            <div className="text-xs text-on-surface-variant">{emp.department || 'General'}</div>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex flex-wrap gap-1.5">
+                              {emp.projects && emp.projects.length > 0 ? (
+                                emp.projects.map((p, idx) => (
+                                  <span key={idx} className="text-xs px-2.5 py-0.5 bg-surface-container text-on-surface rounded border border-outline-variant">
+                                    {p.project_name} ({p.role})
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-on-surface-variant italic">Unassigned</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase ${
+                              emp.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400'
+                            }`}>
+                              {emp.status}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <button onClick={() => handleDeleteEmployee(emp.id)} className="text-on-surface-variant hover:text-error transition-colors">
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
         ) : activeProjectId && activeProjectData ? (
           /* PROJECT DETAILS VIEW */
-          <div style={{ maxWidth: 1100, margin: '32px auto', padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <button onClick={() => setActiveProjectId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, alignSelf: 'flex-start' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span> Back to Projects List
+          <div className="space-y-6 w-full">
+            <button
+              onClick={() => setActiveProjectId(null)}
+              className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1 text-xs font-semibold"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_back</span> Back to Projects List
             </button>
 
-            {/* Project Summary Card */}
-            <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            {/* Project Banner Card */}
+            <div className="bg-surface border border-outline-variant rounded-xl p-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-                    <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--color-text)' }}>{activeProjectData.project.name}</h2>
-                    {pacingBadge(activeProjectData.project.pacing_status)}
+                  <div className="flex items-center gap-3 mb-1">
+                    <h2 className="font-headline-md text-on-surface">{activeProjectData.project.name}</h2>
+                    {renderPacingBadge(activeProjectData.project.pacing_status)}
                   </div>
-                  <p style={{ margin: 0, fontSize: 14, color: 'var(--color-muted)', maxWidth: 700 }}>{activeProjectData.project.description}</p>
+                  <p className="text-sm text-on-surface-variant max-w-3xl">{activeProjectData.project.description}</p>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setShowUpdateModal(true)} style={{ padding: '8px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    + Post Status Update
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowUpdateModal(true)}
+                  className="px-4 py-2 bg-primary text-on-primary rounded font-label-md hover:bg-primary-container transition-colors flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[18px]">post_add</span> Post Status Update
+                </button>
               </div>
 
-              {/* Progress Bar & Dates */}
-              <div style={{ background: '#fafbfc', border: '1px solid var(--color-border)', borderRadius: 10, padding: 20, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 24, alignItems: 'center' }}>
+              {/* Progress & Pacing Metrics Bar */}
+              <div className="bg-surface-container-low border border-outline-variant rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-                    <span>Actual Progress: {activeProjectData.project.current_progress}%</span>
-                    <span style={{ color: 'var(--color-muted)' }}>Expected: {activeProjectData.project.expected_progress}%</span>
+                  <div className="flex justify-between text-xs font-semibold mb-1.5">
+                    <span className="text-on-surface">Actual Progress: {activeProjectData.project.current_progress}%</span>
+                    <span className="text-on-surface-variant">Expected: {activeProjectData.project.expected_progress}%</span>
                   </div>
-                  <div style={{ height: 10, background: 'var(--color-border)', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ width: `${activeProjectData.project.current_progress}%`, height: '100%', background: activeProjectData.project.pacing_status === 'behind' ? '#ef4444' : '#22c55e', borderRadius: 5, transition: 'width 0.8s ease' }} />
+                  <div className="h-2.5 bg-surface-container-high rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-800 ${
+                        activeProjectData.project.pacing_status === 'behind' ? 'bg-red-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${activeProjectData.project.current_progress}%` }}
+                    />
                   </div>
                 </div>
-                <div style={{ borderLeft: '1px solid var(--color-border)', paddingLeft: 20 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Timeline</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginTop: 4 }}>
+                <div className="md:border-l border-outline-variant md:pl-4">
+                  <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Timeline</span>
+                  <p className="text-sm font-semibold text-on-surface mt-0.5">
                     {new Date(activeProjectData.project.start_date).toLocaleDateString()} — {new Date(activeProjectData.project.expected_completion).toLocaleDateString()}
-                  </div>
+                  </p>
                 </div>
-                <div style={{ borderLeft: '1px solid var(--color-border)', paddingLeft: 20 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Team Size</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginTop: 4 }}>
-                    {activeProjectData.members.length} members assigned
-                  </div>
+                <div className="md:border-l border-outline-variant md:pl-4">
+                  <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">Team Roster</span>
+                  <p className="text-sm font-semibold text-on-surface mt-0.5">
+                    {activeProjectData.members.length} member(s) assigned
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Grid: Members & Updates */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-              {/* Team Members Column */}
-              <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-sm)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>Team Members</h3>
-                  <button onClick={() => setShowMemberModal(true)} style={{ padding: '6px 12px', background: '#f3f4f6', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    + Assign Member
+            {/* Split View: Roster & Updates */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+              {/* Team Roster Column */}
+              <div className="bg-surface border border-outline-variant rounded-xl p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-headline-sm text-on-surface">Assigned Team Members</h3>
+                  <button
+                    onClick={() => setShowMemberModal(true)}
+                    className="px-3 py-1 bg-surface-container hover:bg-surface-container-high border border-outline-variant rounded-md text-xs font-semibold text-on-surface transition-colors flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">add</span> Assign Member
                   </button>
                 </div>
                 {activeProjectData.members.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-muted)', fontSize: 13 }}>No team members assigned yet.</div>
+                  <p className="text-xs text-on-surface-variant py-8 text-center bg-surface-container-low rounded-lg border border-dashed border-outline-variant">
+                    No team members assigned yet.
+                  </p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="space-y-2">
                     {activeProjectData.members.map(m => (
-                      <div key={m.member_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, border: '1px solid var(--color-border)', borderRadius: 8, background: '#fafbfc' }}>
+                      <div key={m.member_id} className="p-3 bg-surface-container-low border border-outline-variant rounded-lg flex justify-between items-center">
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>{m.name}</div>
-                          <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 500 }}>{m.role}</div>
-                          {m.responsibilities && <div style={{ fontSize: 11, color: 'var(--color-muted)', marginTop: 2 }}>{m.responsibilities}</div>}
+                          <div className="font-medium text-on-surface text-sm">{m.name}</div>
+                          <div className="text-xs text-primary font-semibold">{m.role}</div>
+                          {m.responsibilities && <div className="text-xs text-on-surface-variant mt-1">{m.responsibilities}</div>}
                         </div>
-                        <button onClick={() => handleRemoveMember(m.member_id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
+                        <button onClick={() => handleRemoveMember(m.member_id)} className="text-on-surface-variant hover:text-error transition-colors">
+                          <span className="material-symbols-outlined text-[18px]">close</span>
                         </button>
                       </div>
                     ))}
@@ -363,29 +407,27 @@ export default function TeamProjectsTab() {
               </div>
 
               {/* Updates Feed Column */}
-              <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-sm)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>Status Updates Feed</h3>
-                </div>
+              <div className="bg-surface border border-outline-variant rounded-xl p-6">
+                <h3 className="font-headline-sm text-on-surface mb-4">Status Update History</h3>
                 {activeProjectData.updates.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-muted)', fontSize: 13 }}>No status updates posted yet.</div>
+                  <p className="text-xs text-on-surface-variant py-8 text-center bg-surface-container-low rounded-lg border border-dashed border-outline-variant">
+                    No status updates logged yet.
+                  </p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto' }}>
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                     {activeProjectData.updates.map(u => (
-                      <div key={u.id} style={{ padding: 14, border: '1px solid var(--color-border)', borderRadius: 8, background: '#fafbfc' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text)' }}>{u.submitted_by_name}</span>
-                          <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>{new Date(u.created_at).toLocaleString()}</span>
+                      <div key={u.id} className="p-3.5 bg-surface-container-low border border-outline-variant rounded-lg text-xs space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-on-surface text-sm">{u.submitted_by_name}</span>
+                          <span className="text-on-surface-variant text-[11px]">{new Date(u.created_at).toLocaleString()}</span>
                         </div>
                         {u.progress_pct != null && (
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', marginBottom: 4 }}>
-                            Progress updated to {u.progress_pct}%
-                          </div>
+                          <div className="text-primary font-semibold">Progress updated to {u.progress_pct}%</div>
                         )}
-                        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text)', lineHeight: 1.5 }}>{u.notes}</p>
+                        <p className="text-on-surface mt-1 text-sm leading-relaxed">{u.notes}</p>
                         {u.blockers && (
-                          <div style={{ marginTop: 8, padding: 8, background: '#fee2e2', borderRadius: 6, fontSize: 12, color: '#991b1b' }}>
-                            <strong>Blockers:</strong> {u.blockers}
+                          <div className="mt-2 p-2 bg-error-container/20 border border-error/30 text-error rounded-md text-xs">
+                            <strong>Blocker:</strong> {u.blockers}
                           </div>
                         )}
                       </div>
@@ -396,16 +438,16 @@ export default function TeamProjectsTab() {
             </div>
           </div>
         ) : (
-          /* PROJECTS GRID VIEW */
-          <div style={{ maxWidth: 1100, margin: '32px auto', padding: '0 24px' }}>
+          /* PROJECTS GRID VIEW — Full responsive width */
+          <div className="space-y-6 w-full">
             {projects.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-muted)', background: '#fff', borderRadius: 12, border: '1px dashed var(--color-border)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 48, opacity: 0.3, marginBottom: 12, display: 'block' }}>rocket_launch</span>
-                <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>No projects tracked yet.</p>
-                <p style={{ fontSize: 13 }}>Create a project to track team assignments, progress, and automated deadline reminders.</p>
+              <div className="text-center py-16 text-on-surface-variant bg-surface border border-outline-variant rounded-xl border-dashed">
+                <span className="material-symbols-outlined text-[48px] opacity-30 mb-2">rocket_launch</span>
+                <p className="text-sm font-medium">No projects currently tracked.</p>
+                <p className="text-xs mt-1">Create a project to manage deadlines, team assignments, and automated pacing alerts.</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                 {projects.map(p => {
                   const startDate = new Date(p.start_date);
                   const endDate = new Date(p.expected_completion);
@@ -420,29 +462,45 @@ export default function TeamProjectsTab() {
                   else if (pacingDelta > 10) pacingStatus = 'ahead';
 
                   return (
-                    <div key={p.id} onClick={() => loadProjectDetails(p.id)}
-                      style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, cursor: 'pointer', boxShadow: 'var(--shadow-sm)', transition: 'all 0.2s', position: 'relative' }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-accent)'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                        <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{p.name}</h4>
-                        {pacingBadge(pacingStatus)}
-                      </div>
-                      <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--color-muted)', height: 38, overflow: 'hidden' }}>{p.description}</p>
-                      
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                          <span>Progress</span>
-                          <span>{p.current_progress}%</span>
+                    <div
+                      key={p.id}
+                      onClick={() => loadProjectDetails(p.id)}
+                      className="bg-surface border border-outline-variant hover:border-primary/50 rounded-xl p-5 cursor-pointer transition-all space-y-4 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex justify-between items-start mb-2 gap-2">
+                          <h4 className="font-semibold text-on-surface text-base truncate">{p.name}</h4>
+                          {renderPacingBadge(pacingStatus)}
                         </div>
-                        <div style={{ height: 8, background: 'var(--color-border)', borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ width: `${p.current_progress}%`, height: '100%', background: pacingStatus === 'behind' ? '#ef4444' : '#22c55e', borderRadius: 4 }} />
-                        </div>
+                        <p className="text-xs text-on-surface-variant line-clamp-2">{p.description}</p>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-muted)', paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
-                        <span>{p.member_count || 0} members</span>
-                        <span>Due: {new Date(p.expected_completion).toLocaleDateString()}</span>
+                      <div className="space-y-3 pt-2">
+                        <div>
+                          <div className="flex justify-between text-xs font-semibold mb-1">
+                            <span className="text-on-surface">Progress</span>
+                            <span className="text-primary">{p.current_progress}%</span>
+                          </div>
+                          <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-800 ${
+                                pacingStatus === 'behind' ? 'bg-red-500' : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${p.current_progress}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between text-xs text-on-surface-variant pt-3 border-t border-outline-variant/50">
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">groups</span>
+                            {p.member_count || 0} members
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">calendar_today</span>
+                            {new Date(p.expected_completion).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -453,38 +511,71 @@ export default function TeamProjectsTab() {
         )}
       </div>
 
-      {/* MODAL: CREATE EMPLOYEE */}
+      {/* MODAL: ADD EMPLOYEE / IMPORT */}
       {showEmpModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, padding: 24, boxShadow: 'var(--shadow-modal)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Add Employee or Import</h3>
-              <button onClick={() => setShowEmpModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><span className="material-symbols-outlined">close</span></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-outline-variant rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-outline-variant pb-3">
+              <h3 className="font-headline-sm text-on-surface">Add Employee / Bulk Import</h3>
+              <button onClick={() => setShowEmpModal(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
 
             {/* Single Add Form */}
-            <form onSubmit={handleCreateEmployee} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-              <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase' }}>Add Single Employee</h4>
-              <input type="text" required placeholder="Full Name" value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })}
-                style={{ padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
-              <input type="email" required placeholder="Work Email" value={empForm.email} onChange={e => setEmpForm({ ...empForm, email: e.target.value })}
-                style={{ padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
-              <input type="text" required placeholder="Position / Role" value={empForm.position} onChange={e => setEmpForm({ ...empForm, position: e.target.value })}
-                style={{ padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
-              <input type="text" placeholder="Department" value={empForm.department} onChange={e => setEmpForm({ ...empForm, department: e.target.value })}
-                style={{ padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
-              <button type="submit" style={{ padding: '8px 16px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <form onSubmit={handleCreateEmployee} className="space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Add Single Team Member</h4>
+              <input
+                type="text"
+                required
+                placeholder="Full Name"
+                value={empForm.name}
+                onChange={e => setEmpForm({ ...empForm, name: e.target.value })}
+                className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+              />
+              <input
+                type="email"
+                required
+                placeholder="Work Email"
+                value={empForm.email}
+                onChange={e => setEmpForm({ ...empForm, email: e.target.value })}
+                className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+              />
+              <input
+                type="text"
+                required
+                placeholder="Position / Title"
+                value={empForm.position}
+                onChange={e => setEmpForm({ ...empForm, position: e.target.value })}
+                className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+              />
+              <input
+                type="text"
+                placeholder="Department"
+                value={empForm.department}
+                onChange={e => setEmpForm({ ...empForm, department: e.target.value })}
+                className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+              />
+              <button type="submit" className="w-full py-2 bg-primary text-on-primary rounded font-label-md hover:bg-primary-container transition-colors">
                 Save Employee
               </button>
             </form>
 
-            {/* CSV Import Form */}
-            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
-              <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase' }}>Bulk Import (CSV / XLSX)</h4>
-              <form onSubmit={handleImportEmployees} style={{ display: 'flex', gap: 8 }}>
-                <input type="file" accept=".csv,.xlsx" onChange={e => setImportFile(e.target.files[0])}
-                  style={{ flex: 1, fontSize: 12 }} />
-                <button type="submit" disabled={!importFile || importing} style={{ padding: '6px 14px', background: '#f3f4f6', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            {/* Bulk CSV/XLSX Upload */}
+            <div className="pt-4 border-t border-outline-variant space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Bulk Spreadsheet Import (CSV / XLSX)</h4>
+              <form onSubmit={handleImportEmployees} className="flex gap-2 items-center">
+                <input
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={e => setImportFile(e.target.files[0])}
+                  className="flex-1 bg-surface-container border border-outline-variant rounded-md p-2 text-xs text-on-surface cursor-pointer"
+                />
+                <button
+                  type="submit"
+                  disabled={!importFile || importing}
+                  className="px-4 py-2 bg-secondary text-on-secondary rounded text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-colors"
+                >
                   {importing ? 'Importing...' : 'Upload'}
                 </button>
               </form>
@@ -495,36 +586,57 @@ export default function TeamProjectsTab() {
 
       {/* MODAL: CREATE PROJECT */}
       {showProjModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, padding: 24, boxShadow: 'var(--shadow-modal)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Create New Project</h3>
-              <button onClick={() => setShowProjModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><span className="material-symbols-outlined">close</span></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-outline-variant rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-outline-variant pb-3">
+              <h3 className="font-headline-sm text-on-surface">Create New Project</h3>
+              <button onClick={() => setShowProjModal(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
-            <form onSubmit={handleCreateProject} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleCreateProject} className="space-y-4">
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Project Name</label>
-                <input type="text" required value={projForm.name} onChange={e => setProjForm({ ...projForm, name: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Project Name</label>
+                <input
+                  type="text"
+                  required
+                  value={projForm.name}
+                  onChange={e => setProjForm({ ...projForm, name: e.target.value })}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Description</label>
-                <textarea value={projForm.description} onChange={e => setProjForm({ ...projForm, description: e.target.value })} rows={3}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Description</label>
+                <textarea
+                  value={projForm.description}
+                  onChange={e => setProjForm({ ...projForm, description: e.target.value })}
+                  rows={3}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Start Date</label>
-                  <input type="date" required value={projForm.start_date} onChange={e => setProjForm({ ...projForm, start_date: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                  <label className="block text-xs font-semibold text-on-surface mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={projForm.start_date}
+                    onChange={e => setProjForm({ ...projForm, start_date: e.target.value })}
+                    className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Expected Completion</label>
-                  <input type="date" required value={projForm.expected_completion} onChange={e => setProjForm({ ...projForm, expected_completion: e.target.value })}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                  <label className="block text-xs font-semibold text-on-surface mb-1">Expected Completion</label>
+                  <input
+                    type="date"
+                    required
+                    value={projForm.expected_completion}
+                    onChange={e => setProjForm({ ...projForm, expected_completion: e.target.value })}
+                    className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
                 </div>
               </div>
-              <button type="submit" style={{ padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', marginTop: 10 }}>
+              <button type="submit" className="w-full py-2 bg-primary text-on-primary rounded font-label-md hover:bg-primary-container transition-colors">
                 Create Project
               </button>
             </form>
@@ -534,33 +646,49 @@ export default function TeamProjectsTab() {
 
       {/* MODAL: ASSIGN MEMBER */}
       {showMemberModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 450, padding: 24, boxShadow: 'var(--shadow-modal)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Assign Team Member</h3>
-              <button onClick={() => setShowMemberModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><span className="material-symbols-outlined">close</span></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-outline-variant rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-outline-variant pb-3">
+              <h3 className="font-headline-sm text-on-surface">Assign Team Member</h3>
+              <button onClick={() => setShowMemberModal(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
-            <form onSubmit={handleAddMember} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleAddMember} className="space-y-4">
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Select Employee</label>
-                <select required value={memberForm.employee_id} onChange={e => setMemberForm({ ...memberForm, employee_id: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }}>
+                <label className="block text-xs font-semibold text-on-surface mb-1">Employee</label>
+                <select
+                  required
+                  value={memberForm.employee_id}
+                  onChange={e => setMemberForm({ ...memberForm, employee_id: e.target.value })}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                >
                   <option value="">Select an employee...</option>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name} ({e.position})</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Role in Project</label>
-                <input type="text" placeholder="e.g. Project Lead, Frontend Dev" value={memberForm.role} onChange={e => setMemberForm({ ...memberForm, role: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Project Role</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Lead Developer, Designer"
+                  value={memberForm.role}
+                  onChange={e => setMemberForm({ ...memberForm, role: e.target.value })}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Responsibilities</label>
-                <textarea placeholder="Key deliverables or tasks..." value={memberForm.responsibilities} onChange={e => setMemberForm({ ...memberForm, responsibilities: e.target.value })} rows={2}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Responsibilities</label>
+                <textarea
+                  placeholder="Deliverables..."
+                  value={memberForm.responsibilities}
+                  onChange={e => setMemberForm({ ...memberForm, responsibilities: e.target.value })}
+                  rows={2}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
               </div>
-              <button type="submit" style={{ padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', marginTop: 10 }}>
-                Assign to Project
+              <button type="submit" className="w-full py-2 bg-primary text-on-primary rounded font-label-md hover:bg-primary-container transition-colors">
+                Assign Member
               </button>
             </form>
           </div>
@@ -569,38 +697,62 @@ export default function TeamProjectsTab() {
 
       {/* MODAL: POST UPDATE */}
       {showUpdateModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480, padding: 24, boxShadow: 'var(--shadow-modal)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Post Project Status Update</h3>
-              <button onClick={() => setShowUpdateModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><span className="material-symbols-outlined">close</span></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-outline-variant rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-outline-variant pb-3">
+              <h3 className="font-headline-sm text-on-surface">Post Status Update</h3>
+              <button onClick={() => setShowUpdateModal(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
             </div>
-            <form onSubmit={handleSubmitUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleSubmitUpdate} className="space-y-4">
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Submitted By</label>
-                <select required value={updateForm.submitted_by} onChange={e => setUpdateForm({ ...updateForm, submitted_by: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }}>
+                <label className="block text-xs font-semibold text-on-surface mb-1">Submitted By</label>
+                <select
+                  required
+                  value={updateForm.submitted_by}
+                  onChange={e => setUpdateForm({ ...updateForm, submitted_by: e.target.value })}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                >
                   <option value="">Select team member...</option>
                   {(activeProjectData?.members || []).map(m => <option key={m.employee_id} value={m.employee_id}>{m.name} ({m.role})</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>New Overall Progress % (Optional)</label>
-                <input type="number" min="0" max="100" placeholder="e.g. 45" value={updateForm.progress_pct} onChange={e => setUpdateForm({ ...updateForm, progress_pct: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">New Progress % (Optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="e.g. 50"
+                  value={updateForm.progress_pct}
+                  onChange={e => setUpdateForm({ ...updateForm, progress_pct: e.target.value })}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Progress Notes / Summary</label>
-                <textarea required placeholder="What was accomplished..." value={updateForm.notes} onChange={e => setUpdateForm({ ...updateForm, notes: e.target.value })} rows={3}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Notes / Summary</label>
+                <textarea
+                  required
+                  placeholder="Work completed..."
+                  value={updateForm.notes}
+                  onChange={e => setUpdateForm({ ...updateForm, notes: e.target.value })}
+                  rows={3}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Blockers / Risks (Optional)</label>
-                <textarea placeholder="Any delays or impediments..." value={updateForm.blockers} onChange={e => setUpdateForm({ ...updateForm, blockers: e.target.value })} rows={2}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13 }} />
+                <label className="block text-xs font-semibold text-on-surface mb-1">Blockers (Optional)</label>
+                <textarea
+                  placeholder="Impediments..."
+                  value={updateForm.blockers}
+                  onChange={e => setUpdateForm({ ...updateForm, blockers: e.target.value })}
+                  rows={2}
+                  className="w-full bg-surface-container border border-outline-variant rounded-md px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary resize-none"
+                />
               </div>
-              <button type="submit" style={{ padding: '10px 20px', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer', marginTop: 10 }}>
-                Post Update
+              <button type="submit" className="w-full py-2 bg-primary text-on-primary rounded font-label-md hover:bg-primary-container transition-colors">
+                Submit Update
               </button>
             </form>
           </div>

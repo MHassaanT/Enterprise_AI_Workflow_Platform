@@ -45,129 +45,141 @@ export default function FutureProspectsTab() {
            (p.desired_role || '').toLowerCase().includes(search);
   });
 
-  const statusBadge = (status) => {
-    const colors = { pooled: ['#f59e0b', '#fef3c7'], transferred: ['#22c55e', '#dcfce7'], notified: ['#3b82f6', '#dbeafe'] };
-    const [color, bg] = colors[status] || ['#6b7280', '#f3f4f6'];
+  const renderStatusBadge = (status) => {
+    const map = {
+      pooled: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      transferred: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      notified: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    };
     return (
-      <span style={{ background: bg, color, padding: '3px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider border ${map[status] || 'bg-surface-container text-on-surface-variant'}`}>
         {status}
       </span>
     );
   };
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 32, background: 'var(--color-bg)' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <div className="flex-1 overflow-y-auto bg-background p-6 lg:p-8 w-full">
+      <div className="space-y-6">
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface border border-outline-variant rounded-xl p-6">
           <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--color-text)' }}>Future Prospects</h2>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--color-muted)', maxWidth: 500 }}>
-              Applicants who applied for roles that aren't currently open. They'll be automatically matched and notified when matching roles open.
+            <h2 className="font-headline-md text-on-surface mb-1">Future Prospects (Talent Pool)</h2>
+            <p className="text-sm text-on-surface-variant">
+              Applicants who applied for positions not currently open. When relevant roles open, the HR agent will automatically match and notify them.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {roles.length > 0 && (
-              <select onChange={e => { if (e.target.value) handleScanForRole(e.target.value); e.target.value = ''; }}
-                style={{ padding: '8px 14px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 13, background: '#fff', color: 'var(--color-text)', cursor: 'pointer' }}>
-                <option value="">🔍 Scan Pool for Role...</option>
-                {roles.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-              </select>
-            )}
-          </div>
+          {roles.length > 0 && (
+            <select
+              onChange={e => { if (e.target.value) handleScanForRole(e.target.value); e.target.value = ''; }}
+              className="bg-surface-container border border-outline-variant text-on-surface text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:border-primary cursor-pointer"
+            >
+              <option value="">🔍 Scan Pool for Open Role...</option>
+              {roles.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+            </select>
+          )}
         </div>
 
-        {/* Search */}
-        <div style={{ marginBottom: 20 }}>
-          <input type="text" value={filter} onChange={e => setFilter(e.target.value)}
-            placeholder="Search by name, email, or desired role..."
-            style={{ width: '100%', maxWidth: 400, padding: '10px 14px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 14, background: '#fff', color: 'var(--color-text)' }} />
-        </div>
-
-        {/* Stats Bar */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Total', count: prospects.length, color: '#6b7280' },
-            { label: 'Pooled', count: prospects.filter(p => p.status === 'pooled').length, color: '#f59e0b' },
-            { label: 'Transferred', count: prospects.filter(p => p.status === 'transferred').length, color: '#22c55e' },
-            { label: 'Notified', count: prospects.filter(p => p.status === 'notified').length, color: '#3b82f6' },
+            { label: 'Total Ingested', count: prospects.length, color: 'text-on-surface' },
+            { label: 'Pooled', count: prospects.filter(p => p.status === 'pooled').length, color: 'text-amber-400' },
+            { label: 'Transferred', count: prospects.filter(p => p.status === 'transferred').length, color: 'text-emerald-400' },
+            { label: 'Notified', count: prospects.filter(p => p.status === 'notified').length, color: 'text-blue-400' },
           ].map(stat => (
-            <div key={stat.label} style={{ padding: '14px 20px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, boxShadow: 'var(--shadow-sm)', minWidth: 120 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: `${stat.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: stat.color }}>{stat.count}</span>
+            <div key={stat.label} className="bg-surface border border-outline-variant rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wider font-semibold">{stat.label}</p>
+                <p className={`text-2xl font-bold ${stat.color} mt-1`}>{stat.count}</p>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{stat.label}</span>
+              <span className="material-symbols-outlined text-surface-container-highest text-[28px]">groups</span>
             </div>
           ))}
         </div>
 
+        {/* Filter Input */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-md">
+            <span className="material-symbols-outlined absolute left-3 top-2.5 text-on-surface-variant text-[18px]">search</span>
+            <input
+              type="text"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Search by name, email, or desired role..."
+              className="w-full bg-surface border border-outline-variant rounded-lg pl-9 pr-4 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
         {/* Prospects List */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-muted)' }}>Loading prospects...</div>
+          <div className="text-center py-12 text-on-surface-variant">Loading prospects...</div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--color-muted)', background: '#fff', borderRadius: 12, border: '1px dashed var(--color-border)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 48, opacity: 0.3, marginBottom: 12, display: 'block' }}>person_search</span>
-            <p style={{ fontSize: 14, marginBottom: 4 }}>No prospects in the talent pool yet.</p>
-            <p style={{ fontSize: 12 }}>When applicants email for roles that aren't open, they'll appear here.</p>
+          <div className="text-center py-16 text-on-surface-variant bg-surface border border-outline-variant rounded-xl border-dashed">
+            <span className="material-symbols-outlined text-[48px] opacity-30 mb-2">person_search</span>
+            <p className="text-sm font-medium">No prospects in the talent pool.</p>
+            <p className="text-xs mt-1">When applications arrive via email for unmatched roles, they will automatically accumulate here.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="space-y-3">
             {filtered.map(p => (
-              <div key={p.id} style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', transition: 'box-shadow 0.2s' }}>
-                <div onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                  style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'background 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+              <div key={p.id} className="bg-surface border border-outline-variant rounded-xl overflow-hidden transition-all">
+                <div
+                  onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                  className="p-4 flex items-center gap-4 cursor-pointer hover:bg-surface-container-low transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
                     {(p.applicant_name || '?')[0].toUpperCase()}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text)' }}>{p.applicant_name}</span>
-                      {statusBadge(p.status)}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-medium text-on-surface text-sm truncate">{p.applicant_name}</h4>
+                      {renderStatusBadge(p.status)}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 2 }}>{p.applicant_email}</div>
+                    <p className="text-xs text-on-surface-variant truncate">{p.applicant_email}</p>
                   </div>
                   {p.desired_role && (
-                    <div style={{ fontSize: 12, color: '#7c3aed', background: '#f5f3ff', padding: '3px 10px', borderRadius: 6, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    <span className="text-xs px-2.5 py-1 bg-secondary-container/50 text-secondary-fixed rounded-md border border-outline-variant">
                       {p.desired_role}
-                    </div>
+                    </span>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--color-muted)', whiteSpace: 'nowrap' }}>{new Date(p.created_at).toLocaleDateString()}</div>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', padding: 4 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete_outline</span>
+                  <span className="text-xs text-on-surface-variant whitespace-nowrap hidden sm:inline">
+                    {new Date(p.created_at).toLocaleDateString()}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                    className="text-on-surface-variant hover:text-error p-1 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
                   </button>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--color-muted)', transition: 'transform 0.2s', transform: expandedId === p.id ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                  <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${expandedId === p.id ? 'rotate-180' : ''}`}>
                     expand_more
                   </span>
                 </div>
+
                 {expandedId === p.id && (
-                  <div style={{ borderTop: '1px solid var(--color-border)', padding: '16px 20px', background: '#fafbfc', animation: 'slideUp 0.2s ease' }}>
+                  <div className="p-4 border-t border-outline-variant bg-surface-container-low space-y-3 text-xs text-on-surface-variant">
                     {p.email_subject && (
-                      <div style={{ marginBottom: 10 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Subject</span>
-                        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-text)' }}>{p.email_subject}</p>
+                      <div>
+                        <span className="font-semibold text-on-surface uppercase tracking-wider text-[10px]">Email Subject</span>
+                        <p className="text-on-surface text-sm mt-0.5">{p.email_subject}</p>
                       </div>
                     )}
                     {p.email_body && (
-                      <div style={{ marginBottom: 10 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Email Body</span>
-                        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-text)', lineHeight: 1.6, maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{p.email_body}</p>
+                      <div>
+                        <span className="font-semibold text-on-surface uppercase tracking-wider text-[10px]">Email Message Body</span>
+                        <p className="text-on-surface bg-surface p-3 rounded-lg border border-outline-variant mt-1 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                          {p.email_body}
+                        </p>
                       </div>
                     )}
                     {p.resume_text && (
                       <div>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Resume Text</span>
-                        <pre style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text)', lineHeight: 1.5, maxHeight: 300, overflow: 'auto', whiteSpace: 'pre-wrap', background: '#fff', padding: 12, borderRadius: 6, border: '1px solid var(--color-border)' }}>
+                        <span className="font-semibold text-on-surface uppercase tracking-wider text-[10px]">Parsed Resume / Application Details</span>
+                        <pre className="text-on-surface bg-surface p-3 rounded-lg border border-outline-variant mt-1 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono text-[11px]">
                           {p.resume_text?.substring(0, 2000)}
-                          {(p.resume_text?.length || 0) > 2000 ? '...' : ''}
                         </pre>
-                      </div>
-                    )}
-                    {p.transferred_to_role && (
-                      <div style={{ marginTop: 12, padding: '8px 12px', background: '#dcfce7', borderRadius: 6, fontSize: 12, color: '#166534' }}>
-                        Transferred to role on {p.transferred_at ? new Date(p.transferred_at).toLocaleString() : 'N/A'}
                       </div>
                     )}
                   </div>
