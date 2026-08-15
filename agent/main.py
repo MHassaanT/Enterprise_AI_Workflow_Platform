@@ -18,6 +18,7 @@ from tool_gateway.server import mcp
 from routers.agent import router as agent_router
 from routers.workflows import router as workflows_router
 from routers.hr import router as hr_router
+from routers.tools import router as tools_router
 
 # Build MCP HTTP app (Streamable HTTP transport)
 mcp_http_app = mcp.http_app(path="/mcp")
@@ -63,6 +64,9 @@ app.include_router(workflows_router, prefix="/api/v1/workflows", tags=["Workflow
 
 # HR routes
 app.include_router(hr_router, prefix="/agent/hr", tags=["HR Agent"])
+
+# Internal tools route
+app.include_router(tools_router, prefix="/agent/tools", tags=["Tools"])
 
 # MCP gateway (external tool clients can connect here)
 app.mount("/mcp", mcp_http_app)

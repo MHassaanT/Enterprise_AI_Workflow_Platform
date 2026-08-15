@@ -69,4 +69,91 @@ const ingestDocument = async ({ buffer, filename, mimetype, tenantId }) => {
   }
 };
 
-module.exports = { ingestDocument };
+const ingestLink = async ({ url, tenantId }) => {
+  const documentId = randomUUID();
+
+  // Record document as processing
+  await query(
+    `INSERT INTO documents (id, tenant_id, filename, mime_type, status)
+     VALUES ($1, $2, $3, $4, 'processing')`,
+    [documentId, tenantId, url, 'text/html'],
+    tenantId
+  );
+
+  try {
+    // 1. Call Python agent to scrape
+    const agentResponse = await fetch('http://localhost:8000/agent/tools/scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    
+    if (!agentResponse.ok) {
+      const errText = await agentResponse.text();
+      throw new Error(`Scraping failed: ${errText}`);
+    }
+
+    const { markdown } = await agentResponse.json();
+    if (!markdown) {
+      throw new Error('No markdown returned from scraper.');
+    }
+
+    // 2. Treat the markdown as a 1-page document
+    const extracted = {
+      text: markdown,
+      pages: [{ page: 1, text: markdown }],
+      pageCount: 1,
+    };
+
+    const chunks = chunkDocument({
+      text: extracted.text,
+      pages: extracted.pages,
+      documentId,
+      documentName: url,
+      tenantId,
+    });
+
+    if (chunks.length === 0) {
+      throw new Error('No text could be extracted from the URL.');
+    }
+
+    // 3. Embed and upsert
+    const texts = chunks.map((c) => c.text);
+    const vectors = await embedDocumentChunks(texts);
+    await upsertChunks(chunks, vectors);
+
+    // 4. Update status
+    await query(
+      `UPDATE documents SET status = 'ready', chunk_count = $1 WHERE id = $2 AND tenant_id = $3`,
+      [chunks.length, documentId, tenantId],
+      tenantId
+    );
+
+    return {
+      documentId,
+      filename: url,
+      chunkCount: chunks.length,
+      pageCount: extracted.pageCount,
+      status: 'ready',
+    };
+  } catch (err) {
+    const errorDetails = err.message;
+    console.error(`[Ingestion Error] Link ${documentId} (${url}) failed:`, err);
+
+    await query(
+      `UPDATE documents SET status = 'failed', error_message = $1 WHERE id = $2 AND tenant_id = $3`,
+      [errorDetails, documentId, tenantId],
+      tenantId
+    );
+
+    try {
+      await deleteDocumentChunks(documentId, tenantId);
+    } catch {
+      // Best-effort cleanup
+    }
+
+    throw new Error(errorDetails);
+  }
+};
+
+module.exports = { ingestDocument, ingestLink };

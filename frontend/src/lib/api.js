@@ -199,6 +199,20 @@ export async function uploadDocument(file) {
   return res.json();
 }
 
+export async function uploadLink(url) {
+  const res = await fetch('/api/documents/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ url }),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to ingest link.');
+  }
+  return res.json();
+}
+
 export async function deleteDocument(documentId) {
   const res = await fetch(`/api/documents/${documentId}`, {
     method: 'DELETE',

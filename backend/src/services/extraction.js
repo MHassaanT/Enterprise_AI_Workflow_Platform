@@ -1,9 +1,15 @@
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const { GoogleGenAI } = require('@google/genai');
 
 const SUPPORTED_TYPES = {
   'application/pdf': 'pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/markdown': 'md',
+  'text/plain': 'md',
+  'image/png': 'image',
+  'image/jpeg': 'image',
+  'image/webp': 'image'
 };
 
 const getFileType = (mimetype) => SUPPORTED_TYPES[mimetype] || null;
@@ -44,17 +50,67 @@ const extractFromDocx = async (buffer) => {
   };
 };
 
+const extractFromMd = async (buffer) => {
+  const text = buffer.toString('utf8').trim();
+  return {
+    text,
+    pages: [{ page: 1, text }],
+    pageCount: 1,
+  };
+};
+
+const extractFromImage = async (buffer, mimetype) => {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY environment variable is required for image extraction.');
+  }
+  
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Please extract all visible text (OCR) from this image. Then, provide a detailed visual description of what the image depicts so that it can be searched for later in a knowledge base. Format the output in Markdown.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              data: buffer.toString("base64"),
+              mimeType: mimetype,
+            }
+          }
+        ]
+      }
+    ]
+  });
+
+  const text = response.text.trim();
+  
+  return {
+    text,
+    pages: [{ page: 1, text }],
+    pageCount: 1,
+  };
+};
+
 const extractText = async (buffer, mimetype) => {
   const fileType = getFileType(mimetype);
   if (!fileType) {
-    throw new Error('Unsupported file type. Only PDF and DOCX are allowed.');
+    throw new Error('Unsupported file type.');
   }
 
   if (fileType === 'pdf') {
     return { ...await extractFromPdf(buffer), fileType };
   }
-
-  return { ...await extractFromDocx(buffer), fileType };
+  if (fileType === 'docx') {
+    return { ...await extractFromDocx(buffer), fileType };
+  }
+  if (fileType === 'md') {
+    return { ...await extractFromMd(buffer), fileType };
+  }
+  if (fileType === 'image') {
+    return { ...await extractFromImage(buffer, mimetype), fileType };
+  }
 };
 
 module.exports = { extractText, getFileType, SUPPORTED_TYPES };

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { fetchDocuments, uploadDocument, deleteDocument, getUser } from '@/lib/api';
+import { fetchDocuments, uploadDocument, uploadLink, deleteDocument, getUser } from '@/lib/api';
 
 export default function DocumentModal({ isOpen, onClose }) {
   const [documents, setDocuments] = useState([]);
@@ -9,6 +9,8 @@ export default function DocumentModal({ isOpen, onClose }) {
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [user, setUser] = useState(null);
+  const [uploadMode, setUploadMode] = useState('file'); // 'file' | 'link'
+  const [linkUrl, setLinkUrl] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -35,8 +37,10 @@ export default function DocumentModal({ isOpen, onClose }) {
   const handleFileUpload = async (file) => {
     if (!isAdmin) return;
     if (!file) return;
-    if (!file.name.endsWith('.pdf') && !file.name.endsWith('.docx')) {
-      setError('Only PDF (.pdf) and Word (.docx) files are supported.');
+    const name = file.name.toLowerCase();
+    const isSupported = name.endsWith('.pdf') || name.endsWith('.docx') || name.endsWith('.md') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
+    if (!isSupported) {
+      setError('Unsupported format. Allowed: PDF, DOCX, MD, PNG, JPG, WEBP.');
       return;
     }
 
@@ -47,6 +51,23 @@ export default function DocumentModal({ isOpen, onClose }) {
       await loadDocuments();
     } catch (err) {
       setError(err.message || 'Failed to upload document.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleLinkUpload = async () => {
+    if (!isAdmin) return;
+    if (!linkUrl.trim()) return;
+    
+    try {
+      setUploading(true);
+      setError('');
+      await uploadLink(linkUrl.trim());
+      setLinkUrl('');
+      await loadDocuments();
+    } catch (err) {
+      setError(err.message || 'Failed to ingest link.');
     } finally {
       setUploading(false);
     }
@@ -89,34 +110,86 @@ export default function DocumentModal({ isOpen, onClose }) {
         <div className="p-xl overflow-y-auto space-y-lg">
           {error && <div className="p-md rounded-lg bg-error-container/20 text-error border border-error/30 font-body-md">{error}</div>}
 
-          {/* Upload Dropzone (Admin Only) */}
+          {/* Upload Section (Admin Only) */}
           {isAdmin ? (
-            <div
-              className={`border-2 border-dashed rounded-xl p-xl text-center flex flex-col items-center justify-center transition-colors ${dragOver ? 'border-primary bg-primary-container/10' : 'border-outline-variant bg-surface'}`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-            >
-              {uploading ? (
-                <div className="flex flex-col items-center gap-md text-primary font-semibold">
-                  <div className="w-8 h-8 border-4 border-outline-variant border-t-primary rounded-full animate-spin"></div>
-                  <p className="font-body-md">Extracting, Chunking & Indexing into Vector DB...</p>
+            <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface">
+              <div className="flex border-b border-outline-variant">
+                <button 
+                  className={`flex-1 py-md font-label-md font-semibold ${uploadMode === 'file' ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-container'}`}
+                  onClick={() => setUploadMode('file')}
+                >
+                  Upload File
+                </button>
+                <button 
+                  className={`flex-1 py-md font-label-md font-semibold ${uploadMode === 'link' ? 'bg-primary-container text-on-primary-container' : 'text-on-surface-variant hover:bg-surface-container'}`}
+                  onClick={() => setUploadMode('link')}
+                >
+                  Add via Link
+                </button>
+              </div>
+
+              {uploadMode === 'file' && (
+                <div
+                  className={`p-xl text-center flex flex-col items-center justify-center transition-colors ${dragOver ? 'bg-primary-container/10' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                >
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-md text-primary font-semibold">
+                      <div className="w-8 h-8 border-4 border-outline-variant border-t-primary rounded-full animate-spin"></div>
+                      <p className="font-body-md">Extracting, Chunking & Indexing into Vector DB...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-4xl mb-2">☁️</span>
+                      <p className="font-headline-md text-headline-md text-on-surface mb-1">Drag & Drop your document here</p>
+                      <p className="font-body-md text-body-md text-on-surface-variant mb-md">Supports PDF, DOCX, MD, and Images (up to 20MB)</p>
+                      <label className="px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors cursor-pointer shadow-sm">
+                        Browse File
+                        <input
+                          type="file"
+                          accept=".pdf,.docx,.md,.png,.jpg,.jpeg,.webp"
+                          style={{ display: 'none' }}
+                          onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
-              ) : (
-                <>
-                  <span className="text-4xl mb-2">☁️</span>
-                  <p className="font-headline-md text-headline-md text-on-surface mb-1">Drag & Drop your document here</p>
-                  <p className="font-body-md text-body-md text-on-surface-variant mb-md">Supports PDF (.pdf) and Word (.docx) up to 20MB</p>
-                  <label className="px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors cursor-pointer shadow-sm">
-                    Browse File
-                    <input
-                      type="file"
-                      accept=".pdf,.docx"
-                      style={{ display: 'none' }}
-                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                    />
-                  </label>
-                </>
+              )}
+
+              {uploadMode === 'link' && (
+                <div className="p-xl flex flex-col items-center justify-center">
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-md text-primary font-semibold">
+                      <div className="w-8 h-8 border-4 border-outline-variant border-t-primary rounded-full animate-spin"></div>
+                      <p className="font-body-md">Scraping URL, Chunking & Indexing...</p>
+                    </div>
+                  ) : (
+                    <div className="w-full space-y-md">
+                      <p className="font-body-md text-on-surface-variant text-center">
+                        Provide a public website URL. We will scrape its contents and index it into the Knowledge Base.
+                      </p>
+                      <div className="flex gap-md">
+                        <input 
+                          type="url" 
+                          placeholder="https://example.com"
+                          className="flex-1 bg-surface-container p-md rounded-lg border border-outline focus:border-primary outline-none text-on-surface"
+                          value={linkUrl}
+                          onChange={(e) => setLinkUrl(e.target.value)}
+                        />
+                        <button 
+                          onClick={handleLinkUpload}
+                          disabled={!linkUrl.trim()}
+                          className="px-lg py-md bg-primary text-on-primary font-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Ingest
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -133,13 +206,13 @@ export default function DocumentModal({ isOpen, onClose }) {
           {loading ? (
             <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">Loading document index...</div>
           ) : documents.length === 0 ? (
-            <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">No documents uploaded yet. Upload a PDF or DOCX file to enable RAG.</div>
+            <div className="p-xl text-center text-on-surface-variant bg-surface border border-dashed border-outline-variant rounded-lg">No documents uploaded yet. Upload a file or URL to enable RAG.</div>
           ) : (
             <div className="space-y-3">
               {documents.map((doc) => (
                 <div className="bg-surface border border-outline-variant rounded-lg p-md flex items-center justify-between hover:border-outline transition-colors" key={doc.id}>
                   <div className="flex items-center gap-md">
-                    <span className="text-2xl">📄</span>
+                    <span className="text-2xl">{doc.filename.startsWith('http') ? '🌐' : doc.filename.endsWith('.md') ? '📝' : doc.filename.match(/\.(png|jpe?g|webp)$/i) ? '🖼️' : '📄'}</span>
                     <div className="space-y-1">
                       <div className="font-body-md text-on-surface font-semibold break-all">{doc.filename}</div>
                       <div className="flex items-center gap-md font-label-md text-label-md">

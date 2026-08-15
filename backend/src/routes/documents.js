@@ -4,7 +4,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
-const { ingestDocument } = require('../services/ingestion');
+const { ingestDocument, ingestLink } = require('../services/ingestion');
 
 // ── MULTER CONFIG ──
 // Store file in memory so we can pass the buffer directly to the ingestion pipeline.
@@ -16,11 +16,16 @@ const upload = multer({
     const allowed = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/markdown',
+      'text/plain',
+      'image/png',
+      'image/jpeg',
+      'image/webp'
     ];
-    if (allowed.includes(file.mimetype)) {
+    if (allowed.includes(file.mimetype) || file.originalname.endsWith('.md')) {
       cb(null, true);
     } else {
-      cb(new Error('Unsupported file type. Only PDF and DOCX are allowed.'));
+      cb(new Error('Unsupported file type. Allowed: PDF, DOCX, MD, PNG, JPG, WEBP.'));
     }
   },
 });
@@ -38,7 +43,10 @@ router.post(
     }
 
     const { tenantId } = req.user;
-    const { buffer, originalname, mimetype } = req.file;
+    let { buffer, originalname, mimetype } = req.file;
+
+    // Handle .md files that might upload as text/plain or octet-stream
+    if (originalname.endsWith('.md')) mimetype = 'text/markdown';
 
     // Run ingestion pipeline:
     //   extraction → chunking → embedding → qdrant upsert → postgres status update
@@ -54,6 +62,35 @@ router.post(
       `INSERT INTO audit_logs (tenant_id, event_type, payload)
        VALUES ($1, 'document_uploaded', $2)`,
       [tenantId, JSON.stringify({ documentId: result.documentId, filename: result.filename })],
+      tenantId
+    );
+
+    res.status(201).json({ document: result });
+  }
+);
+
+// ── INGEST A LINK ──
+router.post(
+  '/link',
+  authenticate,
+  authorize('admin'),
+  async (req, res) => {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: 'No URL provided.' });
+    }
+
+    const { tenantId } = req.user;
+
+    const result = await ingestLink({
+      url,
+      tenantId,
+    });
+
+    await query(
+      `INSERT INTO audit_logs (tenant_id, event_type, payload)
+       VALUES ($1, 'link_ingested', $2)`,
+      [tenantId, JSON.stringify({ documentId: result.documentId, url })],
       tenantId
     );
 
