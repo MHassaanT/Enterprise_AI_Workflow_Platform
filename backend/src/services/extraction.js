@@ -65,7 +65,7 @@ const extractFromImage = async (buffer, mimetype) => {
   }
   
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const prompt = `Please extract all visible text (OCR) from this image. Then, provide a detailed visual description of what the image depicts so that it can be searched for later in a knowledge base. Format the output in Markdown.`;
+  const prompt = `Please perform a comprehensive OCR and structural analysis of this image/diagram. Extract ALL visible text, labels, sequence flows, API endpoints, file names (e.g. .py, .js), code snippets, and JSON payloads word-for-word. Organize the content logically using Markdown headings (e.g. # Overview, ## Phase 1, ## Phase 2) so that technical details, state transitions, and step descriptions are preserved cleanly for RAG search.`;
 
   const response = await ai.models.generateContent({
     model: process.env.GEMINI_VISION_MODEL || process.env.GEMINI_GENERATION_MODEL || 'gemini-2.5-flash',
