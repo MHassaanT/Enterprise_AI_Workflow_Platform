@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Gemini
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Ollama (local)
     OLLAMA_BASE_URL: str = "http://localhost:11434"

@@ -85,7 +85,7 @@ const answerWithRAG = async (question, tenantId, { limit = 5 } = {}) => {
     } else {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const res = await ai.models.generateContent({
-        model: process.env.GEMINI_GENERATION_MODEL || 'gemini-2.0-flash',
+        model: process.env.GEMINI_GENERATION_MODEL || 'gemini-2.5-flash',
         contents: prompt,
       });
       answer = res.text || '';

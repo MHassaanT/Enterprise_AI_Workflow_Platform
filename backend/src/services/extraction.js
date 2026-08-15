@@ -68,7 +68,7 @@ const extractFromImage = async (buffer, mimetype) => {
   const prompt = `Please extract all visible text (OCR) from this image. Then, provide a detailed visual description of what the image depicts so that it can be searched for later in a knowledge base. Format the output in Markdown.`;
 
   const response = await ai.models.generateContent({
-    model: process.env.GEMINI_VISION_MODEL || process.env.GEMINI_GENERATION_MODEL || 'gemini-2.0-flash',
+    model: process.env.GEMINI_VISION_MODEL || process.env.GEMINI_GENERATION_MODEL || 'gemini-2.5-flash',
     contents: [
       {
         parts: [
