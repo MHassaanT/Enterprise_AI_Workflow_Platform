@@ -33,14 +33,6 @@ import subprocess
 # Main app — lifespan from mcp_http_app for proper MCP session management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure Playwright browsers are installed (required for Railway deployments)
-    try:
-        print("Ensuring Playwright browsers are installed...")
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-        print("Playwright browsers installed successfully.")
-    except Exception as e:
-        print(f"Warning: Failed to install Playwright browsers: {e}")
-
     # Start polling engine
     polling_task = asyncio.create_task(start_polling_engine())
     
@@ -49,6 +41,7 @@ async def lifespan(app: FastAPI):
         yield
         
     polling_task.cancel()
+
 
 app = FastAPI(
     title="Enterprise AI Agent Orchestration Service",

@@ -67,15 +67,16 @@ def html_to_markdown(html_content: str, url_str: str) -> str:
 async def scrape_url(request: ScrapeRequest):
     url_str = str(request.url)
     
-    # 1. Attempt Crawl4AI (headless browser) first
+    # 1. Attempt Crawl4AI (headless browser) first with 10s timeout
     if AsyncWebCrawler:
         try:
             async with AsyncWebCrawler() as crawler:
-                result = await crawler.arun(url=url_str)
+                result = await asyncio.wait_for(crawler.arun(url=url_str), timeout=10.0)
                 if result and result.markdown and result.markdown.strip():
                     return {"markdown": result.markdown, "method": "crawl4ai"}
         except Exception as e:
-            logger.warning(f"Crawl4AI failed for {url_str}: {e}. Falling back to HTTP scraper.")
+            logger.warning(f"Crawl4AI failed or timed out for {url_str}: {e}. Falling back to HTTP scraper.")
+
 
     # 2. Fallback to HTTP request + BeautifulSoup parsing
     try:
