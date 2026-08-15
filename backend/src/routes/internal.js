@@ -312,4 +312,242 @@ router.post('/credentials', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════
+//  HR AGENT INTERNAL ENDPOINTS
+// ═══════════════════════════════════════════════════════
+
+// ── GET /internal/hr/tenants-with-gmail ──
+// Agent fetches all tenant IDs that have Gmail credentials for HR polling
+router.get('/hr/tenants-with-gmail', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT DISTINCT tc.tenant_id
+       FROM tool_credentials tc
+       JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE LOWER(tr.canonical_name) = 'gmail' AND tc.encrypted_payload IS NOT NULL`
+    );
+    res.json({ tenants: result.rows.map(r => r.tenant_id) });
+  } catch (error) {
+    console.error('Error fetching tenants with Gmail:', error);
+    res.status(500).json({ error: 'Failed to fetch tenants.' });
+  }
+});
+
+// ── GET /internal/hr/open-roles/:tenantId ──
+// Agent fetches open roles for a tenant
+router.get('/hr/open-roles/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT * FROM hr_open_roles WHERE tenant_id = $1 AND status = 'open' AND accepting_until > NOW()
+       ORDER BY created_at DESC`,
+      [tenantId],
+      tenantId
+    );
+    res.json({ openRoles: result.rows });
+  } catch (error) {
+    console.error('Error fetching open roles:', error);
+    res.status(500).json({ error: 'Failed to fetch open roles.' });
+  }
+});
+
+// ── GET /internal/hr/polling-state/:tenantId ──
+// Agent fetches the HR email polling state for deduplication
+router.get('/hr/polling-state/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT * FROM hr_email_polling_state WHERE tenant_id = $1`,
+      [tenantId],
+      tenantId
+    );
+    if (result.rows[0]) {
+      res.json({ state: result.rows[0] });
+    } else {
+      res.json({ state: { last_processed_message_ids: [], last_checked_at: null } });
+    }
+  } catch (error) {
+    console.error('Error fetching polling state:', error);
+    res.status(500).json({ error: 'Failed to fetch polling state.' });
+  }
+});
+
+// ── POST /internal/hr/polling-state ──
+// Agent saves the HR email polling state
+router.post('/hr/polling-state', async (req, res) => {
+  const { tenant_id, processed_ids } = req.body;
+
+  try {
+    await query(
+      `INSERT INTO hr_email_polling_state (tenant_id, last_processed_message_ids, last_checked_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         last_processed_message_ids = EXCLUDED.last_processed_message_ids,
+         last_checked_at = NOW()`,
+      [tenant_id, JSON.stringify(processed_ids)],
+      tenant_id
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error saving polling state:', error);
+    res.status(500).json({ error: 'Failed to save polling state.' });
+  }
+});
+
+// ── POST /internal/hr/applications ──
+// Agent stores a classified application
+router.post('/hr/applications', async (req, res) => {
+  const { tenant_id, open_role_id, applicant_name, applicant_email, email_subject, email_body, email_message_id, resume_text, resume_filename, source } = req.body;
+
+  try {
+    const result = await query(
+      `INSERT INTO hr_applications (tenant_id, open_role_id, applicant_name, applicant_email, email_subject, email_body, email_message_id, resume_text, resume_filename, source, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'received') RETURNING *`,
+      [tenant_id, open_role_id, applicant_name, applicant_email, email_subject || null, email_body || null, email_message_id || null, resume_text || null, resume_filename || null, source || 'email'],
+      tenant_id
+    );
+    res.status(201).json({ application: result.rows[0] });
+  } catch (error) {
+    console.error('Error storing application:', error);
+    res.status(500).json({ error: 'Failed to store application.' });
+  }
+});
+
+// ── PATCH /internal/hr/applications/:id/ack ──
+// Agent marks ack email as sent
+router.patch('/hr/applications/:id/ack', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await query(
+      `UPDATE hr_applications SET ack_email_sent = TRUE, ack_email_sent_at = NOW() WHERE id = $1`,
+      [id]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating ack status:', error);
+    res.status(500).json({ error: 'Failed to update ack status.' });
+  }
+});
+
+// ── POST /internal/hr/talent-pool ──
+// Agent stores an unmatched application in talent pool
+router.post('/hr/talent-pool', async (req, res) => {
+  const { tenant_id, applicant_name, applicant_email, email_subject, email_body, email_message_id, resume_text, resume_filename, desired_role } = req.body;
+
+  try {
+    const result = await query(
+      `INSERT INTO hr_talent_pool (tenant_id, applicant_name, applicant_email, email_subject, email_body, email_message_id, resume_text, resume_filename, desired_role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [tenant_id, applicant_name, applicant_email, email_subject || null, email_body || null, email_message_id || null, resume_text || null, resume_filename || null, desired_role || null],
+      tenant_id
+    );
+    res.status(201).json({ prospect: result.rows[0] });
+  } catch (error) {
+    console.error('Error storing talent pool entry:', error);
+    res.status(500).json({ error: 'Failed to store talent pool entry.' });
+  }
+});
+
+// ── GET /internal/hr/talent-pool/:tenantId ──
+// Agent fetches talent pool for scanning
+router.get('/hr/talent-pool/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT * FROM hr_talent_pool WHERE tenant_id = $1 AND status = 'pooled' ORDER BY created_at DESC`,
+      [tenantId],
+      tenantId
+    );
+    res.json({ prospects: result.rows });
+  } catch (error) {
+    console.error('Error fetching talent pool:', error);
+    res.status(500).json({ error: 'Failed to fetch talent pool.' });
+  }
+});
+
+// ── PATCH /internal/hr/talent-pool/:id/transfer ──
+// Agent transfers a prospect to a role
+router.patch('/hr/talent-pool/:id/transfer', async (req, res) => {
+  const { id } = req.params;
+  const { open_role_id, tenant_id } = req.body;
+
+  try {
+    // Get the prospect data
+    const prospectResult = await query(
+      `SELECT * FROM hr_talent_pool WHERE id = $1 AND tenant_id = $2`,
+      [id, tenant_id],
+      tenant_id
+    );
+
+    if (!prospectResult.rows[0]) {
+      return res.status(404).json({ error: 'Prospect not found.' });
+    }
+
+    const prospect = prospectResult.rows[0];
+
+    // Create an application from the prospect
+    const appResult = await query(
+      `INSERT INTO hr_applications (tenant_id, open_role_id, applicant_name, applicant_email, email_subject, email_body, email_message_id, resume_text, resume_filename, source, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'talent_pool_transfer', 'received') RETURNING *`,
+      [tenant_id, open_role_id, prospect.applicant_name, prospect.applicant_email, prospect.email_subject, prospect.email_body, null, prospect.resume_text, prospect.resume_filename],
+      tenant_id
+    );
+
+    // Mark the prospect as transferred
+    await query(
+      `UPDATE hr_talent_pool SET status = 'transferred', transferred_to_role = $1, transferred_at = NOW() WHERE id = $2`,
+      [open_role_id, id],
+      tenant_id
+    );
+
+    res.json({ application: appResult.rows[0] });
+  } catch (error) {
+    console.error('Error transferring prospect:', error);
+    res.status(500).json({ error: 'Failed to transfer prospect.' });
+  }
+});
+
+// ── GET /internal/hr/projects-behind-schedule/:tenantId ──
+// Agent fetches projects that are behind schedule
+router.get('/hr/projects-behind-schedule/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT p.*,
+              COALESCE(
+                (SELECT json_agg(json_build_object('employee_id', pm.employee_id, 'name', e.name, 'email', e.email, 'role', pm.role))
+                 FROM hr_project_members pm
+                 JOIN hr_employees e ON pm.employee_id = e.id
+                 WHERE pm.project_id = p.id), '[]'::json
+              ) as members
+       FROM hr_projects p
+       WHERE p.tenant_id = $1 AND p.status = 'active'
+       ORDER BY p.expected_completion ASC`,
+      [tenantId],
+      tenantId
+    );
+
+    // Filter to projects behind schedule
+    const behindSchedule = result.rows.filter(p => {
+      const startDate = new Date(p.start_date);
+      const endDate = new Date(p.expected_completion);
+      const now = new Date();
+      const totalDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24));
+      const elapsedDays = Math.max(0, (now - startDate) / (1000 * 60 * 60 * 24));
+      const expectedProgress = Math.min(100, Math.round((elapsedDays / totalDays) * 100));
+      const pacingDelta = p.current_progress - expectedProgress;
+      return pacingDelta < -15; // Behind by 15%+
+    });
+
+    res.json({ projects: behindSchedule });
+  } catch (error) {
+    console.error('Error fetching behind-schedule projects:', error);
+    res.status(500).json({ error: 'Failed to fetch projects.' });
+  }
+});
+
 module.exports = router;

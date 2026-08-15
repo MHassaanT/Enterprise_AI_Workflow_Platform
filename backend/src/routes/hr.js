@@ -310,6 +310,279 @@ router.delete('/resumes/:id', authenticate, authorize('admin'), async (req, res)
   res.json({ message: 'Resume deleted.' });
 });
 
+// ═══════════════════════════════════════════════════════
+//  OPEN ROLES (Email Intake)
+// ═══════════════════════════════════════════════════════
+
+// ── CREATE OPEN ROLE ──
+router.post('/open-roles', authenticate, authorize('admin', 'employee'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { title, description, requirements, accepting_until, search_query } = req.body;
+
+  if (!title || !description || !accepting_until) {
+    return res.status(400).json({ error: 'title, description, and accepting_until are required.' });
+  }
+
+  const result = await query(
+    `INSERT INTO hr_open_roles (tenant_id, title, description, requirements, accepting_until, search_query)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [tenantId, title, description, requirements || null, accepting_until, search_query || 'subject:job application'],
+    tenantId
+  );
+
+  // After creating a new role, trigger talent pool scan (fire and forget)
+  (async () => {
+    try {
+      const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+      await fetch(`${agentUrl}/agent/hr/scan-talent-pool`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN,
+        },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          open_role_id: result.rows[0].id,
+          role_title: title,
+          role_description: description,
+          role_requirements: requirements || '',
+        }),
+      });
+    } catch (err) {
+      console.error('[HR] Failed to trigger talent pool scan:', err.message);
+    }
+  })();
+
+  res.status(201).json({ openRole: result.rows[0] });
+});
+
+// ── LIST OPEN ROLES ──
+router.get('/open-roles', authenticate, authorize('admin', 'employee', 'reviewer'), async (req, res) => {
+  const { tenantId } = req.user;
+
+  const result = await query(
+    `SELECT r.*,
+            COALESCE(
+              (SELECT COUNT(*) FROM hr_applications a WHERE a.open_role_id = r.id), 0
+            )::int as application_count
+     FROM hr_open_roles r
+     WHERE r.tenant_id = $1
+     ORDER BY r.created_at DESC`,
+    [tenantId],
+    tenantId
+  );
+
+  res.json({ openRoles: result.rows });
+});
+
+// ── GET SINGLE OPEN ROLE WITH APPLICATIONS ──
+router.get('/open-roles/:id', authenticate, authorize('admin', 'employee', 'reviewer'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { id } = req.params;
+
+  const roleResult = await query(
+    `SELECT * FROM hr_open_roles WHERE id = $1 AND tenant_id = $2`,
+    [id, tenantId],
+    tenantId
+  );
+
+  if (!roleResult.rows[0]) {
+    return res.status(404).json({ error: 'Open role not found.' });
+  }
+
+  const appsResult = await query(
+    `SELECT * FROM hr_applications WHERE open_role_id = $1 AND tenant_id = $2 ORDER BY rank_score DESC NULLS LAST, created_at DESC`,
+    [id, tenantId],
+    tenantId
+  );
+
+  res.json({
+    openRole: roleResult.rows[0],
+    applications: appsResult.rows,
+  });
+});
+
+// ── UPDATE OPEN ROLE ──
+router.patch('/open-roles/:id', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { id } = req.params;
+  const { title, description, requirements, accepting_until, search_query, status } = req.body;
+
+  const fields = [];
+  const values = [];
+  let paramIdx = 1;
+
+  if (title !== undefined) { fields.push(`title = $${paramIdx++}`); values.push(title); }
+  if (description !== undefined) { fields.push(`description = $${paramIdx++}`); values.push(description); }
+  if (requirements !== undefined) { fields.push(`requirements = $${paramIdx++}`); values.push(requirements); }
+  if (accepting_until !== undefined) { fields.push(`accepting_until = $${paramIdx++}`); values.push(accepting_until); }
+  if (search_query !== undefined) { fields.push(`search_query = $${paramIdx++}`); values.push(search_query); }
+  if (status !== undefined) { fields.push(`status = $${paramIdx++}`); values.push(status); }
+
+  if (fields.length === 0) {
+    return res.status(400).json({ error: 'No fields to update.' });
+  }
+
+  fields.push(`updated_at = NOW()`);
+  values.push(id, tenantId);
+
+  const result = await query(
+    `UPDATE hr_open_roles SET ${fields.join(', ')} WHERE id = $${paramIdx++} AND tenant_id = $${paramIdx} RETURNING *`,
+    values,
+    tenantId
+  );
+
+  if (!result.rows[0]) {
+    return res.status(404).json({ error: 'Open role not found.' });
+  }
+
+  res.json({ openRole: result.rows[0] });
+});
+
+// ── DELETE OPEN ROLE ──
+router.delete('/open-roles/:id', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { id } = req.params;
+
+  await query(`DELETE FROM hr_open_roles WHERE id = $1 AND tenant_id = $2`, [id, tenantId], tenantId);
+  res.json({ message: 'Open role deleted.' });
+});
+
+// ── RANK APPLICATIONS FOR A ROLE (proxy to agent) ──
+router.post('/open-roles/:id/rank', authenticate, authorize('admin', 'employee'), async (req, res) => {
+  const { tenantId } = req.user;
+  const roleId = req.params.id;
+
+  const roleResult = await query(
+    `SELECT * FROM hr_open_roles WHERE id = $1 AND tenant_id = $2`,
+    [roleId, tenantId],
+    tenantId
+  );
+
+  if (!roleResult.rows[0]) {
+    return res.status(404).json({ error: 'Open role not found.' });
+  }
+
+  const appsResult = await query(
+    `SELECT id FROM hr_applications WHERE open_role_id = $1 AND tenant_id = $2 AND status IN ('received', 'ready')`,
+    [roleId, tenantId],
+    tenantId
+  );
+
+  if (appsResult.rows.length === 0) {
+    return res.status(400).json({ error: 'No applications to rank.' });
+  }
+
+  try {
+    const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(`${agentUrl}/agent/hr/rank-applications`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        open_role_id: roleId,
+        role_title: roleResult.rows[0].title,
+        role_description: roleResult.rows[0].description,
+        role_requirements: roleResult.rows[0].requirements || '',
+        application_ids: appsResult.rows.map(r => r.id),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Agent ranking failed: ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // Fetch updated applications
+    const updatedApps = await query(
+      `SELECT * FROM hr_applications WHERE open_role_id = $1 AND tenant_id = $2 ORDER BY rank_score DESC NULLS LAST`,
+      [roleId, tenantId],
+      tenantId
+    );
+
+    res.json({ ranked_applications: updatedApps.rows });
+  } catch (error) {
+    console.error('Error ranking applications:', error);
+    res.status(500).json({ error: 'Failed to rank applications.' });
+  }
+});
+
+// ── SCAN TALENT POOL (proxy to agent) ──
+router.post('/open-roles/:id/scan-pool', authenticate, authorize('admin', 'employee'), async (req, res) => {
+  const { tenantId } = req.user;
+  const roleId = req.params.id;
+
+  const roleResult = await query(
+    `SELECT * FROM hr_open_roles WHERE id = $1 AND tenant_id = $2`,
+    [roleId, tenantId],
+    tenantId
+  );
+
+  if (!roleResult.rows[0]) {
+    return res.status(404).json({ error: 'Open role not found.' });
+  }
+
+  try {
+    const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(`${agentUrl}/agent/hr/scan-talent-pool`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        open_role_id: roleId,
+        role_title: roleResult.rows[0].title,
+        role_description: roleResult.rows[0].description,
+        role_requirements: roleResult.rows[0].requirements || '',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Talent pool scan failed: ${errorText}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error scanning talent pool:', error);
+    res.status(500).json({ error: 'Failed to scan talent pool.' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+//  TALENT POOL ("Future Prospects")
+// ═══════════════════════════════════════════════════════
+
+// ── LIST TALENT POOL ──
+router.get('/talent-pool', authenticate, authorize('admin', 'employee', 'reviewer'), async (req, res) => {
+  const { tenantId } = req.user;
+
+  const result = await query(
+    `SELECT * FROM hr_talent_pool WHERE tenant_id = $1 ORDER BY created_at DESC`,
+    [tenantId],
+    tenantId
+  );
+
+  res.json({ prospects: result.rows });
+});
+
+// ── DELETE TALENT POOL ENTRY ──
+router.delete('/talent-pool/:id', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { id } = req.params;
+
+  await query(`DELETE FROM hr_talent_pool WHERE id = $1 AND tenant_id = $2`, [id, tenantId], tenantId);
+  res.json({ message: 'Prospect removed from talent pool.' });
+});
+
 // ── MULTER ERROR HANDLER ──
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError || err.message.includes('Unsupported file type')) {

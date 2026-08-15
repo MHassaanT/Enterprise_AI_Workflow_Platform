@@ -655,3 +655,267 @@ export async function deleteJobDescription(id) {
   return res.json();
 }
 
+// ── OPEN ROLES (Email Intake) ──
+export async function createOpenRole(title, description, requirements, acceptingUntil, searchQuery) {
+  const res = await fetch('/api/hr/open-roles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ title, description, requirements, accepting_until: acceptingUntil, search_query: searchQuery })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to create open role');
+  const data = await res.json();
+  return data.openRole;
+}
+
+export async function fetchOpenRoles() {
+  const res = await fetch('/api/hr/open-roles', { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch open roles');
+  const data = await res.json();
+  return data.openRoles || [];
+}
+
+export async function fetchOpenRole(id) {
+  const res = await fetch(`/api/hr/open-roles/${id}`, { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch open role');
+  return res.json();
+}
+
+export async function updateOpenRole(id, updates) {
+  const res = await fetch(`/api/hr/open-roles/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(updates)
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to update open role');
+  const data = await res.json();
+  return data.openRole;
+}
+
+export async function deleteOpenRole(id) {
+  const res = await fetch(`/api/hr/open-roles/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete open role');
+  return res.json();
+}
+
+export async function rankApplications(roleId) {
+  const res = await fetch(`/api/hr/open-roles/${roleId}/rank`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to rank applications');
+  const data = await res.json();
+  return data.ranked_applications || [];
+}
+
+export async function scanTalentPool(roleId) {
+  const res = await fetch(`/api/hr/open-roles/${roleId}/scan-pool`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to scan talent pool');
+  return res.json();
+}
+
+// ── TALENT POOL ──
+export async function fetchTalentPool() {
+  const res = await fetch('/api/hr/talent-pool', { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch talent pool');
+  const data = await res.json();
+  return data.prospects || [];
+}
+
+export async function deleteTalentPoolEntry(id) {
+  const res = await fetch(`/api/hr/talent-pool/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete talent pool entry');
+  return res.json();
+}
+
+// ── EMPLOYEES ──
+export async function createEmployee(name, email, position, department, hireDate) {
+  const res = await fetch('/api/hr/employees', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name, email, position, department, hire_date: hireDate })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to create employee');
+  }
+  const data = await res.json();
+  return data.employee;
+}
+
+export async function fetchEmployees() {
+  const res = await fetch('/api/hr/employees', { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch employees');
+  const data = await res.json();
+  return data.employees || [];
+}
+
+export async function fetchEmployee(id) {
+  const res = await fetch(`/api/hr/employees/${id}`, { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch employee');
+  return res.json();
+}
+
+export async function updateEmployee(id, updates) {
+  const res = await fetch(`/api/hr/employees/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(updates)
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to update employee');
+  const data = await res.json();
+  return data.employee;
+}
+
+export async function deleteEmployee(id) {
+  const res = await fetch(`/api/hr/employees/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete employee');
+  return res.json();
+}
+
+export async function importEmployees(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/api/hr/employees/import', {
+    method: 'POST',
+    headers: { ...getAuthHeader() },
+    body: formData,
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to import employees');
+  }
+  return res.json();
+}
+
+// ── PROJECTS ──
+export async function createProject(name, description, startDate, expectedCompletion) {
+  const res = await fetch('/api/hr/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ name, description, start_date: startDate, expected_completion: expectedCompletion })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to create project');
+  const data = await res.json();
+  return data.project;
+}
+
+export async function fetchProjects() {
+  const res = await fetch('/api/hr/projects', { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch projects');
+  const data = await res.json();
+  return data.projects || [];
+}
+
+export async function fetchProject(id) {
+  const res = await fetch(`/api/hr/projects/${id}`, { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch project');
+  return res.json();
+}
+
+export async function updateProject(id, updates) {
+  const res = await fetch(`/api/hr/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(updates)
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to update project');
+  const data = await res.json();
+  return data.project;
+}
+
+export async function deleteProject(id) {
+  const res = await fetch(`/api/hr/projects/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to delete project');
+  return res.json();
+}
+
+export async function addProjectMember(projectId, employeeId, role, responsibilities) {
+  const res = await fetch(`/api/hr/projects/${projectId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ employee_id: employeeId, role, responsibilities })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to add member');
+  }
+  const data = await res.json();
+  return data.member;
+}
+
+export async function removeProjectMember(projectId, memberId) {
+  const res = await fetch(`/api/hr/projects/${projectId}/members/${memberId}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to remove member');
+  return res.json();
+}
+
+export async function submitProjectUpdate(projectId, submittedBy, progressPct, notes, blockers) {
+  const res = await fetch(`/api/hr/projects/${projectId}/updates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ submitted_by: submittedBy, progress_pct: progressPct, notes, blockers })
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to submit project update');
+  const data = await res.json();
+  return data.update;
+}
+
+export async function fetchProjectUpdates(projectId) {
+  const res = await fetch(`/api/hr/projects/${projectId}/updates`, { headers: { ...getAuthHeader() } });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch project updates');
+  const data = await res.json();
+  return data.updates || [];
+}
+
+export async function checkProjectPacing() {
+  const res = await fetch('/api/hr/projects/check-pacing', {
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to check project pacing');
+  return res.json();
+}
+

@@ -24,6 +24,7 @@ from routers.tools import router as tools_router
 mcp_http_app = mcp.http_app(path="/mcp")
 
 from polling_engine import start_polling_engine
+from hr_polling import start_hr_polling_engine
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -33,14 +34,16 @@ import subprocess
 # Main app — lifespan from mcp_http_app for proper MCP session management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start polling engine
+    # Start polling engines
     polling_task = asyncio.create_task(start_polling_engine())
+    hr_polling_task = asyncio.create_task(start_hr_polling_engine())
     
     # Delegate to MCP lifespan
     async with mcp_http_app.lifespan(app):
         yield
         
     polling_task.cancel()
+    hr_polling_task.cancel()
 
 
 app = FastAPI(

@@ -102,6 +102,92 @@ async def execute_gmail_tool(tool_name: str, arguments: Dict[str, Any], credenti
                     
                 return f"Gmail API Error ({res.status_code}): {res.text}"
             
+            # 4. Read Full Email Body (decoded base64 parts)
+            elif "read_full" in action_lower or "full_body" in action_lower:
+                msg_id = arguments.get("id") or arguments.get("message_id")
+                if not msg_id:
+                    return "Error: 'id' or 'message_id' is required to read full email body."
+                
+                url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+                params = {"format": "full"}
+                res = await client.get(url, headers=headers, params=params)
+                if res.is_success:
+                    msg = res.json()
+                    headers_list = msg.get("payload", {}).get("headers", [])
+                    subject = next((h["value"] for h in headers_list if h["name"] == "Subject"), "No Subject")
+                    sender = next((h["value"] for h in headers_list if h["name"] == "From"), "Unknown Sender")
+                    date = next((h["value"] for h in headers_list if h["name"] == "Date"), "")
+                    
+                    # Recursively extract body text from parts
+                    def extract_body(payload):
+                        body_text = ""
+                        if payload.get("body", {}).get("data"):
+                            body_text += base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+                        for part in payload.get("parts", []):
+                            mime = part.get("mimeType", "")
+                            if mime in ["text/plain", "text/html"]:
+                                if part.get("body", {}).get("data"):
+                                    body_text += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+                            elif "multipart" in mime:
+                                body_text += extract_body(part)
+                        return body_text
+                    
+                    body = extract_body(msg.get("payload", {}))
+                    return f"Subject: {subject}\nFrom: {sender}\nDate: {date}\n\n{body}"
+                
+                return f"Gmail API Error ({res.status_code}): {res.text}"
+            
+            # 5. Get Attachments
+            elif "attachment" in action_lower or "download" in action_lower:
+                msg_id = arguments.get("id") or arguments.get("message_id")
+                if not msg_id:
+                    return "Error: 'id' or 'message_id' is required to get attachments."
+                
+                # First get the message to find attachment metadata
+                url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+                params = {"format": "full"}
+                res = await client.get(url, headers=headers, params=params)
+                if not res.is_success:
+                    return f"Gmail API Error ({res.status_code}): {res.text}"
+                
+                msg = res.json()
+                attachments = []
+                
+                def find_attachments(payload, attachments_list):
+                    for part in payload.get("parts", []):
+                        filename = part.get("filename", "")
+                        if filename and part.get("body", {}).get("attachmentId"):
+                            attachments_list.append({
+                                "filename": filename,
+                                "mimeType": part.get("mimeType", ""),
+                                "attachmentId": part["body"]["attachmentId"],
+                                "size": part["body"].get("size", 0),
+                            })
+                        if part.get("parts"):
+                            find_attachments(part, attachments_list)
+                
+                find_attachments(msg.get("payload", {}), attachments)
+                
+                if not attachments:
+                    return "No attachments found in this email."
+                
+                # Download each attachment
+                results = []
+                for att in attachments:
+                    att_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}/attachments/{att['attachmentId']}"
+                    att_res = await client.get(att_url, headers=headers)
+                    if att_res.is_success:
+                        att_data = att_res.json()
+                        results.append({
+                            "filename": att["filename"],
+                            "mimeType": att["mimeType"],
+                            "size": att["size"],
+                            "data": att_data.get("data", ""),  # base64url encoded
+                        })
+                
+                import json
+                return json.dumps({"attachments": results})
+            
             else:
                 return f"Error: Unsupported Gmail action '{action}'."
 

@@ -248,3 +248,261 @@ Return ONLY valid JSON. No markdown backticks.
 
     await conn.close()
     return {"status": "success", "results": results}
+
+
+class ScanTalentPoolRequest(BaseModel):
+    tenant_id: str
+    open_role_id: str
+    role_title: str
+    role_description: str
+    role_requirements: str
+
+
+class RankApplicationsRequest(BaseModel):
+    tenant_id: str
+    open_role_id: str
+    role_title: str
+    role_description: str
+    role_requirements: str
+    application_ids: List[str]
+
+
+class ProjectPacingRequest(BaseModel):
+    tenant_id: str
+
+
+@router.post("/scan-talent-pool")
+async def scan_talent_pool(
+    request: ScanTalentPoolRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    # Fetch talent pool entries for this tenant
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{settings.BACKEND_URL}/internal/hr/talent-pool/{request.tenant_id}",
+                headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
+            )
+            response.raise_for_status()
+            prospects = response.json().get("prospects", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch talent pool: {str(e)}")
+
+    if not prospects:
+        return {"status": "success", "transferred": 0, "message": "No prospects in talent pool."}
+
+    llm = get_llm()
+    transferred = []
+
+    for prospect in prospects:
+        # Use LLM to check if prospect matches the new role
+        prompt = f"""You are an HR matching assistant. Determine if this candidate is a potential match for a new job opening.
+
+New Open Role:
+- Title: {request.role_title}
+- Description: {request.role_description}
+- Requirements: {request.role_requirements}
+
+Candidate Profile:
+- Name: {prospect.get('applicant_name', 'Unknown')}
+- Desired Role: {prospect.get('desired_role', 'Not specified')}
+- Email Subject: {prospect.get('email_subject', '')}
+- Resume/Body: {(prospect.get('resume_text', '') or prospect.get('email_body', ''))[:2000]}
+
+Is this candidate a reasonable match for the open role? Consider their desired role, skills mentioned in resume/email, and the job requirements.
+
+Respond with ONLY a valid JSON object:
+{{
+  "is_match": true/false,
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation"
+}}
+Do not include markdown backticks.
+"""
+        try:
+            llm_response = await llm.ainvoke(prompt)
+            content = llm_response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:-3].strip()
+            elif content.startswith("```"):
+                content = content[3:-3].strip()
+
+            parsed = json.loads(content)
+
+            if parsed.get("is_match", False) and parsed.get("confidence", 0) >= 0.5:
+                # Transfer prospect to the new role
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        transfer_response = await client.patch(
+                            f"{settings.BACKEND_URL}/internal/hr/talent-pool/{prospect['id']}/transfer",
+                            json={
+                                "open_role_id": request.open_role_id,
+                                "tenant_id": request.tenant_id,
+                            },
+                            headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
+                        )
+                        transfer_response.raise_for_status()
+
+                    # Send notification email to the applicant
+                    from tool_gateway.centralized_gateway import execute_mcp_tool
+
+                    email_prompt = f"""You are an HR Assistant. Draft a professional email notifying a candidate that a role they previously applied for is now open.
+
+Candidate Name: {prospect.get('applicant_name', 'Applicant')}
+Role Title: {request.role_title}
+Original Application: They applied previously but the role was not available at the time.
+
+Write a warm, professional email informing them that the position is now open and their application has been transferred for consideration.
+
+Output a JSON object with:
+1. "subject": The email subject line.
+2. "body": The plain text email body.
+
+Return ONLY valid JSON. No markdown backticks.
+"""
+                    email_response = await llm.ainvoke(email_prompt)
+                    email_content = email_response.content.strip()
+                    if email_content.startswith("```json"):
+                        email_content = email_content[7:-3].strip()
+                    elif email_content.startswith("```"):
+                        email_content = email_content[3:-3].strip()
+
+                    email_parsed = json.loads(email_content)
+
+                    await execute_mcp_tool(
+                        tenant_id=request.tenant_id,
+                        agent_instance_id="workflow-builder",
+                        tool_name="gmail",
+                        arguments={
+                            "action": "send",
+                            "to": prospect.get("applicant_email", ""),
+                            "subject": email_parsed.get("subject", f"Update: {request.role_title} is Now Open"),
+                            "body": email_parsed.get("body", ""),
+                        }
+                    )
+
+                    transferred.append({
+                        "prospect_id": prospect["id"],
+                        "name": prospect.get("applicant_name"),
+                        "email": prospect.get("applicant_email"),
+                    })
+
+                    print(f"[HR] Transferred prospect {prospect.get('applicant_name')} to role '{request.role_title}'")
+
+                except Exception as te:
+                    print(f"[HR] Failed to transfer prospect {prospect['id']}: {te}")
+
+        except Exception as e:
+            print(f"[HR] Failed to evaluate prospect {prospect['id']}: {e}")
+
+    return {
+        "status": "success",
+        "transferred": len(transferred),
+        "details": transferred,
+    }
+
+
+@router.post("/rank-applications")
+async def rank_applications(
+    request: RankApplicationsRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    """Rank email-sourced applications against an open role using LLM."""
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    import asyncpg
+    conn = await asyncpg.connect(settings.DATABASE_URL)
+
+    results = []
+    llm = get_llm()
+
+    for app_id in request.application_ids:
+        # Fetch application data
+        row = await conn.fetchrow(
+            "SELECT * FROM hr_applications WHERE id = $1 AND tenant_id = $2",
+            app_id, request.tenant_id
+        )
+
+        if not row:
+            continue
+
+        resume_text = row.get("resume_text", "") or row.get("email_body", "") or ""
+
+        prompt = f"""You are an expert HR Technical Recruiter. Evaluate this candidate's application against the Job Description.
+
+Job Title: {request.role_title}
+Requirements: {request.role_requirements}
+Job Description: {request.role_description}
+
+Candidate Name: {row['applicant_name']}
+Application Source: Email
+Resume/Application Text:
+{resume_text[:3000]}
+
+Output a JSON object with:
+1. "candidate_name": The candidate's real name (or use "{row['applicant_name']}").
+2. "score": An integer from 0 to 100 representing how well the candidate matches.
+3. "reasoning": A 1-2 sentence explanation for the score.
+4. "skills_matched": A list of key matching skills.
+
+Return ONLY valid JSON. No markdown backticks.
+"""
+        try:
+            llm_response = await llm.ainvoke(prompt)
+            content = llm_response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:-3].strip()
+            elif content.startswith("```"):
+                content = content[3:-3].strip()
+
+            parsed = json.loads(content)
+
+            await conn.execute(
+                """
+                UPDATE hr_applications
+                SET rank_score = $1, rank_reasoning = $2, skills_matched = $3,
+                    applicant_name = $4, status = 'ready'
+                WHERE id = $5 AND tenant_id = $6
+                """,
+                float(parsed.get("score", 0)),
+                parsed.get("reasoning", ""),
+                json.dumps(parsed.get("skills_matched", [])),
+                parsed.get("candidate_name", row["applicant_name"]),
+                app_id,
+                request.tenant_id,
+            )
+
+            results.append({
+                "application_id": app_id,
+                "score": parsed.get("score"),
+                "name": parsed.get("candidate_name"),
+            })
+
+        except Exception as e:
+            print(f"[HR] Failed to score application {app_id}: {e}")
+            await conn.execute(
+                "UPDATE hr_applications SET rank_score = 0, rank_reasoning = 'Error during evaluation' WHERE id = $1",
+                app_id,
+            )
+
+    await conn.close()
+    return {"status": "success", "scored": len(results)}
+
+
+@router.post("/check-project-pacing")
+async def check_project_pacing_endpoint(
+    request: ProjectPacingRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    """Manually trigger project pacing check for a tenant."""
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    from hr_polling import check_project_pacing
+    await check_project_pacing(request.tenant_id)
+
+    return {"status": "success", "message": "Project pacing check completed."}
