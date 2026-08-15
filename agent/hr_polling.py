@@ -1,6 +1,6 @@
 """
-HR Email Polling Engine — Scans Gmail for job applications,
-classifies them against open roles, and manages the Talent Pool.
+HR Email Polling Engine — Scans Gmail for job applications & project status updates,
+classifies them against open roles/projects, and manages the Talent Pool.
 Also monitors project pacing and sends reminder emails.
 
 Runs as a separate async loop alongside the workflow polling engine.
@@ -157,8 +157,7 @@ def _decode_attachment_text(attachment: dict) -> str:
         if "text/plain" in mime or "text/csv" in mime:
             return raw_bytes.decode("utf-8", errors="replace")
         
-        # For PDF/DOCX, we'd need extraction libraries
-        # Return a marker so the calling code knows it's binary
+        # For PDF/DOCX, return a marker so calling code knows it's binary
         return f"[BINARY_ATTACHMENT:{attachment.get('filename', 'unknown')}:{len(raw_bytes)} bytes]"
     except Exception:
         return ""
@@ -170,22 +169,26 @@ def _extract_links_from_text(text: str) -> List[str]:
     return re.findall(url_pattern, text, re.IGNORECASE)
 
 
-async def _classify_application(
+async def _classify_email(
     email_details: dict,
     open_roles: List[dict],
+    active_projects: List[dict],
     resume_text: str = ""
 ) -> dict:
-    """Use LLM to classify which open role (if any) this email application is for."""
+    """Use LLM to classify an incoming email as a job application, project status update, or other."""
     llm = get_llm()
     
     roles_summary = "\n".join([
-        f"- Role ID: {r['id']} | Title: {r.get('title') or 'Untitled'} | Description: {(r.get('description') or '')[:200]}..."
+        f"- Role ID: {r['id']} | Title: {r.get('title') or 'Untitled'} | Description: {(r.get('description') or '')[:150]}..."
         for r in open_roles
     ]) if open_roles else "No open roles currently available."
     
-    prompt = f"""You are an HR email classifier. Analyze this incoming email and determine:
-1. Is this a job application email? (someone applying for a position)
-2. If yes, which open role does it best match?
+    projects_summary = "\n".join([
+        f"- Project ID: {p['id']} | Name: {p.get('name') or 'Unnamed'} | Progress: {p.get('current_progress', 0)}% | Description: {(p.get('description') or '')[:150]}..."
+        for p in active_projects
+    ]) if active_projects else "No active projects currently."
+    
+    prompt = f"""You are an HR & Project Operations email classifier. Analyze this incoming email and determine its type.
 
 Email Details:
 - Subject: {email_details.get('subject') or ''}
@@ -193,25 +196,43 @@ Email Details:
 - Body Preview: {(email_details.get('body') or '')[:1500]}
 
 Resume/CV Text (if available):
-{resume_text[:2000] if resume_text else 'No resume text extracted.'}
+{resume_text[:1500] if resume_text else 'No resume text extracted.'}
 
-Currently Open Roles:
+Currently Open Job Roles:
 {roles_summary}
+
+Active Company Projects:
+{projects_summary}
+
+Determine if this email is:
+1. "job_application": An applicant applying for a job, submitting a CV/resume, or following up on a job application.
+2. "project_update": A status update, progress report, percentage update, or reply from a team member/lead regarding an active project.
+3. "other": General business email, newsletter, spam, or unhandled query.
 
 Respond with ONLY a valid JSON object:
 {{
-  "is_job_application": true/false,
+  "email_type": "job_application" | "project_update" | "other",
+  
+  // If job_application:
   "matched_role_id": "uuid-of-matched-role" or null,
-  "confidence": 0.0-1.0,
   "applicant_name": "extracted name" or "Unknown",
   "desired_role": "what role they seem to be applying for" or null,
+
+  // If project_update:
+  "matched_project_id": "uuid-of-matched-project" or null,
+  "project_name": "extracted project name" or null,
+  "progress_pct": integer between 0 and 100 if a completion percentage is mentioned or implied, else null,
+  "notes": "concise 1-3 sentence summary of the progress or update mentioned in the email",
+  "blockers": "any obstacles, blockers, or help needed mentioned in the email, else null",
+
+  "confidence": 0.0-1.0,
   "reasoning": "brief explanation"
 }}
 
 Rules:
-- If it is NOT a job application (e.g. spam, newsletter, regular business email), set is_job_application to false.
-- If it IS an application but no open role matches, set matched_role_id to null.
-- Extract the applicant's name from the email signature, body, or resume if possible.
+- If it is NOT a job application or project update, set email_type to "other".
+- If it is a project update but no active project matches, set matched_project_id to null.
+- Extract any completion percentage (0-100%) if explicitly stated (e.g. "we are at 60%", "project is half done (50%)", "completed 80%").
 - Do not include markdown backticks in your response.
 """
     
@@ -226,7 +247,7 @@ Rules:
         return json.loads(content)
     except Exception as e:
         print(f"[HR POLL] Classification error: {e}")
-        return {"is_job_application": False, "reasoning": f"Classification failed: {str(e)}"}
+        return {"email_type": "other", "reasoning": f"Classification failed: {str(e)}"}
 
 
 async def _send_ack_email(
@@ -236,7 +257,7 @@ async def _send_ack_email(
     role_title: Optional[str] = None,
     matched: bool = True
 ) -> bool:
-    """Send an acknowledgement email to the applicant."""
+    """Send an acknowledgement email to a job applicant."""
     llm = get_llm()
     
     if matched:
@@ -295,15 +316,18 @@ Return ONLY valid JSON. No markdown backticks.
 
 async def poll_hr_mailbox(tenant_id: str):
     """
-    Poll Gmail for new job application emails for a given tenant.
-    Classifies each email and stores in the appropriate category.
+    Poll Gmail for new job application & project update emails for a given tenant.
+    Classifies each email and handles applications or updates accordingly.
     """
     print(f"[HR POLL] Scanning mailbox for tenant {str(tenant_id)[:8]}...")
     
     try:
-        # 1. Fetch open roles for this tenant
+        # 1. Fetch open roles and active projects for this tenant
         roles_data = await _backend_get(f"/internal/hr/open-roles/{tenant_id}")
         open_roles = roles_data.get("openRoles", [])
+
+        projects_data = await _backend_get(f"/internal/hr/active-projects/{tenant_id}")
+        active_projects = projects_data.get("projects", [])
         
         # 2. Fetch polling state (processed message IDs)
         state_data = await _backend_get(f"/internal/hr/polling-state/{tenant_id}")
@@ -317,16 +341,15 @@ async def poll_hr_mailbox(tenant_id: str):
                 raw_ids = []
         processed_ids = set(raw_ids)
         
-        # 3. Search Gmail for application emails
-        # Combine search queries from all open roles, plus a general one
+        # 3. Search Gmail for emails (job applications & project updates)
         search_queries = set()
         for role in open_roles:
             sq = role.get("search_query", "")
             if sq:
                 search_queries.add(sq)
         
-        if not search_queries:
-            search_queries.add("subject:job application OR subject:application for OR subject:resume OR subject:CV")
+        # Always include project update search terms as well as general job terms
+        search_queries.add("subject:job application OR subject:application for OR subject:resume OR subject:CV OR subject:project OR subject:update OR subject:status OR subject:progress")
         
         all_message_ids = set()
         for sq in search_queries:
@@ -341,11 +364,9 @@ async def poll_hr_mailbox(tenant_id: str):
                 if "Error" in result or "No messages" in result:
                     continue
                 
-                # Parse message IDs from the response
-                # The gmail adapter returns "Found N messages: [{'id': '...', 'threadId': '...'}, ...]"
+                # Parse message IDs from response
                 import ast
                 try:
-                    # Extract the list portion
                     list_start = result.find('[')
                     if list_start >= 0:
                         list_str = result[list_start:]
@@ -363,7 +384,6 @@ async def poll_hr_mailbox(tenant_id: str):
         
         if not new_message_ids:
             print(f"[HR POLL] No new messages for tenant {str(tenant_id)[:8]}")
-            # Still update the state timestamp
             await _backend_post("/internal/hr/polling-state", {
                 "tenant_id": str(tenant_id),
                 "processed_ids": list(processed_ids),
@@ -399,82 +419,121 @@ async def poll_hr_mailbox(tenant_id: str):
                     resume_text = email_details.get("body", "")
                 
                 # 6. Classify the email
-                classification = await _classify_application(
-                    email_details, open_roles, resume_text
+                classification = await _classify_email(
+                    email_details, open_roles, active_projects, resume_text
                 )
                 
-                if not classification.get("is_job_application", False):
-                    print(f"[HR POLL] Email {msg_id} is not a job application, skipping")
-                    processed_ids.add(msg_id)
-                    continue
+                email_type = classification.get("email_type", "other")
                 
-                applicant_name = classification.get("applicant_name", email_details.get("sender_name", "Unknown"))
-                applicant_email = email_details.get("sender_email", "")
-                matched_role_id = classification.get("matched_role_id")
-                
-                if matched_role_id:
-                    # Verify the matched role exists and is valid
-                    role_exists = any(r["id"] == matched_role_id for r in open_roles)
-                    if not role_exists:
-                        matched_role_id = None
-                
-                if matched_role_id:
-                    # Store as application under the matched role
-                    matched_role = next((r for r in open_roles if r["id"] == matched_role_id), None)
+                if email_type == "job_application":
+                    applicant_name = classification.get("applicant_name", email_details.get("sender_name", "Unknown"))
+                    applicant_email = email_details.get("sender_email", "")
+                    matched_role_id = classification.get("matched_role_id")
                     
-                    app_data = await _backend_post("/internal/hr/applications", {
-                        "tenant_id": str(tenant_id),
-                        "open_role_id": matched_role_id,
-                        "applicant_name": applicant_name,
-                        "applicant_email": applicant_email,
-                        "email_subject": email_details.get("subject") or "",
-                        "email_body": (email_details.get("body") or "")[:5000],
-                        "email_message_id": msg_id,
-                        "resume_text": (resume_text or "")[:10000],
-                        "resume_filename": resume_filename or "",
-                        "source": "email",
-                    })
+                    if matched_role_id:
+                        role_exists = any(r["id"] == matched_role_id for r in open_roles)
+                        if not role_exists:
+                            matched_role_id = None
                     
-                    print(f"[HR POLL] Application stored for role '{matched_role.get('title', 'Unknown')}' from {applicant_email}")
-                    
-                    # Send ack email
-                    ack_sent = await _send_ack_email(
-                        tenant_id=str(tenant_id),
-                        to_email=applicant_email,
-                        applicant_name=applicant_name,
-                        role_title=matched_role.get("title", "Open Position"),
-                        matched=True,
-                    )
-                    
-                    if ack_sent and app_data.get("application", {}).get("id"):
-                        await _backend_patch(
-                            f"/internal/hr/applications/{app_data['application']['id']}/ack",
-                            {}
+                    if matched_role_id:
+                        matched_role = next((r for r in open_roles if r["id"] == matched_role_id), None)
+                        
+                        app_data = await _backend_post("/internal/hr/applications", {
+                            "tenant_id": str(tenant_id),
+                            "open_role_id": matched_role_id,
+                            "applicant_name": applicant_name,
+                            "applicant_email": applicant_email,
+                            "email_subject": email_details.get("subject") or "",
+                            "email_body": (email_details.get("body") or "")[:5000],
+                            "email_message_id": msg_id,
+                            "resume_text": (resume_text or "")[:10000],
+                            "resume_filename": resume_filename or "",
+                            "source": "email",
+                        })
+                        
+                        print(f"[HR POLL] Application stored for role '{matched_role.get('title', 'Unknown')}' from {applicant_email}")
+                        
+                        ack_sent = await _send_ack_email(
+                            tenant_id=str(tenant_id),
+                            to_email=applicant_email,
+                            applicant_name=applicant_name,
+                            role_title=matched_role.get("title", "Open Position"),
+                            matched=True,
                         )
+                        
+                        if ack_sent and app_data.get("application", {}).get("id"):
+                            await _backend_patch(
+                                f"/internal/hr/applications/{app_data['application']['id']}/ack",
+                                {}
+                            )
+                    else:
+                        # Store in Talent Pool ("Future Prospects")
+                        await _backend_post("/internal/hr/talent-pool", {
+                            "tenant_id": str(tenant_id),
+                            "applicant_name": applicant_name,
+                            "applicant_email": applicant_email,
+                            "email_subject": email_details.get("subject") or "",
+                            "email_body": (email_details.get("body") or "")[:5000],
+                            "email_message_id": msg_id,
+                            "resume_text": (resume_text or "")[:10000],
+                            "resume_filename": resume_filename or "",
+                            "desired_role": classification.get("desired_role") or "",
+                        })
+                        
+                        print(f"[HR POLL] Application from {applicant_email} stored in Talent Pool (no matching role)")
+                        
+                        await _send_ack_email(
+                            tenant_id=str(tenant_id),
+                            to_email=applicant_email,
+                            applicant_name=applicant_name,
+                            matched=False,
+                        )
+
+                elif email_type == "project_update":
+                    matched_project_id = classification.get("matched_project_id")
+                    if matched_project_id:
+                        project_obj = next((p for p in active_projects if p["id"] == matched_project_id), None)
+                        project_name = project_obj.get("name") if project_obj else (classification.get("project_name") or "Project")
+
+                        # Post project update to database
+                        update_res = await _backend_post("/internal/hr/project-update-from-email", {
+                            "tenant_id": str(tenant_id),
+                            "project_id": matched_project_id,
+                            "sender_email": email_details.get("sender_email", ""),
+                            "progress_pct": classification.get("progress_pct"),
+                            "notes": classification.get("notes") or email_details.get("body", "")[:500],
+                            "blockers": classification.get("blockers"),
+                        })
+
+                        print(f"[HR POLL] Project update recorded for '{project_name}' from {email_details.get('sender_email')}")
+
+                        # Send reply confirmation email
+                        sender_name = email_details.get("sender_name", "Team Member")
+                        pct_str = f" to {classification.get('progress_pct')}%" if classification.get("progress_pct") is not None else ""
+
+                        ack_body = (
+                            f"Hello {sender_name},\n\n"
+                            f"Thank you for your update regarding '{project_name}'. Your progress update{pct_str} has been successfully recorded in the HR Platform.\n\n"
+                            f"Summary recorded:\n{classification.get('notes', '')}\n\n"
+                            f"Best regards,\nHR & Operations Agent"
+                        )
+
+                        await execute_mcp_tool(
+                            tenant_id=str(tenant_id),
+                            agent_instance_id="workflow-builder",
+                            tool_name="gmail",
+                            arguments={
+                                "action": "send",
+                                "to": email_details.get("sender_email", ""),
+                                "subject": f"Re: {email_details.get('subject') or 'Project Update Received'}",
+                                "body": ack_body,
+                            }
+                        )
+                    else:
+                        print(f"[HR POLL] Email {msg_id} classified as project update but no matching active project found.")
                 else:
-                    # Store in Talent Pool ("Future Prospects")
-                    await _backend_post("/internal/hr/talent-pool", {
-                        "tenant_id": str(tenant_id),
-                        "applicant_name": applicant_name,
-                        "applicant_email": applicant_email,
-                        "email_subject": email_details.get("subject") or "",
-                        "email_body": (email_details.get("body") or "")[:5000],
-                        "email_message_id": msg_id,
-                        "resume_text": (resume_text or "")[:10000],
-                        "resume_filename": resume_filename or "",
-                        "desired_role": classification.get("desired_role") or "",
-                    })
-                    
-                    print(f"[HR POLL] Application from {applicant_email} stored in Talent Pool (no matching role)")
-                    
-                    # Send ack email (role not open)
-                    await _send_ack_email(
-                        tenant_id=str(tenant_id),
-                        to_email=applicant_email,
-                        applicant_name=applicant_name,
-                        matched=False,
-                    )
-                
+                    print(f"[HR POLL] Email {msg_id} classified as '{email_type}', skipping.")
+
                 processed_ids.add(msg_id)
                 
             except Exception as e:
@@ -496,7 +555,7 @@ async def poll_hr_mailbox(tenant_id: str):
 async def check_project_pacing(tenant_id: str):
     """
     Check project pacing for a tenant and send reminder emails
-    to team leads of behind-schedule projects.
+    to team leads of behind-schedule projects (at most once every 24h per project).
     """
     print(f"[HR POLL] Checking project pacing for tenant {str(tenant_id)[:8]}...")
     
@@ -505,7 +564,7 @@ async def check_project_pacing(tenant_id: str):
         behind_projects = data.get("projects", [])
         
         if not behind_projects:
-            print(f"[HR POLL] No projects behind schedule for tenant {str(tenant_id)[:8]}")
+            print(f"[HR POLL] No projects behind schedule requiring reminder for tenant {str(tenant_id)[:8]}")
             return
         
         llm = get_llm()
@@ -577,6 +636,8 @@ Return ONLY valid JSON. No markdown backticks.
                 
                 if "Error" not in result:
                     print(f"[HR POLL] Pacing reminder sent for '{project['name']}' to {lead['email']}")
+                    # Update DB timestamp so no duplicate reminder is sent within 24h
+                    await _backend_post(f"/internal/hr/projects/{project['id']}/reminder-sent", {})
                 else:
                     print(f"[HR POLL] Failed to send pacing reminder: {result}")
                     
@@ -593,7 +654,6 @@ async def poll_all_hr_tenants(cycle_count: int):
     Main HR polling iteration — runs for all tenants with Gmail connected.
     """
     try:
-        # Fetch all tenants with Gmail credentials
         data = await _backend_get("/internal/hr/tenants-with-gmail")
         tenants = data.get("tenants", [])
         
@@ -603,10 +663,8 @@ async def poll_all_hr_tenants(cycle_count: int):
         print(f"[HR POLL] Poll cycle #{cycle_count}: {len(tenants)} tenant(s) with Gmail")
         
         for tenant_id in tenants:
-            # Always scan mailbox
             await poll_hr_mailbox(str(tenant_id))
             
-            # Check project pacing every PACING_CHECK_INTERVAL cycles
             if cycle_count % PACING_CHECK_INTERVAL == 0:
                 await check_project_pacing(str(tenant_id))
         
@@ -620,7 +678,6 @@ async def start_hr_polling_engine():
     print(f"[HR POLL] Engine started. Polling every {HR_POLLING_INTERVAL_SECONDS}s. Pacing check every {PACING_CHECK_INTERVAL} cycles.")
     cycle_count = 0
     
-    # Wait for the app to fully start before first poll
     await asyncio.sleep(5)
     
     while True:

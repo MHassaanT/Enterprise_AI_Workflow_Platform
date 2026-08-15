@@ -531,15 +531,21 @@ router.get('/hr/projects-behind-schedule/:tenantId', async (req, res) => {
       tenantId
     );
 
-    // Filter to projects behind schedule
+    const now = new Date();
+    // Filter to projects behind schedule, excluding any that received a reminder in the last 24 hours
     const behindSchedule = result.rows.filter(p => {
+      if (p.last_reminder_sent_at) {
+        const hoursSinceLastReminder = (now.getTime() - new Date(p.last_reminder_sent_at).getTime()) / (1000 * 60 * 60);
+        if (hoursSinceLastReminder < 24) {
+          return false; // Already sent reminder within last 24 hours
+        }
+      }
       const startDate = new Date(p.start_date);
       const endDate = new Date(p.expected_completion);
-      const now = new Date();
       const totalDays = Math.max(1, (endDate - startDate) / (1000 * 60 * 60 * 24));
       const elapsedDays = Math.max(0, (now - startDate) / (1000 * 60 * 60 * 24));
       const expectedProgress = Math.min(100, Math.round((elapsedDays / totalDays) * 100));
-      const pacingDelta = p.current_progress - expectedProgress;
+      const pacingDelta = (p.current_progress || 0) - expectedProgress;
       return pacingDelta < -15; // Behind by 15%+
     });
 
@@ -547,6 +553,130 @@ router.get('/hr/projects-behind-schedule/:tenantId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching behind-schedule projects:', error);
     res.status(500).json({ error: 'Failed to fetch projects.' });
+  }
+});
+
+// ── POST /internal/hr/projects/:id/reminder-sent ──
+// Agent updates last_reminder_sent_at timestamp after sending a pacing email
+router.post('/hr/projects/:id/reminder-sent', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await query(
+      `UPDATE hr_projects SET last_reminder_sent_at = NOW() WHERE id = $1`,
+      [id]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating last_reminder_sent_at:', error);
+    res.status(500).json({ error: 'Failed to update reminder timestamp.' });
+  }
+});
+
+// ── GET /internal/hr/active-projects/:tenantId ──
+// Agent fetches active projects to assist in email classification
+router.get('/hr/active-projects/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const result = await query(
+      `SELECT id, name, description, current_progress, status FROM hr_projects WHERE tenant_id = $1 AND status = 'active'`,
+      [tenantId],
+      tenantId
+    );
+    res.json({ projects: result.rows });
+  } catch (error) {
+    console.error('Error fetching active projects:', error);
+    res.status(500).json({ error: 'Failed to fetch active projects.' });
+  }
+});
+
+// ── POST /internal/hr/project-update-from-email ──
+// Agent records a project progress update received via email
+router.post('/hr/project-update-from-email', async (req, res) => {
+  const { tenant_id, project_id, sender_email, progress_pct, notes, blockers } = req.body;
+
+  if (!tenant_id || !project_id || !notes) {
+    return res.status(400).json({ error: 'tenant_id, project_id, and notes are required.' });
+  }
+
+  try {
+    // 1. Find employee by email
+    let employeeId = null;
+    if (sender_email) {
+      const empRes = await query(
+        `SELECT id FROM hr_employees WHERE tenant_id = $1 AND LOWER(email) = LOWER($2)`,
+        [tenant_id, sender_email],
+        tenant_id
+      );
+      if (empRes.rows[0]) {
+        employeeId = empRes.rows[0].id;
+      }
+    }
+
+    // Fallback: If employee not found by email, pick first member of the project or any employee in tenant
+    if (!employeeId) {
+      const memberRes = await query(
+        `SELECT employee_id FROM hr_project_members WHERE project_id = $1 LIMIT 1`,
+        [project_id],
+        tenant_id
+      );
+      if (memberRes.rows[0]) {
+        employeeId = memberRes.rows[0].employee_id;
+      } else {
+        const fallbackEmp = await query(
+          `SELECT id FROM hr_employees WHERE tenant_id = $1 LIMIT 1`,
+          [tenant_id],
+          tenant_id
+        );
+        if (fallbackEmp.rows[0]) {
+          employeeId = fallbackEmp.rows[0].id;
+        }
+      }
+    }
+
+    if (!employeeId) {
+      return res.status(400).json({ error: 'No employee record found for project update author.' });
+    }
+
+    // 2. Insert into hr_project_updates
+    const updateResult = await query(
+      `INSERT INTO hr_project_updates (project_id, submitted_by, progress_pct, notes, blockers)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [project_id, employeeId, progress_pct != null ? progress_pct : null, notes, blockers || null],
+      tenant_id
+    );
+
+    // 3. Update hr_projects progress and summary
+    if (progress_pct != null && !isNaN(progress_pct)) {
+      await query(
+        `UPDATE hr_projects 
+         SET current_progress = $1, last_update_summary = $2, last_update_at = NOW(), updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [Math.min(100, Math.max(0, parseInt(progress_pct))), notes.substring(0, 250), project_id, tenant_id],
+        tenant_id
+      );
+    } else {
+      await query(
+        `UPDATE hr_projects 
+         SET last_update_summary = $1, last_update_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND tenant_id = $3`,
+        [notes.substring(0, 250), project_id, tenant_id],
+        tenant_id
+      );
+    }
+
+    // Get updated project details
+    const projRes = await query(
+      `SELECT * FROM hr_projects WHERE id = $1 AND tenant_id = $2`,
+      [project_id, tenant_id],
+      tenant_id
+    );
+
+    res.status(201).json({ update: updateResult.rows[0], project: projRes.rows[0] });
+  } catch (error) {
+    console.error('Error handling project update from email:', error);
+    res.status(500).json({ error: 'Failed to record project update from email.' });
   }
 });
 

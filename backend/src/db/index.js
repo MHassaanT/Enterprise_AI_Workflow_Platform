@@ -5,13 +5,16 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Test connection on startup
+// Test connection on startup and run light migrations
 pool.connect((err, client, release) => {
   if (err) {
     console.error('❌ Database connection failed:', err.message);
   } else {
     console.log('✅ PostgreSQL connected');
-    release();
+    client.query('ALTER TABLE hr_projects ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;')
+      .then(() => console.log('✅ hr_projects last_reminder_sent_at column verified'))
+      .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
+      .finally(() => release());
   }
 });
 
