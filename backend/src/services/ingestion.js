@@ -82,7 +82,8 @@ const ingestLink = async ({ url, tenantId }) => {
 
   try {
     // 1. Call Python agent to scrape
-    const agentResponse = await fetch('http://localhost:8000/agent/tools/scrape', {
+    const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+    const agentResponse = await fetch(`${agentUrl}/agent/tools/scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
