@@ -25,12 +25,15 @@ export default function Sidebar() {
   const navItems = [
     { label: 'Dashboard', href: '/', icon: 'dashboard' },
     { label: 'Support Chat', href: '/chat', icon: 'forum' },
-    { label: 'Widget Setup', href: '/widget-setup', icon: 'extension' },
+    { label: 'Finance Agent', href: '/finance', icon: 'payments' },
+    { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart' },
+    { label: 'Sales Agent', href: '/sales', icon: 'trending_up' },
     { label: 'HR Agent', href: '/hr', icon: 'groups' },
     { label: 'PM Agent', href: '/pm', icon: 'account_tree' },
+    { label: 'Approvals Hub', href: '/approvals', icon: 'gavel' },
+    { label: 'Widget Setup', href: '/widget-setup', icon: 'extension' },
     { label: 'MCP Tools', href: '/mcp', icon: 'hub' },
     { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications' },
-    { label: 'Human Approvals', href: '/admin/approvals', icon: 'fact_check' },
     { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree' },
     ...(isAdmin ? [{ label: 'Team Users', href: '/users', icon: 'group' }] : []),
   ];

@@ -20,6 +20,9 @@ const workflowRoutes = require('./routes/workflows');
 const hrRoutes = require('./routes/hr');
 const hrTeamRoutes = require('./routes/hr_team');
 const hrAttendanceRoutes = require('./routes/hr_attendance');
+const financeRoutes = require('./routes/finance');
+const procurementRoutes = require('./routes/procurement');
+const salesRoutes = require('./routes/sales');
 
 const app = express();
 
@@ -45,12 +48,16 @@ app.use('/api/v1/mcp', mcpRoutes);
 app.use('/api/mcp-gateway', mcpGatewayRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/approvals', approvalRoutes);
+app.use('/api/v1/approvals', approvalRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/hr', hrTeamRoutes);
 app.use('/api/hr', hrAttendanceRoutes);
+app.use('/api/v1/finance', financeRoutes);
+app.use('/api/v1/procurement', procurementRoutes);
+app.use('/api/v1/sales', salesRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded
 
 
