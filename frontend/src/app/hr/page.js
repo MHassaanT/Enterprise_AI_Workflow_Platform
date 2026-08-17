@@ -5,7 +5,6 @@ import AuthGuard from '../components/AuthGuard';
 import RecruitmentTab from './RecruitmentTab';
 import EmailIntakeTab from './EmailIntakeTab';
 import FutureProspectsTab from './FutureProspectsTab';
-import TeamProjectsTab from './TeamProjectsTab';
 import AttendanceTab from './AttendanceTab';
 
 export default function HRAgentPage() {
@@ -15,7 +14,6 @@ export default function HRAgentPage() {
     { id: 'recruitment', label: 'Manual Screening', icon: 'upload_file' },
     { id: 'email_intake', label: 'Email Application Intake', icon: 'mark_email_unread' },
     { id: 'future_prospects', label: 'Future Prospects', icon: 'person_search' },
-    { id: 'team_projects', label: 'Projects & Team', icon: 'engineering' },
     { id: 'attendance', label: 'Attendance', icon: 'how_to_reg' },
   ];
 
@@ -34,7 +32,7 @@ export default function HRAgentPage() {
               </div>
               <div>
                 <h1 className="font-headline-sm text-headline-sm text-on-surface m-0 leading-tight">HR Agent</h1>
-                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Recruitment & Project Management Platform</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Recruitment & Talent Management Platform</p>
               </div>
             </div>
           </div>
@@ -63,7 +61,6 @@ export default function HRAgentPage() {
           {activeTab === 'recruitment' && <RecruitmentTab />}
           {activeTab === 'email_intake' && <EmailIntakeTab />}
           {activeTab === 'future_prospects' && <FutureProspectsTab />}
-          {activeTab === 'team_projects' && <TeamProjectsTab />}
           {activeTab === 'attendance' && <AttendanceTab />}
         </main>
       </div>
