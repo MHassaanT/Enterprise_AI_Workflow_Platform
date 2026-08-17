@@ -6,6 +6,7 @@ import RecruitmentTab from './RecruitmentTab';
 import EmailIntakeTab from './EmailIntakeTab';
 import FutureProspectsTab from './FutureProspectsTab';
 import AttendanceTab from './AttendanceTab';
+import EmployeesTab from './EmployeesTab';
 
 export default function HRAgentPage() {
   const [activeTab, setActiveTab] = useState('recruitment');
@@ -14,6 +15,7 @@ export default function HRAgentPage() {
     { id: 'recruitment', label: 'Manual Screening', icon: 'upload_file' },
     { id: 'email_intake', label: 'Email Application Intake', icon: 'mark_email_unread' },
     { id: 'future_prospects', label: 'Future Prospects', icon: 'person_search' },
+    { id: 'employees', label: 'Team Directory', icon: 'badge' },
     { id: 'attendance', label: 'Attendance', icon: 'how_to_reg' },
   ];
 
@@ -61,6 +63,7 @@ export default function HRAgentPage() {
           {activeTab === 'recruitment' && <RecruitmentTab />}
           {activeTab === 'email_intake' && <EmailIntakeTab />}
           {activeTab === 'future_prospects' && <FutureProspectsTab />}
+          {activeTab === 'employees' && <EmployeesTab />}
           {activeTab === 'attendance' && <AttendanceTab />}
         </main>
       </div>

@@ -2,14 +2,12 @@
 
 ## 1. Overview & Rationale
 
-As the **Enterprise AI Workflow Platform** scaled, project management, team roster tracking, and pacing velocity alerts evolved beyond the core scope of the **HR Agent** (which primarily handles recruitment, resume screening, talent pool management, and employee attendance).
+As the **Enterprise AI Workflow Platform** scaled, project management, progress velocity monitoring, and pacing alerts were separated from the **HR Agent** into a dedicated **PM Agent** (Project Management Agent) accessible at `/pm`.
 
-To establish clear domain boundaries while preserving 100% stability and zero backend regression, the project management user interface was extracted into a dedicated **PM Agent** (Project Management Agent) accessible at `/pm`.
-
-### Key Outcomes:
-* **HR Agent (`/hr`)**: Cleanly dedicated to candidate recruitment, resume screening, talent pool ingestion, and daily employee attendance.
-* **PM Agent (`/pm`)**: Dedicated to project creation, team roster assignments, progress velocity monitoring, mathematical pacing checks, and status update feeds.
-* **Shared Background Infrastructure**: The underlying database tables, backend APIs, and Python email polling engine remain shared and intact, requiring **zero backend re-architecture** or migration risk.
+### Division of Responsibilities:
+* **HR Agent (`/hr`)**: Manages human resources and candidate recruitment — Manual Candidate Screening, Email Application Intake, Future Prospects Pool, **Team Directory & Employee Roster Management**, and Attendance.
+* **PM Agent (`/pm`)**: Manages projects and execution — Project creation & deletion, pacing velocity checks, project status update feeds, and project team roster assignments (assigning existing employees to projects).
+* **Sidebar Navigation**: Both **HR Agent** (`/hr`) and **PM Agent** (`/pm`) are directly accessible from the main navigation sidebar.
 
 ---
 
@@ -22,10 +20,11 @@ To establish clear domain boundaries while preserving 100% stability and zero ba
 |    +-----------------------------+               +---------------------------+    |
 |    |      HR Agent (/hr)         |               |      PM Agent (/pm)       |    |
 |    |-----------------------------|               |---------------------------|    |
-|    | * Manual Screening          |               | * Projects Grid & Detail  |    |
-|    | * Email Application Intake  |               | * Team Roster Directory   |    |
-|    | * Future Prospects Pool     |               | * Manual Progress Post    |    |
-|    | * Attendance Calendar       |               | * Pacing Check Trigger    |    |
+|    | * Manual Screening          |               | * Projects Grid & Details |    |
+|    | * Email Application Intake  |               | * Project Member Assign   |    |
+|    | * Future Prospects Pool     |               | * Status Updates Feed     |    |
+|    | * Team Directory (Employees)|               | * Pacing Check Trigger    |    |
+|    | * Attendance Calendar       |               |                           |    |
 |    +--------------+--------------+               +-------------+-------------+    |
 +-------------------|--------------------------------------------|------------------+
                     |                                            |
@@ -60,59 +59,34 @@ To establish clear domain boundaries while preserving 100% stability and zero ba
 
 ## 3. Detailed Component & File Breakdown
 
-### A. Frontend Routes & UI
+### A. Frontend Components & Navigation
 
-1. **`frontend/src/app/pm/page.js`** *(NEW)*:
-   * Main entry point for the PM Agent.
-   * Renders `AuthGuard`, navigation header, PM Agent branding (`account_tree` icon), and embeds `ProjectsTab`.
+1. **`frontend/src/app/components/Sidebar.js`**:
+   * Added `{ label: 'PM Agent', href: '/pm', icon: 'account_tree' }` to the main navigation menu alongside `HR Agent`.
 
-2. **`frontend/src/app/pm/ProjectsTab.js`** *(NEW)*:
-   * Core operational dashboard for the PM Agent.
+2. **`frontend/src/app/pm/page.js`**:
+   * Top-level PM Agent dashboard page rendering header branding (`account_tree` icon) and embedding `ProjectsTab`.
+
+3. **`frontend/src/app/pm/ProjectsTab.js`**:
+   * Purely focused on Project operations.
    * **Projects View**: Displays project cards with status badges (*Ahead*, *On Track*, *At Risk*, *Behind Schedule*), progress bars, and deadline timers.
-   * **Project Detail View**: Renders team member rosters, status update logs, manual update submission, and member assignment.
-   * **Team Directory View**: Manages company employees, department assignments, and attendance link generation.
+   * **Project Detail View**: Renders assigned team member rosters, status update logs, manual update submission, and assigning existing employees to projects.
    * **Pacing Trigger**: Contains the **"Check Pacing & Notify"** action button.
 
-3. **`frontend/src/app/hr/page.js`** *(MODIFIED)*:
-   * Updated header subtitle to *"Recruitment & Talent Management Platform"*.
-   * Removed `TeamProjectsTab` and the `Projects & Team` navigation tab.
+4. **`frontend/src/app/hr/EmployeesTab.js`**:
+   * Dedicated HR component for managing company personnel:
+     * Add single employee manually.
+     * Bulk import employees via CSV/XLSX spreadsheet.
+     * Delete employees.
+     * Generate & copy unique employee attendance link.
+     * View assigned projects per employee.
 
-4. **`frontend/src/app/page.js`** *(MODIFIED)*:
-   * Added the **PM Agent** quick action card to the main Tenant Control Panel dashboard linking directly to `/pm`.
-
----
-
-### B. Shared Backend Infrastructure (Intact & Unchanged)
-
-To ensure zero risk of breaking existing production behavior:
-
-1. **`backend/src/routes/hr_team.js`**:
-   * Continues serving endpoints for project and employee management:
-     * `GET /api/hr/projects` & `POST /api/hr/projects`
-     * `GET /api/hr/projects/:id` & `PATCH /api/hr/projects/:id`
-     * `POST /api/hr/projects/:id/members`
-     * `POST /api/hr/projects/:id/updates`
-     * `POST /api/hr/projects/check-pacing`
-
-2. **`backend/src/routes/internal.js`**:
-   * Continues serving internal microservice endpoints (`X-Internal-Token` protected) used by the Python polling service:
-     * `GET /internal/hr/active-projects/:tenantId`
-     * `POST /internal/hr/project-update-from-email`
-     * `GET /internal/hr/projects-behind-schedule/:tenantId`
-     * `POST /internal/hr/projects/:id/reminder-sent`
-
-3. **`agent/hr_polling.py`**:
-   * Continues operating as the background worker service:
-     * Checks Gmail every 60 seconds for status emails.
-     * Uses LLM to extract completion percentages, notes, and blockers.
-     * Evaluates project pacing every 3 minutes.
-     * Dispatches reminder emails to project leads if a project is $>15\%$ behind schedule, enforcing a 24-hour rate limit via `last_reminder_sent_at`.
+5. **`frontend/src/app/hr/page.js`**:
+   * Contains tabs: **Manual Screening**, **Email Application Intake**, **Future Prospects**, **Team Directory** (`EmployeesTab`), and **Attendance**.
 
 ---
 
 ## 4. Operation & Maintenance Guidelines
 
-### For Developers:
-* **Adding PM Features**: Extend `frontend/src/app/pm/ProjectsTab.js` or create subcomponents inside `frontend/src/app/pm/components/`.
-* **API Calls**: Continue using `fetchProjects()`, `createProject()`, `submitProjectUpdate()`, etc. in `frontend/src/lib/api.js`.
-* **Authentication & RBAC**: The `/pm` route is guarded by `AuthGuard` and leverages tenant-level multi-tenancy (RLS) automatically through standard session authorization headers.
+* **HR Duties**: All employee management (adding personnel, uploading rosters, deleting employees, attendance tokens) is done under HR Agent $\rightarrow$ **Team Directory** (`/hr`).
+* **PM Duties**: Project delivery management (creating projects, tracking velocity pacing, logging status updates, assigning members to projects) is done under PM Agent $\rightarrow$ **Projects** (`/pm`).
