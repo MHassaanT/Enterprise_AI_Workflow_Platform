@@ -218,6 +218,23 @@ router.post('/audit', async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// ── POST /internal/db/query ──
+// Called by Python agent service to execute database queries with tenant isolation
+router.post('/db/query', async (req, res) => {
+  const { sql, params, tenantId } = req.body;
+  if (!sql) {
+    return res.status(400).json({ error: 'SQL query string required.' });
+  }
+
+  try {
+    const result = await query(sql, params || [], tenantId || null);
+    res.json({ rows: result.rows, rowCount: result.rowCount });
+  } catch (error) {
+    console.error('Error executing internal DB query:', error);
+    res.status(500).json({ error: error.message, rows: [], rowCount: 0 });
+  }
+});
+
 // ── POST /internal/credentials ──
 // Called by the Python agent's credentials_manager to fetch encrypted tool credentials
 // without requiring direct Postgres access from the agent service.

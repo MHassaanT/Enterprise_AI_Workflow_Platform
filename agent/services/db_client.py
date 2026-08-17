@@ -88,3 +88,27 @@ async def write_audit_log(tenant_id: str, event_type: str, payload: dict) -> Non
             )
     except Exception as e:
         print(f"[AUDIT LOG] Failed to write audit log: {e}")
+
+
+async def execute_db_query(sql: str, params: list = None, tenant_id: str = None) -> dict:
+    """
+    Executes a SQL query via the internal Node.js backend route /internal/db/query.
+    Returns {"rows": [...], "rowCount": int}
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/db/query",
+                json={
+                    "sql": sql,
+                    "params": params or [],
+                    "tenantId": tenant_id
+                },
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"[DB QUERY ERROR] Failed to execute DB query via backend: {e}")
+        return {"rows": [], "rowCount": 0, "error": str(e)}
+
