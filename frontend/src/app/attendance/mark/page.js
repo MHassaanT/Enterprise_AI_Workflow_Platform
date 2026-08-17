@@ -11,6 +11,8 @@ function AttendanceMarkContent() {
   const [tokenError, setTokenError] = useState(null);
   const [employeeInfo, setEmployeeInfo] = useState(null);
   const [tenantInfo, setTenantInfo] = useState(null);
+  const [alreadyMarkedToday, setAlreadyMarkedToday] = useState(false);
+  const [markedTodayAt, setMarkedTodayAt] = useState(null);
 
   // Geolocation & Submission states
   const [coords, setCoords] = useState(null);
@@ -42,9 +44,12 @@ function AttendanceMarkContent() {
         const data = await verifyAttendanceToken(token);
         setEmployeeInfo(data.employee);
         setTenantInfo(data.tenant);
+        setAlreadyMarkedToday(data.already_marked_today || false);
+        setMarkedTodayAt(data.marked_today_at || null);
         setTokenError(null);
-        // Automatically request GPS position once token is verified
-        requestLocation();
+        if (!data.already_marked_today) {
+          requestLocation();
+        }
       } catch (err) {
         setTokenError(err.message || 'Invalid or expired attendance link token.');
       } finally {
@@ -255,8 +260,24 @@ function AttendanceMarkContent() {
             </div>
           </div>
 
+          {/* ALREADY MARKED TODAY CARD */}
+          {alreadyMarkedToday && !result && (
+            <div className="p-6 rounded-2xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-200 text-center animate-fadeIn">
+              <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-3 border border-emerald-500/30">
+                <span className="material-symbols-outlined text-[32px]">check_circle</span>
+              </div>
+              <h3 className="text-xl font-bold text-emerald-100 mb-1">Already Marked Present</h3>
+              <p className="text-xs text-emerald-300/80 mb-4">You have already been marked present for today.</p>
+              {markedTodayAt && (
+                <div className="p-3 bg-emerald-900/30 rounded-xl border border-emerald-800/40 text-center text-xs text-emerald-300 font-mono">
+                  Recorded at: {new Date(markedTodayAt).toLocaleTimeString()} ({new Date(markedTodayAt).toLocaleDateString()})
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action Button */}
-          {!result && (
+          {!result && !alreadyMarkedToday && (
             <button
               onClick={handleMarkAttendance}
               disabled={submitting}

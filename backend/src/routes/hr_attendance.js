@@ -60,8 +60,24 @@ router.get('/attendance/verify-token', async (req, res) => {
     const tenant = tenantRes.rows[0] || {};
     const allowedIps = tenant.office_allowed_ips || [];
 
+    // Check if employee has ALREADY been marked present TODAY
+    const todayCheckRes = await query(
+      `SELECT marked_at 
+       FROM hr_attendance_records 
+       WHERE tenant_id = $1 AND employee_id = $2 AND status = 'present'
+         AND marked_at::date = CURRENT_DATE
+       ORDER BY marked_at DESC LIMIT 1`,
+      [tenantId, employeeId],
+      tenantId
+    );
+
+    const alreadyMarkedToday = todayCheckRes.rows.length > 0;
+    const markedTodayAt = alreadyMarkedToday ? todayCheckRes.rows[0].marked_at : null;
+
     res.json({
       valid: true,
+      already_marked_today: alreadyMarkedToday,
+      marked_today_at: markedTodayAt,
       employee: {
         id: employee.id,
         name: employee.name,
@@ -119,6 +135,26 @@ router.post('/attendance/mark', async (req, res) => {
   const employee = empRes.rows[0];
   if (employee.status !== 'active') {
     return res.status(403).json({ error: 'Employee account is not active.' });
+  }
+
+  // Check if employee has ALREADY been marked present TODAY
+  const todayCheckRes = await query(
+    `SELECT marked_at 
+     FROM hr_attendance_records 
+     WHERE tenant_id = $1 AND employee_id = $2 AND status = 'present'
+       AND marked_at::date = CURRENT_DATE
+     ORDER BY marked_at DESC LIMIT 1`,
+    [tenantId, employeeId],
+    tenantId
+  );
+
+  if (todayCheckRes.rows.length > 0) {
+    return res.status(400).json({
+      error: 'Already Marked Present Today',
+      message: 'You have already been marked present for today.',
+      already_marked: true,
+      marked_at: todayCheckRes.rows[0].marked_at,
+    });
   }
 
   // Fetch tenant office config
