@@ -19,6 +19,7 @@ const approvalRoutes = require('./routes/approvals');
 const workflowRoutes = require('./routes/workflows');
 const hrRoutes = require('./routes/hr');
 const hrTeamRoutes = require('./routes/hr_team');
+const hrAttendanceRoutes = require('./routes/hr_attendance');
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/hr', hrTeamRoutes);
+app.use('/api/hr', hrAttendanceRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded
 
 

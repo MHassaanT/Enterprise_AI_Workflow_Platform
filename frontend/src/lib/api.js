@@ -919,3 +919,76 @@ export async function checkProjectPacing() {
   return res.json();
 }
 
+// ── ATTENDANCE RECORD KEEPING ──
+export async function verifyAttendanceToken(token) {
+  const res = await fetch(`/api/hr/attendance/verify-token?token=${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Invalid attendance link or token expired.');
+  }
+  return res.json();
+}
+
+export async function markAttendance(token, latitude, longitude) {
+  const res = await fetch('/api/hr/attendance/mark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, latitude, longitude }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.message || data.error || 'Attendance check-in failed.');
+    err.details = data;
+    throw err;
+  }
+  return data;
+}
+
+export async function fetchAttendanceRecords(params = {}) {
+  const queryStr = new URLSearchParams(params).toString();
+  const res = await fetch(`/api/hr/attendance?${queryStr}`, {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch attendance records.');
+  const data = await res.json();
+  return data.attendance || [];
+}
+
+export async function fetchOfficeConfig() {
+  const res = await fetch('/api/hr/office-config', {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch office location configuration.');
+  return res.json();
+}
+
+export async function updateOfficeConfig(config) {
+  const res = await fetch('/api/hr/office-config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(config),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update office configuration.');
+  }
+  return res.json();
+}
+
+export async function generateEmployeeAttendanceLink(employeeId) {
+  const res = await fetch(`/api/hr/employees/${employeeId}/attendance-link`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to generate attendance link.');
+  }
+  return res.json();
+}
+
+

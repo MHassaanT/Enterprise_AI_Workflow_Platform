@@ -11,8 +11,15 @@ pool.connect((err, client, release) => {
     console.error('❌ Database connection failed:', err.message);
   } else {
     console.log('✅ PostgreSQL connected');
-    client.query('ALTER TABLE hr_projects ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;')
-      .then(() => console.log('✅ hr_projects last_reminder_sent_at column verified'))
+    Promise.all([
+      client.query('ALTER TABLE hr_projects ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE hr_employees ADD COLUMN IF NOT EXISTS attendance_token TEXT;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_latitude DOUBLE PRECISION;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_longitude DOUBLE PRECISION;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 200;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_allowed_ips JSONB DEFAULT \'[]\'::jsonb;'),
+    ])
+      .then(() => console.log('✅ HR & Attendance columns verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }

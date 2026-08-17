@@ -4,6 +4,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
+const { generateAttendanceToken } = require('../services/attendance');
 
 // ── MULTER CONFIG for CSV/XLSX Import ──
 const importUpload = multer({
@@ -43,7 +44,22 @@ router.post('/employees', authenticate, authorize('admin', 'employee'), async (r
       [tenantId, name, email, position, department || null, hire_date || null],
       tenantId
     );
-    res.status(201).json({ employee: result.rows[0] });
+
+    const emp = result.rows[0];
+    // Generate stateless unique attendance JWT token
+    const token = generateAttendanceToken(emp.id, tenantId);
+    await query(
+      `UPDATE hr_employees SET attendance_token = $1 WHERE id = $2 AND tenant_id = $3`,
+      [token, emp.id, tenantId],
+      tenantId
+    );
+
+    res.status(201).json({ 
+      employee: {
+        ...emp,
+        attendance_token: token
+      }
+    });
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An employee with this email already exists.' });
@@ -224,7 +240,14 @@ router.post('/employees/import', authenticate, authorize('admin'), importUpload.
           [tenantId, name, email, position, r.department || null, r.hire_date || r.start_date || null],
           tenantId
         );
-        imported.push({ id: result.rows[0].id, name, email });
+        const empId = result.rows[0].id;
+        const token = generateAttendanceToken(empId, tenantId);
+        await query(
+          `UPDATE hr_employees SET attendance_token = $1 WHERE id = $2 AND tenant_id = $3`,
+          [token, empId, tenantId],
+          tenantId
+        );
+        imported.push({ id: empId, name, email, attendance_token: token });
       } catch (err) {
         errors.push({ row: i + 2, error: err.message });
       }

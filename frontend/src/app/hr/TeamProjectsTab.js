@@ -3,11 +3,13 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   fetchEmployees, createEmployee, deleteEmployee, importEmployees,
   fetchProjects, createProject, fetchProject, updateProject, deleteProject,
-  addProjectMember, removeProjectMember, submitProjectUpdate, checkProjectPacing
+  addProjectMember, removeProjectMember, submitProjectUpdate, checkProjectPacing,
+  generateEmployeeAttendanceLink
 } from '@/lib/api';
 
 export default function TeamProjectsTab() {
   const [subTab, setSubTab] = useState('projects'); // 'projects' | 'employees'
+  const [copiedEmpId, setCopiedEmpId] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +78,28 @@ export default function TeamProjectsTab() {
       await deleteEmployee(id);
       loadData();
     } catch (e) { alert(e.message); }
+  };
+
+  const handleCopyAttendanceLink = async (emp) => {
+    let token = emp.attendance_token;
+    if (!token) {
+      try {
+        const res = await generateEmployeeAttendanceLink(emp.id);
+        token = res.attendance_token;
+      } catch (err) {
+        alert('Failed to generate attendance link: ' + err.message);
+        return;
+      }
+    }
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const fullUrl = `${baseUrl}/attendance/mark?token=${token}`;
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopiedEmpId(emp.id);
+      setTimeout(() => setCopiedEmpId(null), 3000);
+    } catch (err) {
+      prompt('Employee Attendance Link:', fullUrl);
+    }
   };
 
   const handleImportEmployees = async (e) => {
@@ -300,9 +324,21 @@ export default function TeamProjectsTab() {
                             </span>
                           </td>
                           <td className="p-4">
-                            <button onClick={() => handleDeleteEmployee(emp.id)} className="text-on-surface-variant hover:text-error transition-colors">
-                              <span className="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleCopyAttendanceLink(emp)}
+                                title="Copy Unique Attendance Link"
+                                className="px-2 py-1 bg-primary-container text-primary rounded text-xs font-semibold hover:bg-primary/20 flex items-center gap-1 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">
+                                  {copiedEmpId === emp.id ? 'check' : 'link'}
+                                </span>
+                                {copiedEmpId === emp.id ? 'Copied' : 'Link'}
+                              </button>
+                              <button onClick={() => handleDeleteEmployee(emp.id)} className="text-on-surface-variant hover:text-error transition-colors">
+                                <span className="material-symbols-outlined text-[18px]">delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
