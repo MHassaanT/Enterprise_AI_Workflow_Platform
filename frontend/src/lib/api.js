@@ -32,7 +32,7 @@ function handleUnauthorized(res) {
   if (res.status === 401 && typeof window !== 'undefined') {
     localStorage.removeItem('ai_platform_token');
     localStorage.removeItem('ai_platform_user');
-    if (!window.location.pathname.startsWith('/login')) {
+    if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/attendance')) {
       window.location.href = '/login';
     }
   }

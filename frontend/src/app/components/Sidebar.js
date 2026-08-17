@@ -16,7 +16,7 @@ export default function Sidebar() {
     setUser(getUser());
   }, []);
 
-  if (pathname === '/login') {
+  if (pathname === '/login' || pathname.startsWith('/attendance')) {
     return null;
   }
 

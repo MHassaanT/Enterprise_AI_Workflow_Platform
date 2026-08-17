@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { verifyAttendanceToken, markAttendance } from '../../../lib/api';
 
-export default function MarkAttendancePage() {
+function AttendanceMarkContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
@@ -336,5 +336,20 @@ export default function MarkAttendancePage() {
         </p>
       </main>
     </div>
+  );
+}
+
+export default function MarkAttendancePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 bg-slate-900/80 backdrop-blur-md p-8 rounded-2xl border border-slate-800 shadow-2xl">
+          <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+          <p className="text-slate-400 font-medium animate-pulse">Loading Attendance Portal...</p>
+        </div>
+      </div>
+    }>
+      <AttendanceMarkContent />
+    </Suspense>
   );
 }
