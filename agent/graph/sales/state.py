@@ -17,20 +17,25 @@ class SalesAgentState(TypedDict):
     raw_accounts: List[Dict[str, Any]]
     
     # Stage 2: Account Fit Check (Crawl4AI)
+    scraped_accounts: List[Dict[str, Any]]
     scraped_context: Dict[str, Any]
     account_fit_passed: bool
     
     # Stage 3: Contact Discovery (Apollo API)
+    discovered_contacts: List[Dict[str, Any]]
     discovered_contact: Optional[Dict[str, Any]]
     
     # Stage 4: Deliverability Guard (Email Verifier)
+    verified_contacts: List[Dict[str, Any]]
     deliverability_result: Optional[Dict[str, Any]]
     
     # Stage 5: Scoring & Copy Generation (OpenRouter LLM)
+    outreach_batch: List[Dict[str, Any]]
     icp_score: float
     generated_outreach: Optional[Dict[str, Any]]
     
     # Stage 6: Dispatch & CRM Deal Logging (Gmail API)
+    processed_count: int
     outreach_sent: bool
     gmail_message_id: Optional[str]
     deal_stage: str
