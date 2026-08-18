@@ -5,6 +5,7 @@ Exposes endpoints for running the autonomous 6-stage AI SDR pipeline,
 building ICPs from the Knowledge Base, and setting Apollo API Keys.
 """
 import json
+import uuid
 import logging
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Header
@@ -15,6 +16,15 @@ from services.db_client import execute_db_query
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _normalize_uuid(val: Optional[str]) -> str:
+    if not val:
+        return "00000000-0000-0000-0000-000000000000"
+    try:
+        return str(uuid.UUID(str(val)))
+    except (ValueError, TypeError, AttributeError):
+        return "00000000-0000-0000-0000-000000000000"
 
 
 class SalesPipelineRunRequest(BaseModel):
