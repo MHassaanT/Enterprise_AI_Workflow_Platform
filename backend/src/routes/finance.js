@@ -3,7 +3,7 @@ const router = express.Router();
 const { query } = require('../db');
 const axios = require('axios');
 
-const AGENT_URL = process.env.AGENT_URL || 'http://localhost:8000';
+const AGENT_URL = process.env.AGENT_SERVICE_URL || process.env.AGENT_URL || 'http://localhost:8000';
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production';
 
 // GET /api/v1/finance/invoices — Fetch all invoices
