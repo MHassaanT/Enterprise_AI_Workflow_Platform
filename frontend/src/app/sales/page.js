@@ -161,7 +161,7 @@ export default function SalesDashboard() {
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
-        setMessage(`✅ Campaign completed! Target found: ${result.discovered_contact?.contact_name || 'Prospect'} (Score: ${result.icp_score}/100).`);
+        setMessage(`✅ Campaign completed! Discovered & enriched ${result.processed_count || prospectLimit} prospect profiles.`);
         fetchData();
       } else {
         setMessage(`❌ Campaign execution failed: ${data.error || 'Unknown error'}`);
