@@ -2,8 +2,10 @@
 Sales Agent Router — FastAPI.
 
 Exposes endpoints for running the autonomous 6-stage AI SDR pipeline,
-managing ICP configurations, and setting Apollo API Keys.
+building ICPs from the Knowledge Base, and setting Apollo API Keys.
 """
+import json
+import logging
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
@@ -11,12 +13,14 @@ from config import settings
 from graph.sales.graph import sales_head_graph
 from services.db_client import execute_db_query
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 class SalesPipelineRunRequest(BaseModel):
     tenant_id: str
     target_domain: Optional[str] = None
+    prospect_limit: Optional[int] = 10
     icp_config: Optional[Dict[str, Any]] = None
     user_id: str = "sales_sdr"
 
@@ -50,6 +54,7 @@ async def run_sales_agent(
         "tenant_id": request.tenant_id,
         "run_id": run_id,
         "user_id": request.user_id,
+        "prospect_limit": request.prospect_limit or 10,
         "target_domain": request.target_domain,
         "icp_config": request.icp_config or {},
         "raw_accounts": [],
@@ -87,6 +92,103 @@ async def run_sales_agent(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Sales agent execution failed: {str(e)}")
+
+
+@router.post("/icp/build")
+async def build_icp_from_knowledge_base(
+    payload: Dict[str, Any],
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    tenant_id = payload.get("tenant_id", "default_tenant")
+    
+    # 1. Query Knowledge Base via RAG Client
+    kb_context = ""
+    try:
+        from services.rag_client import query_rag
+        rag_res = await query_rag(
+            "What products/services do we sell? What is our value proposition, target customer roles, pricing, and ideal customer profile?",
+            tenant_id
+        )
+        chunks = rag_res.get("chunks", [])
+        if chunks:
+            kb_context = "\n".join([c.get("text", "") for c in chunks[:5]])
+    except Exception as e:
+        logger.warning(f"RAG query for ICP build failed/skipped: {e}")
+
+    # 2. Synthesize ICP with OpenRouter LLM
+    from services.llm_gateway import get_llm
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    prompt = f"""You are an expert B2B Sales Strategy Director. Analyze the following Knowledge Base context about our enterprise product offerings and synthesize a highly accurate Ideal Customer Profile (ICP).
+
+KNOWLEDGE BASE CONTEXT:
+{kb_context if kb_context else "Enterprise AI Workflow Platform with multi-agent orchestration for Finance, Procurement, HR, and Sales automation."}
+
+INSTRUCTIONS:
+Return ONLY a valid JSON object with these exact keys:
+- "target_industries": list of 3 to 5 target industries (e.g. ["Software & SaaS", "Fintech", "HealthTech", "E-Commerce"])
+- "target_titles": list of 3 to 5 key decision-maker titles (e.g. ["VP of Sales", "CTO", "Head of Growth", "Director of Operations"])
+- "company_size_min": integer minimum headcount (e.g. 10)
+- "company_size_max": integer maximum headcount (e.g. 1000)
+- "battlecard_notes": summary string of key differentiators, competitive advantage, and ROI hook
+- "playbook_strategy": strategy string for outreach angle
+
+Respond ONLY with valid JSON.
+"""
+
+    llm = get_llm()
+    try:
+        res = await llm.ainvoke([
+            SystemMessage(content="You generate structured B2B ICP JSON configurations."),
+            HumanMessage(content=prompt)
+        ])
+        content = res.content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        parsed_icp = json.loads(content.strip())
+    except Exception as e:
+        logger.warning(f"Fallback to default ICP due to: {e}")
+        parsed_icp = {
+            "target_industries": ["Software", "SaaS", "Fintech"],
+            "target_titles": ["VP of Sales", "CTO", "Head of Growth"],
+            "company_size_min": 10,
+            "company_size_max": 1000,
+            "battlecard_notes": "Key Differentiator: Autonomous multi-agent workflow engine with zero vendor lock-in.",
+            "playbook_strategy": "Focus on operational cost savings and 10x workflow speedup.",
+        }
+
+    # Save to Database
+    query = """
+    INSERT INTO sales_icp_configs (
+      tenant_id, target_industries, target_titles, company_size_min, company_size_max,
+      battlecard_notes, playbook_strategy, updated_at
+    ) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, NOW())
+    ON CONFLICT (tenant_id)
+    DO UPDATE SET
+      target_industries = EXCLUDED.target_industries,
+      target_titles = EXCLUDED.target_titles,
+      company_size_min = EXCLUDED.company_size_min,
+      company_size_max = EXCLUDED.company_size_max,
+      battlecard_notes = EXCLUDED.battlecard_notes,
+      playbook_strategy = EXCLUDED.playbook_strategy,
+      updated_at = NOW();
+    """
+    await execute_db_query(query, [
+        tenant_id,
+        json.dumps(parsed_icp.get("target_industries", [])),
+        json.dumps(parsed_icp.get("target_titles", [])),
+        parsed_icp.get("company_size_min", 10),
+        parsed_icp.get("company_size_max", 1000),
+        parsed_icp.get("battlecard_notes", ""),
+        parsed_icp.get("playbook_strategy", ""),
+    ])
+
+    return {"success": True, "icp": parsed_icp}
 
 
 @router.post("/apollo-key")
@@ -130,7 +232,6 @@ async def save_icp_config(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    import json
     query = """
     INSERT INTO sales_icp_configs (
       tenant_id, target_industries, target_titles, company_size_min, company_size_max,

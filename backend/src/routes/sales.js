@@ -19,7 +19,6 @@ router.get('/prospects', async (req, res) => {
       );
       prospects = result.rows;
     } catch (e) {
-      // Fallback query to crm_leads if migration 023 has not been run yet
       const fallbackResult = await query(
         'SELECT * FROM crm_leads WHERE tenant_id = $1 ORDER BY created_at DESC;',
         [tenantId],
@@ -51,13 +50,14 @@ router.get('/prospects', async (req, res) => {
 router.post('/pipeline/run', async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
-    const { target_domain, icp_config } = req.body;
+    const { target_domain, prospect_limit, icp_config } = req.body;
 
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/run`,
       {
         tenant_id: tenantId,
         target_domain: target_domain || null,
+        prospect_limit: parseInt(prospect_limit) || 10,
         icp_config: icp_config || null,
         user_id: req.user?.id || 'sales_user'
       },
@@ -70,6 +70,22 @@ router.post('/pipeline/run', async (req, res) => {
   } catch (err) {
     console.error('Error executing Sales SDR agent:', err.message);
     return res.status(500).json({ error: 'Sales SDR Agent execution failed.' });
+  }
+});
+
+// POST /api/v1/sales/icp/build — Auto-build ICP from Knowledge Base scanning
+router.post('/icp/build', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/icp/build`,
+      { tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error building ICP from Knowledge Base:', err.message);
+    return res.status(500).json({ error: 'Failed to build ICP from Knowledge Base.' });
   }
 });
 

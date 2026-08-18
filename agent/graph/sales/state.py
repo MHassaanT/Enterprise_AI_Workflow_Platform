@@ -8,9 +8,12 @@ class SalesAgentState(TypedDict):
     run_id: str
     user_id: str
     
+    # Execution parameters
+    prospect_limit: Optional[int]
+    target_domain: Optional[str]
+    
     # Stage 1: Sourcing & Business Understanding
     icp_config: Dict[str, Any]
-    target_domain: Optional[str]
     raw_accounts: List[Dict[str, Any]]
     
     # Stage 2: Account Fit Check (Crawl4AI)

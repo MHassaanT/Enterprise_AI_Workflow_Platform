@@ -7,6 +7,7 @@ import AuthGuard from '../components/AuthGuard';
 export default function SalesDashboard() {
   const [prospects, setProspects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [buildingIcp, setBuildingIcp] = useState(false);
   const [runningPipeline, setRunningPipeline] = useState(false);
   const [logs, setLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('prospects'); // 'prospects' | 'icp' | 'logs'
@@ -17,8 +18,9 @@ export default function SalesDashboard() {
   const [apolloKeyInput, setApolloKeyInput] = useState('');
   const [apolloStatus, setApolloStatus] = useState({ configured: false, is_valid: false });
 
-  // SDR Form State
-  const [targetDomainInput, setTargetDomainInput] = useState('');
+  // SDR Execution Settings
+  const [prospectLimit, setProspectLimit] = useState(10);
+  const [icpBuilt, setIcpBuilt] = useState(false);
 
   // ICP Configuration State
   const [icpConfig, setIcpConfig] = useState({
@@ -58,6 +60,9 @@ export default function SalesDashboard() {
       const data = await res.json();
       if (data.success && data.icp) {
         setIcpConfig(data.icp);
+        if (data.icp.target_industries && data.icp.target_industries.length > 0) {
+          setIcpBuilt(true);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch ICP config:', err);
@@ -71,6 +76,29 @@ export default function SalesDashboard() {
       setApolloStatus(data);
     } catch (err) {
       console.error('Failed to check Apollo key:', err);
+    }
+  };
+
+  const handleBuildIcp = async () => {
+    setBuildingIcp(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/v1/sales/icp/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.success && data.icp) {
+        setIcpConfig(data.icp);
+        setIcpBuilt(true);
+        setMessage('✅ Scanned Knowledge Base & built Ideal Customer Profile (ICP).');
+      } else {
+        setMessage(`❌ Failed to build ICP: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setMessage(`❌ Network error building ICP: ${err.message}`);
+    } finally {
+      setBuildingIcp(false);
     }
   };
 
@@ -107,7 +135,7 @@ export default function SalesDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage('✅ ICP strategy saved.');
+        setMessage('✅ ICP strategy updated.');
       } else {
         setMessage(`❌ Failed to update ICP: ${data.error}`);
       }
@@ -125,7 +153,7 @@ export default function SalesDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          target_domain: targetDomainInput.trim() || null,
+          prospect_limit: prospectLimit,
           icp_config: icpConfig,
         }),
       });
@@ -133,11 +161,10 @@ export default function SalesDashboard() {
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
-        setMessage(`✅ Campaign finished. Discovered ${result.discovered_contact?.contact_name || 'Prospect'} (Score: ${result.icp_score}/100).`);
+        setMessage(`✅ Campaign completed! Target found: ${result.discovered_contact?.contact_name || 'Prospect'} (Score: ${result.icp_score}/100).`);
         fetchData();
-        setTargetDomainInput('');
       } else {
-        setMessage(`❌ Execution failed: ${data.error || 'Unknown error'}`);
+        setMessage(`❌ Campaign execution failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
       setMessage(`❌ Network error: ${err.message}`);
@@ -190,10 +217,10 @@ export default function SalesDashboard() {
 
         {/* Main Content Body */}
         <main className="flex-1 flex overflow-hidden p-lg gap-lg">
-          {/* Left Form / Controls Panel */}
+          {/* Left Form / Workflow Controls Panel */}
           <div className="w-1/3 bg-surface border border-outline-variant rounded-lg p-md flex flex-col gap-md overflow-y-auto">
-            <h2 className="font-title-md text-title-md text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">rocket_launch</span> Run SDR Campaign
+            <h2 className="font-title-md text-title-md text-on-surface flex items-center gap-2 m-0">
+              <span className="material-symbols-outlined text-primary">psychology</span> Step 1: Knowledge Base ICP
             </h2>
 
             {message && (
@@ -202,27 +229,62 @@ export default function SalesDashboard() {
               </div>
             )}
 
+            {/* Step 1: Build ICP Button */}
+            <button
+              type="button"
+              onClick={handleBuildIcp}
+              disabled={buildingIcp}
+              className="w-full py-md bg-secondary hover:bg-secondary/90 text-on-secondary font-label-md rounded-md transition-colors flex items-center justify-center gap-2"
+            >
+              {buildingIcp ? (
+                <>
+                  <span className="material-symbols-outlined animate-spin text-[18px]">sync</span> Scanning Knowledge Base...
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-[18px]">auto_fix_high</span> Build ICP from Knowledge Base
+                </>
+              )}
+            </button>
+
+            {/* Display Active ICP Summary */}
+            <div className="p-sm bg-background border border-outline-variant rounded-md flex flex-col gap-xs text-body-sm">
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-bold text-on-surface">Target ICP:</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-bold ${icpBuilt ? 'bg-green-900/40 text-green-300' : 'bg-surface-variant text-on-surface-variant'}`}>
+                  {icpBuilt ? 'ICP Ready' : 'Pending Build'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Industries:</span>
+                <span className="font-bold text-right">{icpConfig.target_industries?.slice(0, 2).join(', ')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-on-surface-variant">Roles:</span>
+                <span className="font-bold text-right">{icpConfig.target_titles?.slice(0, 2).join(', ')}</span>
+              </div>
+            </div>
+
+            <hr className="border-outline-variant my-xs" />
+
+            <h2 className="font-title-md text-title-md text-on-surface flex items-center gap-2 m-0">
+              <span className="material-symbols-outlined text-primary">tune</span> Step 2: Campaign Settings
+            </h2>
+
             <form onSubmit={handleRunPipeline} className="flex flex-col gap-md">
               <div>
-                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Company Domain</label>
-                <input
-                  type="text"
-                  placeholder="e.g. acmecloud.com"
-                  value={targetDomainInput}
-                  onChange={(e) => setTargetDomainInput(e.target.value)}
+                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Profiles Stop Limit</label>
+                <select
+                  value={prospectLimit}
+                  onChange={(e) => setProspectLimit(parseInt(e.target.value))}
                   className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
-                />
-              </div>
-
-              <div className="p-sm bg-background border border-outline-variant rounded-md flex flex-col gap-xs text-body-sm">
-                <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Industries:</span>
-                  <span className="font-bold">{icpConfig.target_industries?.slice(0, 2).join(', ')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Target Roles:</span>
-                  <span className="font-bold">{icpConfig.target_titles?.slice(0, 2).join(', ')}</span>
-                </div>
+                >
+                  <option value={5}>Stop at 5 Prospect Profiles</option>
+                  <option value={10}>Stop at 10 Prospect Profiles</option>
+                  <option value={25}>Stop at 25 Prospect Profiles</option>
+                  <option value={50}>Stop at 50 Prospect Profiles</option>
+                  <option value={100}>Continuous / Keep Going (100 Max)</option>
+                </select>
               </div>
 
               <button
@@ -232,11 +294,11 @@ export default function SalesDashboard() {
               >
                 {runningPipeline ? (
                   <>
-                    <span className="material-symbols-outlined animate-spin text-[18px]">sync</span> Executing Pipeline...
+                    <span className="material-symbols-outlined animate-spin text-[18px]">sync</span> Running SDR Campaign...
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> Trigger Campaign
+                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> Start SDR Campaign
                   </>
                 )}
               </button>
@@ -261,7 +323,7 @@ export default function SalesDashboard() {
                   activeTab === 'icp' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                ICP Strategy
+                Generated ICP Details
               </button>
               <button
                 onClick={() => setActiveTab('logs')}
@@ -269,19 +331,19 @@ export default function SalesDashboard() {
                   activeTab === 'logs' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                Execution Logs ({logs.length})
+                Execution Audit Log ({logs.length})
               </button>
             </div>
 
             {/* Tab Contents */}
             <div className="flex-1 overflow-y-auto">
-              {/* TAB 1: Prospects Matrix */}
+              {/* TAB 1: Discovered Prospects Matrix */}
               {activeTab === 'prospects' && (
                 <div className="flex flex-col gap-sm">
                   {loading ? (
                     <p className="text-on-surface-variant font-body-sm italic p-md text-center">Loading prospects...</p>
                   ) : prospects.length === 0 ? (
-                    <p className="text-on-surface-variant font-body-sm italic p-md text-center">No prospect records found. Run a campaign to discover leads.</p>
+                    <p className="text-on-surface-variant font-body-sm italic p-md text-center">No prospect records found. Click "Build ICP" and then "Start SDR Campaign".</p>
                   ) : (
                     <table className="w-full text-left border-collapse text-body-sm">
                       <thead>
@@ -332,7 +394,7 @@ export default function SalesDashboard() {
                 </div>
               )}
 
-              {/* TAB 2: ICP Strategy */}
+              {/* TAB 2: Generated ICP Details */}
               {activeTab === 'icp' && (
                 <form onSubmit={handleSaveIcpConfig} className="flex flex-col gap-md max-w-xl">
                   <div>
@@ -347,7 +409,7 @@ export default function SalesDashboard() {
                   </div>
 
                   <div>
-                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Roles (Comma-separated)</label>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Role Titles (Comma-separated)</label>
                     <input
                       type="text"
                       value={Array.isArray(icpConfig.target_titles) ? icpConfig.target_titles.join(', ') : icpConfig.target_titles}
@@ -358,7 +420,7 @@ export default function SalesDashboard() {
                   </div>
 
                   <div>
-                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Battlecard Differentiators</label>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Battlecard & Value Prop Differentiators</label>
                     <textarea
                       rows={3}
                       value={icpConfig.battlecard_notes || ''}
@@ -367,16 +429,26 @@ export default function SalesDashboard() {
                     />
                   </div>
 
+                  <div>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Outreach Playbook Strategy</label>
+                    <textarea
+                      rows={3}
+                      value={icpConfig.playbook_strategy || ''}
+                      onChange={(e) => setIcpConfig({ ...icpConfig, playbook_strategy: e.target.value })}
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
+                    />
+                  </div>
+
                   <button
                     type="submit"
                     className="py-sm px-md bg-primary text-on-primary font-label-md rounded-md w-fit"
                   >
-                    Save ICP Setup
+                    Save ICP Adjustments
                   </button>
                 </form>
               )}
 
-              {/* TAB 3: Execution Logs */}
+              {/* TAB 3: Execution Audit Logs */}
               {activeTab === 'logs' && (
                 <div className="flex flex-col gap-sm">
                   {logs.length === 0 ? (

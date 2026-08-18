@@ -10,25 +10,28 @@ from services.db_client import execute_db_query
 
 async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     tenant_id = state.get("tenant_id", "default_tenant")
-    run_id = state.get("run_id", "run_1")
     logs = list(state.get("logs", []))
+    prospect_limit = state.get("prospect_limit") or 10
 
     # 1. Fetch ICP Configuration from Database or State
     icp = state.get("icp_config") or {}
-    if not icp:
+    if not icp or not icp.get("target_industries"):
         try:
             query = "SELECT * FROM sales_icp_configs WHERE tenant_id = $1;"
             res = await execute_db_query(query, [tenant_id])
             if res and res.get("rows"):
                 icp = res["rows"][0]
-        except Exception as e:
-            icp = {
-                "target_industries": ["Software", "SaaS", "Fintech"],
-                "target_titles": ["VP of Sales", "CTO", "Head of Growth"],
-                "company_size_min": 10,
-                "company_size_max": 500,
-                "battlecard_notes": "Key differentiator: Autonomous AI agent workflows with zero vendor lock-in.",
-            }
+        except Exception:
+            pass
+
+    if not icp:
+        icp = {
+            "target_industries": ["Software", "SaaS", "Fintech"],
+            "target_titles": ["VP of Sales", "CTO", "Head of Growth"],
+            "company_size_min": 10,
+            "company_size_max": 500,
+            "battlecard_notes": "Key differentiator: Autonomous AI agent workflows with zero vendor lock-in.",
+        }
 
     target_industries = icp.get("target_industries", ["Software", "SaaS"])
     if isinstance(target_industries, str):
@@ -44,7 +47,7 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
         target_industries=target_industries,
         company_size_min=icp.get("company_size_min", 10),
         company_size_max=icp.get("company_size_max", 500),
-        limit=5
+        limit=prospect_limit
     )
 
     accounts = sourcing_res.get("accounts", [])
@@ -57,7 +60,7 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     logs.append({
         "stage": "Stage 1: Business Understanding & Sourcing",
         "status": "COMPLETED",
-        "details": f"Ingested ICP criteria. Discovered {len(accounts)} candidate accounts via Apollo API."
+        "details": f"Ingested ICP criteria. Discovered {len(accounts)} candidate accounts via Apollo API (Limit set to {prospect_limit})."
     })
 
     return {
