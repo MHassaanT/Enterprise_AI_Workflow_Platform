@@ -194,6 +194,26 @@ Respond ONLY with valid JSON.
     return {"success": True, "icp": parsed_icp}
 
 
+async def _ensure_tenant_exists(tenant_id: str):
+    try:
+        await execute_db_query("""
+        CREATE TABLE IF NOT EXISTS tenants (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL,
+          slug VARCHAR(255) UNIQUE NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """)
+        await execute_db_query("""
+        INSERT INTO tenants (id, name, slug)
+        VALUES ($1, 'Enterprise Tenant', $2)
+        ON CONFLICT (id) DO NOTHING;
+        """, [tenant_id, f"tenant-{tenant_id[:8]}"])
+    except Exception as e:
+        logger.warning(f"Tenant auto-seed notice: {e}")
+
+
 @router.post("/apollo-key")
 async def save_apollo_key(
     request: ApolloKeyRequest,
@@ -203,9 +223,10 @@ async def save_apollo_key(
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
     tenant_id = _normalize_uuid(request.tenant_id)
+    await _ensure_tenant_exists(tenant_id)
     await execute_db_query("""
     CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
-      tenant_id UUID PRIMARY KEY,
+      tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
       apollo_api_key TEXT NOT NULL,
       is_valid BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -232,9 +253,10 @@ async def get_apollo_key_status(
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
     normalized_tenant_id = _normalize_uuid(tenant_id)
+    await _ensure_tenant_exists(normalized_tenant_id)
     await execute_db_query("""
     CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
-      tenant_id UUID PRIMARY KEY,
+      tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
       apollo_api_key TEXT NOT NULL,
       is_valid BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -258,10 +280,11 @@ async def save_icp_config(
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
     tenant_id = _normalize_uuid(request.tenant_id)
+    await _ensure_tenant_exists(tenant_id)
     await execute_db_query("""
     CREATE TABLE IF NOT EXISTS sales_icp_configs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL UNIQUE,
+      tenant_id UUID NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
       target_industries JSONB DEFAULT '["Software", "SaaS"]'::jsonb,
       target_titles JSONB DEFAULT '["VP of Sales", "CTO"]'::jsonb,
       company_size_min INT DEFAULT 10,
@@ -309,6 +332,7 @@ async def get_icp_config(
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
     normalized_tenant_id = _normalize_uuid(tenant_id)
+    await _ensure_tenant_exists(normalized_tenant_id)
     await execute_db_query("""
     CREATE TABLE IF NOT EXISTS sales_icp_configs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

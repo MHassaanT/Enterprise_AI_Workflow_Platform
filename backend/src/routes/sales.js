@@ -13,9 +13,20 @@ router.get('/prospects', async (req, res) => {
     let prospects = [];
     try {
       await query(`
+        CREATE TABLE IF NOT EXISTS tenants (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(255) NOT NULL,
+          slug VARCHAR(255) UNIQUE NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        INSERT INTO tenants (id, name, slug)
+        VALUES ($1, 'Enterprise Tenant', $2)
+        ON CONFLICT (id) DO NOTHING;
+
         CREATE TABLE IF NOT EXISTS sales_prospects (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          tenant_id UUID NOT NULL,
+          tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
           company_name VARCHAR(255) NOT NULL,
           domain VARCHAR(255) NOT NULL,
           contact_name VARCHAR(255),
@@ -33,7 +44,7 @@ router.get('/prospects', async (req, res) => {
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
         );
-      `, [], tenantId);
+      `, [tenantId, `tenant-${tenantId.slice(0, 8)}`], tenantId);
 
       const result = await query(
         "SELECT * FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY created_at DESC;",
