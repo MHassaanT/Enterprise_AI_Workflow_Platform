@@ -88,30 +88,30 @@ async def route_sales_node(state: SupervisorState) -> Dict[str, Any]:
     
     sales_input = {
         "tenant_id": tenant_id,
-        "conversation_id": f"{conv_id}-sales",
+        "run_id": f"{conv_id}-sales",
         "user_id": "supervisor_graph",
-        "subagent_target": payload.get("subagent_target", "lead_pricing"),
-        "customer_email": payload.get("customer_email", "customer@enterprise.com"),
-        "tier_requested": payload.get("tier_requested", "Enterprise"),
-        "requested_discount": payload.get("requested_discount", 10.0),
-        "lead_data": None,
-        "rag_policy_context": [],
-        "citations": [],
+        "target_domain": payload.get("target_domain"),
+        "icp_config": payload.get("icp_config") or {},
+        "raw_accounts": [],
+        "scraped_context": {},
+        "account_fit_passed": True,
+        "discovered_contact": None,
+        "deliverability_result": None,
+        "icp_score": 0.0,
+        "generated_outreach": None,
+        "outreach_sent": False,
+        "gmail_message_id": None,
+        "deal_stage": "DISCOVERED",
         "quote_details": None,
-        "customer_accepted": True,
-        "approval_id": payload.get("approval_id"),
-        "approval_status": payload.get("approval_status"),
-        "deal_stage": None,
-        "financial_sync_result": None,
+        "logs": [],
         "answer": "",
-        "audit_logged": False,
     }
     
     sales_res = await sales_head_graph.ainvoke(sales_input, config={"configurable": {"thread_id": f"{conv_id}-sales"}})
     history = state.get("route_history", []) + ["Supervisor -> SalesHead"]
     return {
         "result": sales_res,
-        "answer": sales_res.get("answer", "Sales operation completed."),
+        "answer": sales_res.get("answer", "Sales SDR operation completed."),
         "route_history": history
     }
 

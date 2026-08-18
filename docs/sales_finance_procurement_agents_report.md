@@ -54,41 +54,44 @@ These three domain agents are managed individually as LangGraph StateGraphs and 
 
 ## 3. Deep-Dive Agent Specifications
 
-### 3.1 Sales Agent
+### 3.1 Sales Agent (AI SDR/BDR)
 
 #### Primary Capabilities & Business Logic
-* **Lead Ingestion & CRM Lookup**: Retrieves existing CRM records or initializes new customer leads.
-* **Policy-Enforced Quote Draft**: Queries Qdrant RAG for pricing policies. Applies a mandatory guardrail: **maximum allowed discount is capped at 15%** regardless of user request.
-* **Deal Negotiation Approval Gate**: If a custom contract or quote is produced, an `approval_requests` record (`action_type: 'finalize_sales_contract'`) is generated for Sales Manager authorization.
-* **CRM Deal Stage Updates**: Upon approval, automatically updates lead deal status to `'Closed Won'`.
-* **Cross-Agent Financial Sync**: Invokes Finance MCP tools (`update_general_ledger_impl`) to write forecasted sales revenue (`ACC-4000`) into the general ledger.
+* **ICP Sourcing & Business Understanding**: Ingests ideal customer profile criteria, competitor battlecards, and queries candidate accounts via Apollo API without burning email credits.
+* **Account Fit Check (Crawl4AI)**: Scrapes target company website content to verify active B2B business model, pricing, and pain points, discarding non-qualifying prospects early.
+* **Contact Discovery & Deliverability Guard**: Discovers decision-maker contact details via Apollo API and verifies email deliverability (`VALID`, `CATCH_ALL`, `DISPOSABLE`) using `email-verifier` (RFC 5322 syntax, MX DNS lookup).
+* **Scoring & Copy Generation**: Synthesizes insights via OpenRouter LLM structured output to calculate a 0–100 ICP fit score and write personalized observations or quote recommendations.
+* **Dispatch & CRM Deal Logging**: Dispatches cold hook sequences or quotes via Gmail API adapter and logs deal stages in PostgreSQL (`crm_leads` and `sales_prospects`).
 
 #### Graph Nodes & Execution Pipeline
-* **`lead_pricing` Node**: Looks up lead in CRM via `fetch_lead_history_impl`, queries policy context from Qdrant RAG, calculates final annual pricing, and enforces the $\le 15\%$ discount cap.
-* **`deal_negotiation` Node**: Checks approval status. If unapproved, creates a pending `approval_requests` entry. Once approved, executes `update_deal_stage_impl` to set stage to `'Closed Won'`.
-* **`sales_financial_sync` Node**: Executes cross-agent ledger update for `REVENUE_FORECAST` and logs transaction details to `audit_logs`.
+* **`business_understanding` Node**: Ingests ICP rules and queries target accounts via Apollo API.
+* **`account_fit_research` Node**: Scrapes website via Crawl4AI to confirm business fit.
+* **`contact_discovery` Node**: Pulls decision-maker contacts via Apollo API.
+* **`deliverability_guard` Node**: Runs RFC 5322, MX DNS, and disposable provider checks.
+* **`scoring_copy_gen` Node**: Uses OpenRouter LLM for 0–100 scoring & copy generation.
+* **`dispatch_closing` Node**: Sends email via Gmail API and logs prospect to CRM.
 
 #### State Schema (`SalesAgentState`)
 ```python
 class SalesAgentState(TypedDict):
     tenant_id: str
-    conversation_id: str
+    run_id: str
     user_id: str
-    subagent_target: str  # 'lead_pricing' | 'deal_negotiation' | 'sales_financial_sync' | 'auto'
-    customer_email: str
-    tier_requested: str
-    requested_discount: Optional[float]
-    lead_data: Optional[Dict[str, Any]]
-    rag_policy_context: Optional[List[Dict[str, Any]]]
-    citations: List[Dict[str, Any]]
+    icp_config: Dict[str, Any]
+    target_domain: Optional[str]
+    raw_accounts: List[Dict[str, Any]]
+    scraped_context: Dict[str, Any]
+    account_fit_passed: bool
+    discovered_contact: Optional[Dict[str, Any]]
+    deliverability_result: Optional[Dict[str, Any]]
+    icp_score: float
+    generated_outreach: Optional[Dict[str, Any]]
+    outreach_sent: bool
+    gmail_message_id: Optional[str]
+    deal_stage: str
     quote_details: Optional[Dict[str, Any]]
-    customer_accepted: bool
-    approval_id: Optional[str]
-    approval_status: Optional[str]  # 'pending' | 'approved' | 'rejected'
-    deal_stage: Optional[str]        # 'Closed Won' | 'CONTRACT_PENDING'
-    financial_sync_result: Optional[Dict[str, Any]]
+    logs: List[Dict[str, Any]]
     answer: str
-    audit_logged: bool
 ```
 
 ---
