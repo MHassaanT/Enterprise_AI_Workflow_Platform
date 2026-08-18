@@ -36,6 +36,19 @@ export default function SalesDashboard() {
   const [selectedProspect, setSelectedProspect] = useState(null);
 
   useEffect(() => {
+    try {
+      const cachedApollo = localStorage.getItem('sales_apollo_status');
+      if (cachedApollo) {
+        setApolloStatus(JSON.parse(cachedApollo));
+      }
+      const cachedIcp = localStorage.getItem('sales_icp_config');
+      if (cachedIcp) {
+        const parsed = JSON.parse(cachedIcp);
+        setIcpConfig(parsed);
+        setIcpBuilt(true);
+      }
+    } catch (e) {}
+
     fetchData();
     fetchIcpConfig();
     checkApolloKeyStatus();
@@ -63,6 +76,7 @@ export default function SalesDashboard() {
         if (data.icp.target_industries && data.icp.target_industries.length > 0) {
           setIcpBuilt(true);
         }
+        try { localStorage.setItem('sales_icp_config', JSON.stringify(data.icp)); } catch (e) {}
       }
     } catch (err) {
       console.error('Failed to fetch ICP config:', err);
@@ -74,6 +88,9 @@ export default function SalesDashboard() {
       const res = await fetch('/api/v1/sales/apollo-key');
       const data = await res.json();
       setApolloStatus(data);
+      if (data.configured) {
+        try { localStorage.setItem('sales_apollo_status', JSON.stringify(data)); } catch (e) {}
+      }
     } catch (err) {
       console.error('Failed to check Apollo key:', err);
     }
@@ -91,6 +108,7 @@ export default function SalesDashboard() {
       if (data.success && data.icp) {
         setIcpConfig(data.icp);
         setIcpBuilt(true);
+        try { localStorage.setItem('sales_icp_config', JSON.stringify(data.icp)); } catch (e) {}
         setMessage('✅ Scanned Knowledge Base & built Ideal Customer Profile (ICP).');
       } else {
         setMessage(`❌ Failed to build ICP: ${data.error || 'Unknown error'}`);
@@ -114,7 +132,9 @@ export default function SalesDashboard() {
       const data = await res.json();
       if (data.success) {
         setMessage('✅ Apollo API Key saved successfully.');
-        setApolloStatus({ configured: true, is_valid: true });
+        const status = { configured: true, is_valid: true };
+        setApolloStatus(status);
+        try { localStorage.setItem('sales_apollo_status', JSON.stringify(status)); } catch (e) {}
         setApolloKeyModalOpen(false);
         setApolloKeyInput('');
       } else {

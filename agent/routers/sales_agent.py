@@ -202,13 +202,24 @@ async def save_apollo_key(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
+    tenant_id = _normalize_uuid(request.tenant_id)
+    await execute_db_query("""
+    CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
+      tenant_id UUID PRIMARY KEY,
+      apollo_api_key TEXT NOT NULL,
+      is_valid BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    """)
+
     query = """
     INSERT INTO tenant_apollo_settings (tenant_id, apollo_api_key, is_valid, updated_at)
     VALUES ($1, $2, TRUE, NOW())
     ON CONFLICT (tenant_id)
     DO UPDATE SET apollo_api_key = EXCLUDED.apollo_api_key, is_valid = TRUE, updated_at = NOW();
     """
-    await execute_db_query(query, [request.tenant_id, request.apollo_api_key])
+    await execute_db_query(query, [tenant_id, request.apollo_api_key])
     return {"success": True, "message": "Apollo Master API Key saved successfully."}
 
 
@@ -220,10 +231,21 @@ async def get_apollo_key_status(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    query = "SELECT is_valid, updated_at FROM tenant_apollo_settings WHERE tenant_id = $1;"
-    res = await execute_db_query(query, [tenant_id])
-    if res and res.get("rows"):
-        return {"configured": True, "is_valid": res["rows"][0]["is_valid"]}
+    normalized_tenant_id = _normalize_uuid(tenant_id)
+    await execute_db_query("""
+    CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
+      tenant_id UUID PRIMARY KEY,
+      apollo_api_key TEXT NOT NULL,
+      is_valid BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    """)
+
+    query = "SELECT is_valid, updated_at FROM tenant_apollo_settings WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
+    res = await execute_db_query(query, [normalized_tenant_id])
+    if res and res.get("rows") and len(res["rows"]) > 0:
+        return {"configured": True, "is_valid": res["rows"][0].get("is_valid", True)}
     return {"configured": False, "is_valid": False}
 
 
@@ -234,6 +256,22 @@ async def save_icp_config(
 ):
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    tenant_id = _normalize_uuid(request.tenant_id)
+    await execute_db_query("""
+    CREATE TABLE IF NOT EXISTS sales_icp_configs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL UNIQUE,
+      target_industries JSONB DEFAULT '["Software", "SaaS"]'::jsonb,
+      target_titles JSONB DEFAULT '["VP of Sales", "CTO"]'::jsonb,
+      company_size_min INT DEFAULT 10,
+      company_size_max INT DEFAULT 1000,
+      battlecard_notes TEXT DEFAULT '',
+      playbook_strategy TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    """)
 
     query = """
     INSERT INTO sales_icp_configs (
@@ -251,7 +289,7 @@ async def save_icp_config(
       updated_at = NOW();
     """
     await execute_db_query(query, [
-        request.tenant_id,
+        tenant_id,
         json.dumps(request.target_industries),
         json.dumps(request.target_titles),
         request.company_size_min,
@@ -270,9 +308,25 @@ async def get_icp_config(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    query = "SELECT * FROM sales_icp_configs WHERE tenant_id = $1;"
-    res = await execute_db_query(query, [tenant_id])
-    if res and res.get("rows"):
+    normalized_tenant_id = _normalize_uuid(tenant_id)
+    await execute_db_query("""
+    CREATE TABLE IF NOT EXISTS sales_icp_configs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL UNIQUE,
+      target_industries JSONB DEFAULT '["Software", "SaaS"]'::jsonb,
+      target_titles JSONB DEFAULT '["VP of Sales", "CTO"]'::jsonb,
+      company_size_min INT DEFAULT 10,
+      company_size_max INT DEFAULT 1000,
+      battlecard_notes TEXT DEFAULT '',
+      playbook_strategy TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    """)
+
+    query = "SELECT * FROM sales_icp_configs WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
+    res = await execute_db_query(query, [normalized_tenant_id])
+    if res and res.get("rows") and len(res["rows"]) > 0:
         return {"success": True, "icp": res["rows"][0]}
     return {
         "success": True,
