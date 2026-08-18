@@ -162,6 +162,11 @@ export default function SalesDashboard() {
         const result = data.result;
         setLogs(result.logs || []);
         setMessage(`✅ Campaign completed! Discovered & enriched ${result.processed_count || prospectLimit} prospect profiles.`);
+        if (result.outreach_batch && result.outreach_batch.length > 0) {
+          setProspects(result.outreach_batch);
+        } else if (result.prospects && result.prospects.length > 0) {
+          setProspects(result.prospects);
+        }
         fetchData();
       } else {
         setMessage(`❌ Campaign execution failed: ${data.error || 'Unknown error'}`);

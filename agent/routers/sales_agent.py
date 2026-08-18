@@ -76,12 +76,15 @@ async def run_sales_agent(
 
     try:
         final_state = await sales_head_graph.ainvoke(initial_state, config=config)
+        outreach_batch = final_state.get("outreach_batch", [])
         return {
             "success": True,
             "run_id": run_id,
             "answer": final_state.get("answer", "Sales SDR execution complete."),
             "icp_score": final_state.get("icp_score"),
             "discovered_contact": final_state.get("discovered_contact"),
+            "outreach_batch": outreach_batch,
+            "prospects": outreach_batch,
             "deliverability_result": final_state.get("deliverability_result"),
             "generated_outreach": final_state.get("generated_outreach"),
             "deal_stage": final_state.get("deal_stage"),

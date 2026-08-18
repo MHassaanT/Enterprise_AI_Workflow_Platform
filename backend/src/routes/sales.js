@@ -12,32 +12,37 @@ router.get('/prospects', async (req, res) => {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     let prospects = [];
     try {
+      await query(`
+        CREATE TABLE IF NOT EXISTS sales_prospects (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id UUID NOT NULL,
+          company_name VARCHAR(255) NOT NULL,
+          domain VARCHAR(255) NOT NULL,
+          contact_name VARCHAR(255),
+          contact_email VARCHAR(255),
+          contact_title VARCHAR(255),
+          icp_score NUMERIC(5, 2) DEFAULT 0.00,
+          deliverability_status VARCHAR(50) DEFAULT 'UNVERIFIED',
+          scraped_context TEXT,
+          outreach_subject VARCHAR(500),
+          outreach_body TEXT,
+          deal_stage VARCHAR(50) DEFAULT 'DISCOVERED',
+          quote_details JSONB DEFAULT '{}'::jsonb,
+          apollo_person_id VARCHAR(100),
+          gmail_message_id VARCHAR(100),
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `, [], tenantId);
+
       const result = await query(
-        'SELECT * FROM sales_prospects WHERE tenant_id = $1 ORDER BY created_at DESC;',
+        "SELECT * FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY created_at DESC;",
         [tenantId],
         tenantId
       );
       prospects = result.rows;
     } catch (e) {
-      const fallbackResult = await query(
-        'SELECT * FROM crm_leads WHERE tenant_id = $1 ORDER BY created_at DESC;',
-        [tenantId],
-        tenantId
-      );
-      prospects = fallbackResult.rows.map(r => ({
-        id: r.id,
-        company_name: r.company || 'Enterprise Corp',
-        domain: (r.customer_email || '').split('@')[1] || 'enterprise.com',
-        contact_name: r.customer_name || (r.customer_email || '').split('@')[0],
-        contact_email: r.customer_email,
-        contact_title: 'Executive',
-        icp_score: 90,
-        deliverability_status: 'VALID',
-        deal_stage: r.deal_stage,
-        outreach_subject: 'Enterprise Solution Partnership',
-        outreach_body: 'Outreach campaign dispatched.',
-        created_at: r.created_at
-      }));
+      console.error('Error querying sales_prospects:', e);
     }
     return res.json({ success: true, prospects });
   } catch (err) {
