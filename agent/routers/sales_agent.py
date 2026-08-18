@@ -210,16 +210,21 @@ async def _ensure_tenant_exists(tenant_id: str):
         CREATE TABLE IF NOT EXISTS tenants (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name VARCHAR(255) NOT NULL,
-          slug VARCHAR(255) UNIQUE NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
+          is_active BOOLEAN DEFAULT true,
+          created_at TIMESTAMPTZ DEFAULT NOW()
         );
         """)
         await execute_db_query("""
-        INSERT INTO tenants (id, name, slug)
-        VALUES ($1, 'Enterprise Tenant', $2)
+        INSERT INTO tenants (id, name)
+        VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'Default Platform Tenant')
         ON CONFLICT (id) DO NOTHING;
-        """, [tenant_id, f"tenant-{tenant_id[:8]}"])
+        """)
+        if tenant_id and tenant_id != '00000000-0000-0000-0000-000000000000':
+            await execute_db_query("""
+            INSERT INTO tenants (id, name)
+            VALUES ($1::uuid, 'Enterprise Tenant')
+            ON CONFLICT (id) DO NOTHING;
+            """, [tenant_id])
     except Exception as e:
         logger.warning(f"Tenant auto-seed notice: {e}")
 
