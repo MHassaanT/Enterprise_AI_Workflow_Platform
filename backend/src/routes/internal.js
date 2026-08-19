@@ -245,22 +245,45 @@ router.post('/credentials', async (req, res) => {
   }
 
   try {
-    const result = await query(
+    let result = await query(
       `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
        FROM tool_credentials tc
        LEFT JOIN tool_bindings tb ON tc.binding_id = tb.id OR tc.tool_id = tb.tool_id
        LEFT JOIN tool_registry tr ON tc.tool_id = tr.id OR tb.tool_id = tr.id
        WHERE tc.tenant_id = $1 AND (
-         (tc.binding_id = $2 AND $2 IS NOT NULL) OR
-         (tc.tool_id = $3 AND $3 IS NOT NULL) OR
-         (tb.id = $2 AND $2 IS NOT NULL) OR
-         (tr.provider_type = 'airtable' OR LOWER(tb.tool_name) LIKE '%airtable%')
+         ($2::text IS NOT NULL AND (tc.binding_id::text = $2 OR tb.id::text = $2)) OR
+         ($3::text IS NOT NULL AND (
+           tc.tool_id::text = $3 OR 
+           LOWER(tr.canonical_name) = LOWER($3) OR 
+           LOWER(tr.provider_type) = LOWER($3) OR
+           LOWER(tb.tool_name) LIKE '%' || LOWER($3) || '%'
+         )) OR
+         ($2 IS NULL AND $3 IS NULL)
        )
        ORDER BY tc.updated_at DESC
        LIMIT 1`,
       [tenantId, bindingId || null, toolId || null],
       tenantId,
     );
+
+    // Fallback: If no credential found for specific tenantId, search globally for tool/provider matching (e.g. Gmail)
+    if (result.rows.length === 0 && toolId) {
+      result = await query(
+        `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
+         FROM tool_credentials tc
+         LEFT JOIN tool_bindings tb ON tc.binding_id = tb.id OR tc.tool_id = tb.tool_id
+         LEFT JOIN tool_registry tr ON tc.tool_id = tr.id OR tb.tool_id = tr.id
+         WHERE (
+           tc.tool_id::text = $1 OR 
+           LOWER(tr.canonical_name) = LOWER($1) OR 
+           LOWER(tr.provider_type) = LOWER($1) OR
+           LOWER(tb.tool_name) LIKE '%' || LOWER($1) || '%'
+         )
+         ORDER BY tc.updated_at DESC
+         LIMIT 1`,
+        [toolId]
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.json({ encrypted_payload: null, auth_type: null });
