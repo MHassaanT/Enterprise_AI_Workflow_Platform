@@ -308,7 +308,9 @@ async def save_apollo_key(
     tenant_id = _normalize_uuid(request.tenant_id)
     await _ensure_tenant_exists(tenant_id)
 
-    api_key = (request.apollo_api_key or "").strip()
+    api_key = (request.apollo_api_key or "").strip().strip('"').strip("'")
+    if api_key.lower().startswith("bearer "):
+        api_key = api_key[7:].strip()
 
     # Real-time Apollo API key verification check
     is_valid_key = True
@@ -319,12 +321,19 @@ async def save_apollo_key(
             async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(
                     "https://api.apollo.io/v1/mixed_companies/search",
-                    headers={"x-api-key": api_key, "Api-Key": api_key, "Content-Type": "application/json"},
+                    headers={"x-api-key": api_key, "Content-Type": "application/json"},
                     json={"api_key": api_key, "per_page": 1}
                 )
                 if res.status_code in (401, 403):
                     is_valid_key = False
-                    error_msg = "Apollo API Key rejected by Apollo (HTTP 401 Unauthorized). Please verify your API Key on Apollo.io."
+                    apollo_err = "Invalid API key"
+                    try:
+                        data = res.json()
+                        if data.get("error"):
+                            apollo_err = data["error"]
+                    except Exception:
+                        pass
+                    error_msg = f"Apollo API rejected key: '{apollo_err}'. Please ensure you copied the full Master API Key from Apollo.io -> Settings -> Integrations -> API."
         except Exception as e:
             logger.warning(f"Could not verify Apollo API key via live HTTP check: {e}")
 
