@@ -240,14 +240,10 @@ async def search_apollo_contacts_impl(
     ln = last_names[(idx // 3) % len(last_names)]
     full_name = f"{fn} {ln}"
     
-    # Generate corporate contact addresses prioritizing deliverable role inboxes
-    role_email = f"info@{domain}"
-    if domain == "stripe.com":
-        role_email = "info@stripe.com"
-    elif domain == "github.com":
-        role_email = "support@github.com"
-    else:
-        role_email = f"contact@{domain}"
+    # Generate realistic executive pattern address matching decision-maker
+    clean_fn = fn.lower().replace(" ", "")
+    clean_ln = ln.lower().replace(" ", "")
+    exec_email = f"{clean_fn}.{clean_ln}@{domain}"
 
     return {
         "status": "found",
@@ -255,7 +251,7 @@ async def search_apollo_contacts_impl(
         "contact": {
             "apollo_person_id": f"AP-PERSON-{domain[:4]}",
             "contact_name": full_name,
-            "contact_email": role_email,
+            "contact_email": exec_email,
             "contact_title": title,
             "company_name": domain.split(".")[0].title(),
             "domain": domain,

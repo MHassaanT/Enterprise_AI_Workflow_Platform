@@ -38,14 +38,19 @@ FREE_PROVIDERS = {
 }
 
 
+GENERIC_ROLE_PREFIXES = {
+    "contact", "info", "support", "admin", "sales", "jobs", "careers",
+    "help", "enquiries", "hello", "office", "billing", "media", "press",
+    "marketing", "postmaster", "webmaster", "hostmaster", "privacy", "legal"
+}
+
+
 async def check_mx_records(domain: str) -> bool:
     """Asynchronous DNS MX record lookup via socket/loop."""
     try:
         loop = asyncio.get_running_loop()
-        # Perform getaddrinfo for the domain or MX query fallback
         def _resolve():
             try:
-                # Primary socket lookup for host IP or MX domain validation
                 host_info = socket.gethostbyname_ex(domain)
                 return bool(host_info and host_info[2])
             except Exception:
@@ -63,67 +68,6 @@ def verify_email_syntax(email: str) -> bool:
         return False
     return bool(EMAIL_REGEX.match(email.strip()))
 
-
-async def verify_email(email: str) -> Dict[str, Any]:
-    """
-    Performs full deliverability verification on an email address.
-    """
-    email_clean = email.strip().lower()
-    
-    # 1. Syntax Check
-    syntax_valid = verify_email_syntax(email_clean)
-    if not syntax_valid:
-        return {
-            "email": email_clean,
-            "is_valid": False,
-            "deliverability": "INVALID",
-            "status": "INVALID",
-            "syntax_valid": False,
-            "domain": "",
-            "has_mx_records": False,
-            "is_disposable": False,
-            "is_free_provider": False,
-            "reason": "Invalid email syntax format.",
-        }
-
-    parts = email_clean.split("@")
-    domain = parts[1]
-
-    # 2. Disposable Domain Check
-    is_disposable = domain in DISPOSABLE_DOMAINS
-    if is_disposable:
-        return {
-            "email": email_clean,
-            "is_valid": False,
-            "deliverability": "RISKY",
-            "status": "DISPOSABLE",
-            "syntax_valid": True,
-            "domain": domain,
-            "has_mx_records": True,
-            "is_disposable": True,
-            "is_free_provider": False,
-            "reason": "Disposable / temporary email domain detected. High bounce risk.",
-        }
-
-    # 3. Free Provider Check
-    is_free = domain in FREE_PROVIDERS
-
-    # 4. MX Record DNS Validation
-    has_mx = await check_mx_records(domain)
-    
-    if not has_mx:
-        return {
-            "email": email_clean,
-            "is_valid": False,
-            "deliverability": "LOW",
-            "status": "INVALID",
-            "syntax_valid": True,
-            "domain": domain,
-            "has_mx_records": False,
-            "is_disposable": False,
-            "is_free_provider": is_free,
-            "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
-        }
 
 async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
     """
@@ -203,9 +147,25 @@ async def verify_email(email: str) -> Dict[str, Any]:
         }
 
     parts = email_clean.split("@")
+    local_part = parts[0]
     domain = parts[1]
 
-    # 2. Disposable Domain Check
+    # 2. Generic Role Account Filter (contact@, info@, etc.)
+    if local_part in GENERIC_ROLE_PREFIXES:
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "RISKY",
+            "status": "ROLE_ACCOUNT",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": False,
+            "is_free_provider": False,
+            "reason": f"Generic role account '{local_part}@' is not an individual executive recipient.",
+        }
+
+    # 3. Disposable Domain Check
     is_disposable = domain in DISPOSABLE_DOMAINS
     if is_disposable:
         return {
@@ -221,10 +181,10 @@ async def verify_email(email: str) -> Dict[str, Any]:
             "reason": "Disposable / temporary email domain detected. High bounce risk.",
         }
 
-    # 3. Free Provider Check
+    # 4. Free Provider Check
     is_free = domain in FREE_PROVIDERS
 
-    # 4. MX Record DNS Validation
+    # 5. MX Record DNS Validation
     has_mx = await check_mx_records(domain)
     if not has_mx:
         return {
@@ -240,7 +200,7 @@ async def verify_email(email: str) -> Dict[str, Any]:
             "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
         }
 
-    # 5. Direct SMTP Mailbox Existence Verification
+    # 6. Direct SMTP Mailbox Existence Verification
     smtp_res = await check_smtp_mailbox(email_clean, domain)
     if smtp_res.get("tested") and not smtp_res.get("exists"):
         return {
@@ -256,7 +216,7 @@ async def verify_email(email: str) -> Dict[str, Any]:
             "reason": smtp_res.get("reason", "Mailbox does not exist on target SMTP server."),
         }
 
-    # 6. Summary Scoring & Status Determination
+    # 7. Summary Scoring & Status Determination
     status = "VALID"
     deliverability = "HIGH"
     reason = smtp_res.get("reason", "Email passed syntax, MX record, and deliverability verification.")
