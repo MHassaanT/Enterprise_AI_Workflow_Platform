@@ -97,13 +97,21 @@ export default function SalesDashboard() {
   };
 
   const { currentProspects, pastProspects } = getCurrentAndPastProspects();
-  const displayedProspects = prospectSubTab === 'current' ? currentProspects : pastProspects;
+  const safeJsonParse = async (res) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      const cleanText = text.replace(/<[^>]*>?/gm, '').trim();
+      throw new Error(cleanText ? cleanText.slice(0, 150) : `Server returned HTTP ${res.status}`);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/v1/sales/prospects');
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       setProspects(data.prospects || []);
     } catch (err) {
       console.error('Failed to fetch prospects:', err);
@@ -115,7 +123,7 @@ export default function SalesDashboard() {
   const fetchIcpConfig = async () => {
     try {
       const res = await fetch('/api/v1/sales/icp');
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       if (data.success && data.icp) {
         setIcpConfig(data.icp);
         if (data.icp.target_industries && data.icp.target_industries.length > 0) {
@@ -131,7 +139,7 @@ export default function SalesDashboard() {
   const checkApolloKeyStatus = async () => {
     try {
       const res = await fetch('/api/v1/sales/apollo-key');
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       setApolloStatus(data);
       if (data.configured) {
         try { localStorage.setItem('sales_apollo_status', JSON.stringify(data)); } catch (e) {}
@@ -149,7 +157,7 @@ export default function SalesDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       if (data.success && data.icp) {
         setIcpConfig(data.icp);
         setIcpBuilt(true);
@@ -223,7 +231,7 @@ export default function SalesDashboard() {
           icp_config: icpConfig,
         }),
       });
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
@@ -256,7 +264,7 @@ export default function SalesDashboard() {
           body: prospect.body || prospect.outreach_body || '',
         }),
       });
-      const data = await res.json();
+      const data = await safeJsonParse(res);
       if (data.success) {
         setMessage(`✅ Email successfully dispatched to ${prospect.contact_email} via Gmail API!`);
         // Update prospect state locally
