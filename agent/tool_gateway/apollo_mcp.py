@@ -32,10 +32,16 @@ class ApolloContactSearchInput(BaseModel):
 async def get_tenant_apollo_key(tenant_id: str) -> Optional[str]:
     """Retrieves Apollo API key for given tenant from DB or environment."""
     try:
-        query = "SELECT apollo_api_key FROM tenant_apollo_settings WHERE tenant_id = $1 AND is_valid = TRUE;"
+        query = """
+            SELECT apollo_api_key FROM tenant_apollo_settings 
+            WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' 
+            ORDER BY updated_at DESC LIMIT 1;
+        """
         res = await execute_db_query(query, [tenant_id])
         if res and res.get("rows") and res["rows"][0].get("apollo_api_key"):
-            return res["rows"][0]["apollo_api_key"]
+            key = res["rows"][0]["apollo_api_key"]
+            if key and len(key.strip()) > 5:
+                return key.strip()
     except Exception as e:
         logger.warning(f"Failed to fetch Apollo API key from database for tenant {tenant_id}: {e}")
     
@@ -204,26 +210,52 @@ async def search_apollo_contacts_impl(
             headers = {"x-api-key": api_key, "Content-Type": "application/json"}
             payload = {
                 "q_organization_domains": domain,
-                "person_titles": target_titles if target_titles else ["VP of Sales", "CTO", "Head of Growth"],
+                "person_titles": target_titles if target_titles else ["VP of Sales", "CTO", "Head of Growth", "CFO", "CEO"],
                 "page": 1,
-                "per_page": 3,
+                "per_page": 5,
             }
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.is_success:
                     data = res.json()
                     people = data.get("people", [])
-                    if people:
-                        p = people[0]
+                    found_person = None
+                    for p in people:
+                        email = p.get("email")
+                        if email and "@" in email and "email_not_unlocked" not in email:
+                            found_person = p
+                            break
+
+                    if not found_person and people:
+                        p0 = people[0]
+                        try:
+                            match_url = f"{APOLLO_BASE_URL}/people/match"
+                            match_payload = {
+                                "id": p0.get("id"),
+                                "first_name": p0.get("first_name"),
+                                "last_name": p0.get("last_name"),
+                                "domain": domain,
+                                "reveal_personal_emails": False
+                            }
+                            m_res = await client.post(match_url, headers=headers, json=match_payload)
+                            if m_res.is_success:
+                                m_data = m_res.json()
+                                person_match = m_data.get("person") or {}
+                                if person_match.get("email"):
+                                    found_person = person_match
+                        except Exception as me:
+                            logger.warning(f"Apollo match email enrichment error: {me}")
+
+                    if found_person and found_person.get("email"):
                         return {
                             "status": "found",
                             "source": "apollo_api",
                             "contact": {
-                                "apollo_person_id": p.get("id"),
-                                "contact_name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
-                                "contact_email": p.get("email"),
-                                "contact_title": p.get("title"),
-                                "company_name": p.get("organization", {}).get("name"),
+                                "apollo_person_id": found_person.get("id"),
+                                "contact_name": f"{found_person.get('first_name', '')} {found_person.get('last_name', '')}".strip(),
+                                "contact_email": found_person.get("email"),
+                                "contact_title": found_person.get("title") or (target_titles[0] if target_titles else "Executive"),
+                                "company_name": found_person.get("organization", {}).get("name") or domain.split(".")[0].title(),
                                 "domain": domain,
                             }
                         }
