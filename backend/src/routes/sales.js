@@ -92,6 +92,7 @@ router.post('/pipeline/run', async (req, res) => {
       },
       {
         headers: { 'X-Internal-Token': INTERNAL_TOKEN },
+        timeout: 120000,
       }
     );
 
