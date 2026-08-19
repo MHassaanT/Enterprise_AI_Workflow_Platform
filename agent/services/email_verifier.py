@@ -125,10 +125,141 @@ async def verify_email(email: str) -> Dict[str, Any]:
             "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
         }
 
-    # 5. Summary Scoring & Status Determination
+async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
+    """
+    Performs real-time SMTP RCPT TO handshake against target domain MX servers.
+    Detects 550 Mailbox Not Found / Non-existent user errors before sending.
+    """
+    import smtplib
+    try:
+        def _get_mx_hosts():
+            try:
+                import dns.resolver
+                answers = dns.resolver.resolve(domain, 'MX')
+                return [str(r.exchange).rstrip('.') for r in sorted(answers, key=lambda x: x.preference)]
+            except Exception:
+                try:
+                    host_info = socket.gethostbyname_ex(domain)
+                    return [host_info[0]] if host_info else []
+                except Exception:
+                    return []
+
+        loop = asyncio.get_running_loop()
+        mx_hosts = await loop.run_in_executor(None, _get_mx_hosts)
+        if not mx_hosts:
+            return {"tested": False, "exists": True, "reason": "No MX hosts resolved for SMTP check."}
+
+        for mx_host in mx_hosts[:2]:
+            def _rcpt_handshake():
+                try:
+                    server = smtplib.SMTP(timeout=4)
+                    server.connect(mx_host, 25)
+                    server.helo("verify.ai-platform.com")
+                    server.mail("verifier@ai-platform.com")
+                    code, resp = server.rcpt(email)
+                    server.quit()
+                    return code, resp.decode('utf-8', errors='ignore')
+                except Exception as ex:
+                    return None, str(ex)
+
+            code, resp_text = await loop.run_in_executor(None, _rcpt_handshake)
+            if code == 250:
+                return {"tested": True, "exists": True, "code": code, "reason": "SMTP Mailbox verified (250 OK)."}
+            elif code in (550, 551, 552, 553, 501, 504):
+                lower_resp = resp_text.lower()
+                if any(term in lower_resp for term in ["5.1.1", "5.1.0", "does not exist", "user unknown", "no such user", "address rejected", "invalid recipient", "recipient rejected", "unknown user", "nosuchuser"]):
+                    return {"tested": True, "exists": False, "code": code, "reason": f"Mailbox does not exist on target SMTP server ({code}: {resp_text})."}
+                elif any(term in lower_resp for term in ["spamhaus", "blocked", "5.7.1", "denied", "blacklist", "refused", "service unavailable"]):
+                    return {"tested": False, "exists": True, "code": code, "reason": f"SMTP host IP block ({resp_text}). Fallback to MX record check."}
+                else:
+                    return {"tested": True, "exists": False, "code": code, "reason": f"SMTP server rejected recipient address ({code}: {resp_text})."}
+
+        return {"tested": False, "exists": True, "reason": "SMTP port 25 unreachable or catch-all."}
+    except Exception as e:
+        logger.warning(f"SMTP check error for {email}: {e}")
+        return {"tested": False, "exists": True, "reason": str(e)}
+
+
+async def verify_email(email: str) -> Dict[str, Any]:
+    """
+    Performs full deliverability verification on an email address.
+    """
+    email_clean = email.strip().lower()
+    
+    # 1. Syntax Check
+    syntax_valid = verify_email_syntax(email_clean)
+    if not syntax_valid:
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "INVALID",
+            "status": "INVALID",
+            "syntax_valid": False,
+            "domain": "",
+            "has_mx_records": False,
+            "is_disposable": False,
+            "is_free_provider": False,
+            "reason": "Invalid email syntax format.",
+        }
+
+    parts = email_clean.split("@")
+    domain = parts[1]
+
+    # 2. Disposable Domain Check
+    is_disposable = domain in DISPOSABLE_DOMAINS
+    if is_disposable:
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "RISKY",
+            "status": "DISPOSABLE",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": True,
+            "is_free_provider": False,
+            "reason": "Disposable / temporary email domain detected. High bounce risk.",
+        }
+
+    # 3. Free Provider Check
+    is_free = domain in FREE_PROVIDERS
+
+    # 4. MX Record DNS Validation
+    has_mx = await check_mx_records(domain)
+    if not has_mx:
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "LOW",
+            "status": "INVALID",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": False,
+            "is_disposable": False,
+            "is_free_provider": is_free,
+            "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
+        }
+
+    # 5. Direct SMTP Mailbox Existence Verification
+    smtp_res = await check_smtp_mailbox(email_clean, domain)
+    if smtp_res.get("tested") and not smtp_res.get("exists"):
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "INVALID",
+            "status": "INVALID",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": False,
+            "is_free_provider": is_free,
+            "reason": smtp_res.get("reason", "Mailbox does not exist on target SMTP server."),
+        }
+
+    # 6. Summary Scoring & Status Determination
     status = "VALID"
     deliverability = "HIGH"
-    reason = "Email passed syntax, MX record, and deliverability verification."
+    reason = smtp_res.get("reason", "Email passed syntax, MX record, and deliverability verification.")
 
     return {
         "email": email_clean,

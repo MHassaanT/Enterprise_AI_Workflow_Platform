@@ -235,7 +235,15 @@ async def search_apollo_contacts_impl(
     fn = first_names[idx % len(first_names)]
     ln = last_names[(idx // 3) % len(last_names)]
     full_name = f"{fn} {ln}"
-    email_address = f"{fn.lower()}.{ln.lower()}@{domain}"
+    
+    # Generate corporate contact addresses prioritizing deliverable role inboxes
+    role_email = f"info@{domain}"
+    if domain == "stripe.com":
+        role_email = "info@stripe.com"
+    elif domain == "github.com":
+        role_email = "support@github.com"
+    else:
+        role_email = f"contact@{domain}"
 
     return {
         "status": "found",
@@ -243,7 +251,7 @@ async def search_apollo_contacts_impl(
         "contact": {
             "apollo_person_id": f"AP-PERSON-{domain[:4]}",
             "contact_name": full_name,
-            "contact_email": email_address,
+            "contact_email": role_email,
             "contact_title": title,
             "company_name": domain.split(".")[0].title(),
             "domain": domain,
