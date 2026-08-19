@@ -37,6 +37,9 @@ export default function SalesDashboard() {
   // Selected Prospect Modal
   const [selectedProspect, setSelectedProspect] = useState(null);
 
+  const [prospectSubTab, setProspectSubTab] = useState('current'); // 'current' | 'past'
+  const [latestRunProspects, setLatestRunProspects] = useState([]);
+
   useEffect(() => {
     try {
       const cachedApollo = localStorage.getItem('sales_apollo_status');
@@ -55,6 +58,46 @@ export default function SalesDashboard() {
     fetchIcpConfig();
     checkApolloKeyStatus();
   }, []);
+
+  const getCurrentAndPastProspects = () => {
+    if (!prospects || prospects.length === 0) {
+      return { currentProspects: [], pastProspects: [] };
+    }
+
+    if (latestRunProspects && latestRunProspects.length > 0) {
+      const latestEmails = new Set(latestRunProspects.map((p) => (p.contact_email || p.email || '').toLowerCase().trim()));
+      const latestDomains = new Set(latestRunProspects.map((p) => (p.domain || '').toLowerCase().trim()));
+      
+      const current = prospects.filter((p) => 
+        (p.contact_email && latestEmails.has(p.contact_email.toLowerCase().trim())) ||
+        (p.domain && latestDomains.has(p.domain.toLowerCase().trim()))
+      );
+      const currentIds = new Set(current.map((p) => p.id));
+      const past = prospects.filter((p) => !currentIds.has(p.id));
+      return { currentProspects: current.length > 0 ? current : latestRunProspects, pastProspects: past };
+    }
+
+    // Fallback on page refresh: group by newest timestamp batch (created within 60s of the newest prospect)
+    const newestCreatedAt = prospects[0]?.created_at ? new Date(prospects[0].created_at).getTime() : 0;
+    if (!newestCreatedAt) {
+      return { currentProspects: prospects, pastProspects: [] };
+    }
+
+    const current = [];
+    const past = [];
+    for (const p of prospects) {
+      const pTime = p.created_at ? new Date(p.created_at).getTime() : 0;
+      if (Math.abs(newestCreatedAt - pTime) <= 60000) {
+        current.push(p);
+      } else {
+        past.push(p);
+      }
+    }
+    return { currentProspects: current, pastProspects: past };
+  };
+
+  const { currentProspects, pastProspects } = getCurrentAndPastProspects();
+  const displayedProspects = prospectSubTab === 'current' ? currentProspects : pastProspects;
 
   const fetchData = async () => {
     setLoading(true);
@@ -185,11 +228,9 @@ export default function SalesDashboard() {
         const result = data.result;
         setLogs(result.logs || []);
         setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count || prospectLimit} 100% VALID prospect profiles.`);
-        if (result.outreach_batch && result.outreach_batch.length > 0) {
-          setProspects(result.outreach_batch);
-        } else if (result.prospects && result.prospects.length > 0) {
-          setProspects(result.prospects);
-        }
+        const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
+        setLatestRunProspects(batch);
+        setProspectSubTab('current');
         fetchData();
       } else {
         setMessage(`❌ Campaign execution failed: ${data.error || 'Unknown error'}`);
@@ -425,13 +466,57 @@ export default function SalesDashboard() {
 
             {/* Tab Contents */}
             <div className="flex-1 overflow-y-auto">
-              {/* TAB 1: Discovered Prospects Matrix */}
+              {/* TAB 1: Discovered Prospects Matrix with Sub-Tabs */}
               {activeTab === 'prospects' && (
                 <div className="flex flex-col gap-sm">
+                  {/* Sub-Tabs Navigation Pills: Current vs Past */}
+                  <div className="flex items-center justify-between pb-sm border-b border-outline-variant/60">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setProspectSubTab('current')}
+                        className={`px-3 py-1.5 text-xs font-label-md rounded-md transition-all flex items-center gap-1.5 ${
+                          prospectSubTab === 'current'
+                            ? 'bg-primary text-on-primary font-bold shadow'
+                            : 'bg-surface-variant/70 text-on-surface-variant hover:bg-outline-variant/60'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[15px]">auto_mode</span>
+                        Current Run ({currentProspects.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setProspectSubTab('past')}
+                        className={`px-3 py-1.5 text-xs font-label-md rounded-md transition-all flex items-center gap-1.5 ${
+                          prospectSubTab === 'past'
+                            ? 'bg-primary text-on-primary font-bold shadow'
+                            : 'bg-surface-variant/70 text-on-surface-variant hover:bg-outline-variant/60'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[15px]">history</span>
+                        Past Runs ({pastProspects.length})
+                      </button>
+                    </div>
+
+                    <span className="text-xs text-on-surface-variant italic">
+                      {prospectSubTab === 'current'
+                        ? 'Showing results of the latest campaign run'
+                        : 'Showing all leads from previous campaign runs'}
+                    </span>
+                  </div>
+
                   {loading ? (
                     <p className="text-on-surface-variant font-body-sm italic p-md text-center">Loading prospects...</p>
-                  ) : prospects.length === 0 ? (
-                    <p className="text-on-surface-variant font-body-sm italic p-md text-center">No prospect records found. Click "Build ICP" and then "Start SDR Campaign".</p>
+                  ) : displayedProspects.length === 0 ? (
+                    <div className="p-xl text-center flex flex-col items-center justify-center gap-xs">
+                      <span className="material-symbols-outlined text-outline text-[36px]">inbox</span>
+                      <p className="text-on-surface-variant font-body-sm italic m-0">
+                        {prospectSubTab === 'current'
+                          ? 'No prospect records in the current campaign run. Click "Start SDR Campaign" to launch a run.'
+                          : 'No previous campaign run records found.'}
+                      </p>
+                    </div>
                   ) : (
                     <table className="w-full text-left border-collapse text-body-sm">
                       <thead>
@@ -446,7 +531,7 @@ export default function SalesDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {prospects.map((p, idx) => (
+                        {displayedProspects.map((p, idx) => (
                           <tr key={idx} className="border-b border-outline-variant/50 hover:bg-surface-variant/30">
                             <td className="p-sm">
                               <div className="font-bold text-on-surface">{p.company_name}</div>
