@@ -183,19 +183,23 @@ export default function SalesDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apollo_api_key: apolloKeyInput.trim() }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setMessage('✅ Apollo API Key saved successfully.');
+      const data = await safeJsonParse(res);
+      if (data.success && data.is_valid !== false) {
+        setMessage('✅ Apollo Master API Key validated and saved successfully.');
         const status = { configured: true, is_valid: true };
         setApolloStatus(status);
         try { localStorage.setItem('sales_apollo_status', JSON.stringify(status)); } catch (e) {}
         setApolloKeyModalOpen(false);
         setApolloKeyInput('');
       } else {
-        setMessage(`❌ Failed to save key: ${data.error}`);
+        const errDetail = data.error || data.message || 'Key rejected by Apollo API';
+        setMessage(`❌ Key Validation Error: ${errDetail}`);
+        const status = { configured: true, is_valid: false };
+        setApolloStatus(status);
+        try { localStorage.setItem('sales_apollo_status', JSON.stringify(status)); } catch (e) {}
       }
     } catch (err) {
-      setMessage(`❌ Error: ${err.message}`);
+      setMessage(`❌ Error saving key: ${err.message}`);
     }
   };
 
@@ -322,13 +326,19 @@ export default function SalesDashboard() {
             <button
               onClick={() => setApolloKeyModalOpen(true)}
               className={`px-md py-sm rounded-md text-body-sm font-label-md transition-colors flex items-center gap-2 border ${
-                apolloStatus.configured
+                apolloStatus.configured && apolloStatus.is_valid !== false
                   ? 'bg-surface-variant text-primary border-outline-variant'
+                  : apolloStatus.configured && apolloStatus.is_valid === false
+                  ? 'bg-error-container text-error border-error'
                   : 'bg-primary text-on-primary border-primary'
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">key</span>
-              {apolloStatus.configured ? 'Apollo Configured' : 'Set Apollo Key'}
+              {apolloStatus.configured && apolloStatus.is_valid !== false
+                ? 'Apollo Configured'
+                : apolloStatus.configured && apolloStatus.is_valid === false
+                ? 'Apollo Key Invalid'
+                : 'Set Apollo Key'}
             </button>
 
             <button

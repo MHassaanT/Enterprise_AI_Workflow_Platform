@@ -65,8 +65,9 @@ async def search_apollo_accounts_impl(
     if api_key:
         try:
             url = f"{APOLLO_BASE_URL}/mixed_companies/search"
-            headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+            headers = {"x-api-key": api_key, "Api-Key": api_key, "Content-Type": "application/json"}
             payload = {
+                "api_key": api_key,
                 "organization_num_employees_ranges": [f"{company_size_min},{company_size_max}"],
                 "page": 1,
                 "per_page": limit * 3,
@@ -76,7 +77,16 @@ async def search_apollo_accounts_impl(
 
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
-                if res.is_success:
+                if res.status_code in (401, 403):
+                    logger.warning(f"Apollo API key rejected (HTTP {res.status_code}): {res.text[:200]}")
+                    try:
+                        await execute_db_query(
+                            "UPDATE tenant_apollo_settings SET is_valid = FALSE WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000';",
+                            [tenant_id]
+                        )
+                    except Exception:
+                        pass
+                elif res.is_success:
                     data = res.json()
                     accounts = []
                     for org in data.get("organizations", []):
@@ -97,7 +107,7 @@ async def search_apollo_accounts_impl(
         except Exception as e:
             logger.error(f"Apollo API account search exception: {e}")
 
-    # Fallback production candidate targets matching ICP parameters with deliverable MX records
+    # Fallback production candidate targets matching ICP parameters
     all_sample_domains = [
         {"company_name": "Stripe Inc", "domain": "stripe.com", "industry": target_industries[0] if target_industries else "Fintech"},
         {"company_name": "GitHub", "domain": "github.com", "industry": "Software"},
@@ -181,7 +191,6 @@ async def search_apollo_accounts_impl(
         if not any(a["domain"].lower() == d for a in selected_accounts):
             selected_accounts.append(dict(item))
 
-    # Fallback if list exhausted
     if not selected_accounts:
         for item in all_sample_domains[:limit]:
             selected_accounts.append(dict(item))
@@ -207,8 +216,9 @@ async def search_apollo_contacts_impl(
     if api_key:
         try:
             url = f"{APOLLO_BASE_URL}/mixed_people/search"
-            headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+            headers = {"x-api-key": api_key, "Api-Key": api_key, "Content-Type": "application/json"}
             payload = {
+                "api_key": api_key,
                 "q_organization_domains": domain,
                 "person_titles": target_titles if target_titles else ["VP of Sales", "CTO", "Head of Growth", "CFO", "CEO"],
                 "page": 1,
@@ -216,7 +226,16 @@ async def search_apollo_contacts_impl(
             }
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
-                if res.is_success:
+                if res.status_code in (401, 403):
+                    logger.warning(f"Apollo API key rejected in contact search (HTTP {res.status_code}): {res.text[:200]}")
+                    try:
+                        await execute_db_query(
+                            "UPDATE tenant_apollo_settings SET is_valid = FALSE WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000';",
+                            [tenant_id]
+                        )
+                    except Exception:
+                        pass
+                elif res.is_success:
                     data = res.json()
                     people = data.get("people", [])
                     found_person = None
@@ -231,6 +250,7 @@ async def search_apollo_contacts_impl(
                         try:
                             match_url = f"{APOLLO_BASE_URL}/people/match"
                             match_payload = {
+                                "api_key": api_key,
                                 "id": p0.get("id"),
                                 "first_name": p0.get("first_name"),
                                 "last_name": p0.get("last_name"),
@@ -241,7 +261,7 @@ async def search_apollo_contacts_impl(
                             if m_res.is_success:
                                 m_data = m_res.json()
                                 person_match = m_data.get("person") or {}
-                                if person_match.get("email"):
+                                if person_match.get("email") and "email_not_unlocked" not in person_match.get("email"):
                                     found_person = person_match
                         except Exception as me:
                             logger.warning(f"Apollo match email enrichment error: {me}")
@@ -273,7 +293,6 @@ async def search_apollo_contacts_impl(
     ln = last_names[(idx // 3) % len(last_names)]
     full_name = f"{fn} {ln}"
     
-    # Generate realistic executive pattern address matching decision-maker
     clean_fn = fn.lower().replace(" ", "")
     clean_ln = ln.lower().replace(" ", "")
     exec_email = f"{clean_fn}.{clean_ln}@{domain}"

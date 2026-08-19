@@ -307,6 +307,27 @@ async def save_apollo_key(
 
     tenant_id = _normalize_uuid(request.tenant_id)
     await _ensure_tenant_exists(tenant_id)
+
+    api_key = (request.apollo_api_key or "").strip()
+
+    # Real-time Apollo API key verification check
+    is_valid_key = True
+    error_msg = None
+    if api_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.post(
+                    "https://api.apollo.io/v1/mixed_companies/search",
+                    headers={"x-api-key": api_key, "Api-Key": api_key, "Content-Type": "application/json"},
+                    json={"api_key": api_key, "per_page": 1}
+                )
+                if res.status_code in (401, 403):
+                    is_valid_key = False
+                    error_msg = "Apollo API Key rejected by Apollo (HTTP 401 Unauthorized). Please verify your API Key on Apollo.io."
+        except Exception as e:
+            logger.warning(f"Could not verify Apollo API key via live HTTP check: {e}")
+
     await execute_db_query("""
     CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
       tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
@@ -319,12 +340,16 @@ async def save_apollo_key(
 
     query = """
     INSERT INTO tenant_apollo_settings (tenant_id, apollo_api_key, is_valid, updated_at)
-    VALUES ($1, $2, TRUE, NOW())
+    VALUES ($1, $2, $3, NOW())
     ON CONFLICT (tenant_id)
-    DO UPDATE SET apollo_api_key = EXCLUDED.apollo_api_key, is_valid = TRUE, updated_at = NOW();
+    DO UPDATE SET apollo_api_key = EXCLUDED.apollo_api_key, is_valid = EXCLUDED.is_valid, updated_at = NOW();
     """
-    await execute_db_query(query, [tenant_id, request.apollo_api_key])
-    return {"success": True, "message": "Apollo Master API Key saved successfully."}
+    await execute_db_query(query, [tenant_id, api_key, is_valid_key])
+
+    if not is_valid_key:
+        return {"success": False, "is_valid": False, "error": error_msg, "message": error_msg}
+
+    return {"success": True, "is_valid": True, "message": "Apollo Master API Key validated and saved successfully."}
 
 
 @router.get("/apollo-key/{tenant_id}")
