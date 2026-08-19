@@ -97,6 +97,7 @@ export default function SalesDashboard() {
   };
 
   const { currentProspects, pastProspects } = getCurrentAndPastProspects();
+  const displayedProspects = prospectSubTab === 'current' ? currentProspects : pastProspects;
   const safeJsonParse = async (res) => {
     const text = await res.text();
     try {
