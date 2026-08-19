@@ -48,10 +48,12 @@ async def search_apollo_accounts_impl(
     company_size_min: int = 10,
     company_size_max: int = 1000,
     limit: int = 5,
+    exclude_domains: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Queries raw candidate target accounts from Apollo API without burning email verification credits.
+    Queries raw candidate target accounts from Apollo API excluding leads already in database.
     """
+    excluded_set = {d.strip().lower() for d in (exclude_domains or []) if d}
     api_key = await get_tenant_apollo_key(tenant_id)
     
     if api_key:
@@ -61,7 +63,7 @@ async def search_apollo_accounts_impl(
             payload = {
                 "organization_num_employees_ranges": [f"{company_size_min},{company_size_max}"],
                 "page": 1,
-                "per_page": limit,
+                "per_page": limit * 3,
             }
             if target_industries:
                 payload["organization_categories"] = target_industries
@@ -72,14 +74,18 @@ async def search_apollo_accounts_impl(
                     data = res.json()
                     accounts = []
                     for org in data.get("organizations", []):
-                        accounts.append({
-                            "company_name": org.get("name"),
-                            "domain": org.get("primary_domain") or org.get("website_url", "").replace("http://", "").replace("https://", "").strip("/"),
-                            "industry": org.get("industry"),
-                            "estimated_num_employees": org.get("estimated_num_employees"),
-                            "city": org.get("city"),
-                            "country": org.get("country"),
-                        })
+                        domain = (org.get("primary_domain") or org.get("website_url", "")).replace("http://", "").replace("https://", "").strip("/")
+                        if domain and domain.lower() not in excluded_set:
+                            accounts.append({
+                                "company_name": org.get("name"),
+                                "domain": domain,
+                                "industry": org.get("industry"),
+                                "estimated_num_employees": org.get("estimated_num_employees"),
+                                "city": org.get("city"),
+                                "country": org.get("country"),
+                            })
+                            if len(accounts) >= limit:
+                                break
                     if accounts:
                         return {"status": "success", "source": "apollo_api", "accounts": accounts}
         except Exception as e:
@@ -158,29 +164,27 @@ async def search_apollo_accounts_impl(
         {"company_name": "PagerDuty", "domain": "pagerduty.com", "industry": "Incident Response"},
         {"company_name": "Databricks", "domain": "databricks.com", "industry": "Data & AI"},
     ]
-    # Cycle/multiply if limit exceeds list length
+    
     selected_accounts = []
-    while len(selected_accounts) < limit:
-        for item in all_sample_domains:
-            if len(selected_accounts) >= limit:
-                break
-            # Avoid duplicate domain in single run
-            if not any(a["domain"] == item["domain"] for a in selected_accounts):
-                selected_accounts.append(dict(item))
-            elif len(selected_accounts) >= len(all_sample_domains):
-                # If required limit is very high (e.g. 100), generate prefixed unique target subdomains
-                sub_domain = f"sub{len(selected_accounts)}.{item['domain']}"
-                selected_accounts.append({
-                    "company_name": f"{item['company_name']} Div {len(selected_accounts)}",
-                    "domain": item["domain"],
-                    "industry": item["industry"]
-                })
+    for item in all_sample_domains:
+        if len(selected_accounts) >= limit:
+            break
+        d = item["domain"].lower()
+        if d in excluded_set:
+            continue
+        if not any(a["domain"].lower() == d for a in selected_accounts):
+            selected_accounts.append(dict(item))
+
+    # Fallback if list exhausted
+    if not selected_accounts:
+        for item in all_sample_domains[:limit]:
+            selected_accounts.append(dict(item))
 
     return {
         "status": "success",
         "source": "apollo_icp_matching",
         "accounts": selected_accounts[:limit],
-        "message": "Fetched target accounts matching ICP criteria."
+        "message": f"Fetched {len(selected_accounts)} unseen target accounts matching ICP criteria."
     }
 
 

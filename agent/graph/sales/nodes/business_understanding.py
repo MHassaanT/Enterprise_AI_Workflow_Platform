@@ -47,17 +47,36 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
         except Exception:
             target_industries = [target_industries]
 
-    # 2. Query Candidate Target Accounts (Apollo API Sourcing)
-    fetch_limit = max(prospect_limit * 3, 30)
+    # 2. Fetch Existing Prospects for Tenant to Enforce Cross-Campaign Uniqueness
+    existing_domains = set(state.get("existing_domains") or [])
+    existing_emails = set(state.get("existing_emails") or [])
+    try:
+        ex_query = "SELECT LOWER(domain) as domain, LOWER(contact_email) as contact_email FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000';"
+        ex_res = await execute_db_query(ex_query, [tenant_id])
+        if ex_res and ex_res.get("rows"):
+            for row in ex_res["rows"]:
+                if row.get("domain"):
+                    existing_domains.add(row["domain"].strip().lower())
+                if row.get("contact_email"):
+                    existing_emails.add(row["contact_email"].strip().lower())
+    except Exception as e:
+        pass
+
+    # 3. Query Candidate Target Accounts (Apollo API Sourcing with Domain Exclusion)
+    fetch_limit = max(prospect_limit * 4, 40)
     sourcing_res = await search_apollo_accounts_impl(
         tenant_id=tenant_id,
         target_industries=target_industries,
         company_size_min=icp.get("company_size_min", 10),
         company_size_max=icp.get("company_size_max", 500),
-        limit=fetch_limit
+        limit=fetch_limit,
+        exclude_domains=list(existing_domains)
     )
 
-    accounts: List[Dict[str, Any]] = sourcing_res.get("accounts", [])
+    raw_accounts: List[Dict[str, Any]] = sourcing_res.get("accounts", [])
+    
+    # Filter out any accounts matching existing domains
+    accounts = [acc for acc in raw_accounts if acc.get("domain", "").lower() not in existing_domains]
     
     # Prioritize specific target domain if provided
     if state.get("target_domain"):
@@ -67,12 +86,14 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     logs.append({
         "stage": "Stage 1: Business Understanding & Sourcing",
         "status": "COMPLETED",
-        "details": f"Ingested ICP criteria. Sourced candidate target accounts via Apollo API (Target valid prospects: {prospect_limit}, Sourced candidates: {len(accounts)})."
+        "details": f"Ingested ICP criteria. Retrieved {len(existing_domains)} previously targeted domains to enforce uniqueness. Sourced {len(accounts)} fresh candidate target accounts (Target valid prospects: {prospect_limit})."
     })
 
     return {
         "tenant_id": tenant_id,
         "icp_config": icp,
         "raw_accounts": accounts,
+        "existing_domains": list(existing_domains),
+        "existing_emails": list(existing_emails),
         "logs": logs,
     }

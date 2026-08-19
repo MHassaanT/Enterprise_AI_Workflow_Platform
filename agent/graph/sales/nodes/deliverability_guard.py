@@ -19,20 +19,44 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     if not discovered_contacts and state.get("discovered_contact"):
         discovered_contacts = [state["discovered_contact"]]
 
+    existing_domains = set(state.get("existing_domains") or [])
+    existing_emails = set(state.get("existing_emails") or [])
+
+    # If existing domains/emails not present in state, query DB directly
+    if not existing_domains and not existing_emails:
+        try:
+            from services.db_client import execute_db_query
+            ex_query = "SELECT LOWER(domain) as domain, LOWER(contact_email) as contact_email FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000';"
+            ex_res = await execute_db_query(ex_query, [tenant_id])
+            if ex_res and ex_res.get("rows"):
+                for row in ex_res["rows"]:
+                    if row.get("domain"):
+                        existing_domains.add(row["domain"].strip().lower())
+                    if row.get("contact_email"):
+                        existing_emails.add(row["contact_email"].strip().lower())
+        except Exception:
+            pass
+
     valid_contacts: List[Dict[str, Any]] = []
     evaluated_count = 0
     discarded_count = 0
     tested_domains = set()
 
-    # 1. Verify contacts already discovered in Stage 3
+    # 1. Verify contacts already discovered in Stage 3 (skipping previously contacted ones)
     for contact in discovered_contacts:
         if len(valid_contacts) >= prospect_limit:
             break
-        domain = contact.get("domain", "")
+        domain = (contact.get("domain") or "").strip().lower()
+        email = (contact.get("contact_email") or "").strip().lower()
+
         if domain:
             tested_domains.add(domain)
 
-        email = contact.get("contact_email")
+        # Check uniqueness against past campaign runs
+        if (domain and domain in existing_domains) or (email and email in existing_emails):
+            discarded_count += 1
+            continue
+
         evaluated_count += 1
         if not email:
             discarded_count += 1
@@ -58,18 +82,20 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
             except Exception:
                 target_industries = [target_industries]
 
+        all_excluded_domains = list(existing_domains.union(tested_domains))
         extra_accounts_res = await search_apollo_accounts_impl(
             tenant_id=tenant_id,
             target_industries=target_industries,
-            limit=max(prospect_limit * 4, 50)
+            limit=max(prospect_limit * 5, 50),
+            exclude_domains=all_excluded_domains
         )
         candidate_accounts = extra_accounts_res.get("accounts", [])
 
         for account in candidate_accounts:
             if len(valid_contacts) >= prospect_limit:
                 break
-            domain = account.get("domain")
-            if not domain or domain in tested_domains:
+            domain = (account.get("domain") or "").strip().lower()
+            if not domain or domain in tested_domains or domain in existing_domains:
                 continue
             
             tested_domains.add(domain)
@@ -79,10 +105,10 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
                 target_titles=target_titles if isinstance(target_titles, list) else [target_titles]
             )
             cand_contact = c_res.get("contact", {})
-            cand_email = cand_contact.get("contact_email")
+            cand_email = (cand_contact.get("contact_email") or "").strip().lower()
             evaluated_count += 1
 
-            if not cand_email:
+            if not cand_email or cand_email in existing_emails:
                 discarded_count += 1
                 continue
 
