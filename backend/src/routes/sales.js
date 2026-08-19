@@ -78,7 +78,7 @@ router.get('/prospects', async (req, res) => {
 router.post('/pipeline/run', async (req, res) => {
   try {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
-    const { target_domain, prospect_limit, icp_config } = req.body;
+    const { target_domain, prospect_limit, icp_config, auto_send_email } = req.body;
 
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/run`,
@@ -86,6 +86,7 @@ router.post('/pipeline/run', async (req, res) => {
         tenant_id: tenantId,
         target_domain: target_domain || null,
         prospect_limit: parseInt(prospect_limit) || 10,
+        auto_send_email: auto_send_email || false,
         icp_config: icp_config || null,
         user_id: req.user?.id || 'sales_user'
       },
@@ -98,6 +99,33 @@ router.post('/pipeline/run', async (req, res) => {
   } catch (err) {
     console.error('Error executing Sales SDR agent:', err.message);
     return res.status(500).json({ error: 'Sales SDR Agent execution failed.' });
+  }
+});
+
+// POST /api/v1/sales/send-email — Manually send single outreach email via Gmail API
+router.post('/send-email', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const { prospect_id, contact_email, subject, body } = req.body;
+
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/send-email`,
+      {
+        tenant_id: tenantId,
+        prospect_id,
+        contact_email,
+        subject,
+        body,
+      },
+      {
+        headers: { 'X-Internal-Token': INTERNAL_TOKEN },
+      }
+    );
+
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error dispatching email:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to send outreach email.' });
   }
 });
 

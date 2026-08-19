@@ -11,6 +11,7 @@ class SalesAgentState(TypedDict):
     # Execution parameters
     prospect_limit: Optional[int]
     target_domain: Optional[str]
+    auto_send_email: Optional[bool]
     
     # Stage 1: Sourcing & Business Understanding
     icp_config: Dict[str, Any]

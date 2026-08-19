@@ -20,6 +20,8 @@ export default function SalesDashboard() {
 
   // SDR Execution Settings
   const [prospectLimit, setProspectLimit] = useState(10);
+  const [autoSendEmail, setAutoSendEmail] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [icpBuilt, setIcpBuilt] = useState(false);
 
   // ICP Configuration State
@@ -174,6 +176,7 @@ export default function SalesDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prospect_limit: prospectLimit,
+          auto_send_email: autoSendEmail,
           icp_config: icpConfig,
         }),
       });
@@ -195,6 +198,49 @@ export default function SalesDashboard() {
       setMessage(`❌ Network error: ${err.message}`);
     } finally {
       setRunningPipeline(false);
+    }
+  };
+
+  const handleSendSingleEmail = async (prospect) => {
+    if (!prospect || !prospect.contact_email) return;
+    setSendingEmail(true);
+    try {
+      const res = await fetch('/api/v1/sales/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prospect_id: prospect.id,
+          contact_email: prospect.contact_email,
+          subject: prospect.subject || prospect.outreach_subject || 'Partnership Proposal',
+          body: prospect.body || prospect.outreach_body || '',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage(`✅ Email successfully dispatched to ${prospect.contact_email} via Gmail API!`);
+        // Update prospect state locally
+        setProspects((prev) =>
+          prev.map((p) =>
+            p.contact_email === prospect.contact_email
+              ? {
+                  ...p,
+                  deal_stage: 'OUTREACH_SENT',
+                  subject: prospect.subject || prospect.outreach_subject,
+                  outreach_subject: prospect.subject || prospect.outreach_subject,
+                  body: prospect.body || prospect.outreach_body,
+                  outreach_body: prospect.body || prospect.outreach_body,
+                }
+              : p
+          )
+        );
+        setSelectedProspect(null);
+      } else {
+        alert(`❌ Email dispatch failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`❌ Network error: ${err.message}`);
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -310,6 +356,23 @@ export default function SalesDashboard() {
                   <option value={50}>Stop at 50 Prospect Profiles</option>
                   <option value={100}>Continuous / Keep Going (100 Max)</option>
                 </select>
+              </div>
+
+              {/* Auto-Send Emails Toggle */}
+              <div className="flex items-center justify-between p-sm bg-background border border-outline-variant rounded-md">
+                <div>
+                  <span className="text-body-sm font-label-md text-on-surface block font-bold">Auto-Send Emails</span>
+                  <span className="text-xs text-on-surface-variant">Dispatch via Gmail automatically</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoSendEmail}
+                    onChange={(e) => setAutoSendEmail(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
               </div>
 
               <button
@@ -561,26 +624,64 @@ export default function SalesDashboard() {
                 </div>
 
                 <div>
-                  <div className="font-bold mb-1">Generated Subject</div>
-                  <div className="p-sm bg-background border border-outline-variant rounded-md font-mono text-xs">
-                    {selectedProspect.outreach_subject || 'Workflow Automation Proposal'}
-                  </div>
+                  <label className="font-bold block mb-1">Generated Subject</label>
+                  <input
+                    type="text"
+                    value={selectedProspect.subject !== undefined ? selectedProspect.subject : (selectedProspect.outreach_subject || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedProspect({
+                        ...selectedProspect,
+                        subject: val,
+                        outreach_subject: val,
+                      });
+                    }}
+                    className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm font-mono text-xs"
+                  />
                 </div>
 
                 <div>
-                  <div className="font-bold mb-1">Generated Body</div>
-                  <div className="p-md bg-background border border-outline-variant rounded-md text-xs whitespace-pre-wrap">
-                    {selectedProspect.outreach_body}
-                  </div>
+                  <label className="font-bold block mb-1">Generated Body</label>
+                  <textarea
+                    rows={10}
+                    value={selectedProspect.body !== undefined ? selectedProspect.body : (selectedProspect.outreach_body || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedProspect({
+                        ...selectedProspect,
+                        body: val,
+                        outreach_body: val,
+                      });
+                    }}
+                    className="w-full p-md bg-background border border-outline rounded-md text-on-surface text-xs font-mono leading-relaxed"
+                  />
                 </div>
               </div>
 
-              <div className="mt-lg flex justify-end">
+              <div className="mt-lg flex justify-end gap-md">
                 <button
+                  type="button"
                   onClick={() => setSelectedProspect(null)}
-                  className="px-md py-sm bg-primary text-on-primary rounded-md text-body-sm font-label-md"
+                  className="px-md py-sm bg-surface-variant hover:bg-outline-variant text-on-surface rounded-md text-body-sm font-label-md"
                 >
                   Close
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendSingleEmail(selectedProspect)}
+                  disabled={sendingEmail}
+                  className="px-md py-sm bg-primary hover:bg-primary/90 text-on-primary rounded-md text-body-sm font-label-md flex items-center gap-2"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <span className="material-symbols-outlined animate-spin text-[18px]">sync</span> Transmitting...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[18px]">send</span> Send Email
+                    </>
+                  )}
                 </button>
               </div>
             </div>

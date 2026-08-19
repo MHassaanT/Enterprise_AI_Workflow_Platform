@@ -31,6 +31,7 @@ class SalesPipelineRunRequest(BaseModel):
     tenant_id: str
     target_domain: Optional[str] = None
     prospect_limit: Optional[int] = 10
+    auto_send_email: Optional[bool] = False
     icp_config: Optional[Dict[str, Any]] = None
     user_id: str = "sales_sdr"
 
@@ -50,6 +51,72 @@ class ICPConfigRequest(BaseModel):
     playbook_strategy: str = ""
 
 
+class SingleEmailSendRequest(BaseModel):
+    tenant_id: str
+    contact_email: str
+    subject: str
+    body: str
+    prospect_id: Optional[str] = None
+
+
+@router.post("/send-email")
+async def send_single_email(
+    request: SingleEmailSendRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    tenant_id = _normalize_uuid(request.tenant_id)
+
+    credentials = {}
+    try:
+        from tool_gateway.credentials_manager import fetch_tool_credentials
+        credentials = await fetch_tool_credentials(request.tenant_id, tool_id="gmail")
+        if not credentials or not credentials.get("access_token"):
+            credentials = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+    except Exception as e:
+        logger.warning(f"Fetch credentials error: {e}")
+
+    try:
+        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
+        gmail_res = await execute_gmail_tool(
+            tool_name="send_email",
+            arguments={"to": request.contact_email, "subject": request.subject, "body": request.body},
+            credentials=credentials
+        )
+
+        if ("Successfully sent" in gmail_res or "Message ID" in gmail_res) and "Error" not in gmail_res:
+            msg_id = "MSG-GMAIL-" + str(hash(request.contact_email))[-8:]
+            if "Message ID: " in gmail_res:
+                msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
+
+            # Update sales_prospects record in DB
+            await execute_db_query("""
+            UPDATE sales_prospects
+            SET deal_stage = 'OUTREACH_SENT',
+                outreach_subject = $1,
+                outreach_body = $2,
+                gmail_message_id = $3,
+                updated_at = NOW()
+            WHERE contact_email = $4 OR id::text = $5;
+            """, [request.subject, request.body, msg_id, request.contact_email, str(request.prospect_id or '')])
+
+            return {
+                "success": True,
+                "message": f"Successfully sent email to {request.contact_email} via Gmail API!",
+                "gmail_message_id": msg_id,
+                "deal_stage": "OUTREACH_SENT"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Gmail dispatch note: {gmail_res}"
+            }
+    except Exception as e:
+        return {"success": False, "error": f"Failed to send email: {str(e)}"}
+
+
 @router.post("/run")
 async def run_sales_agent(
     request: SalesPipelineRunRequest,
@@ -66,6 +133,7 @@ async def run_sales_agent(
         "user_id": request.user_id,
         "prospect_limit": request.prospect_limit or 10,
         "target_domain": request.target_domain,
+        "auto_send_email": request.auto_send_email or False,
         "icp_config": request.icp_config or {},
         "raw_accounts": [],
         "scraped_context": {},

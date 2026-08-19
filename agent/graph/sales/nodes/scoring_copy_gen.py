@@ -59,11 +59,15 @@ Return a JSON object with:
 - "outreach_subject": compelling personalized subject line
 - "outreach_body": personalized cold outreach body
 
+CRITICAL FORMATTING RULES FOR OUTREACH BODY:
+DO NOT include generic bracketed placeholders like "[Your Name]", "[Your Position]", "[Your Company Name]", or "[Your Contact Information]".
+If sender details are not specified, sign off cleanly with "Best regards," or "Sincerely," without any trailing bracketed placeholders or blank bracket tokens.
+
 Respond ONLY with valid JSON.
 """
 
         subject = f"Autonomous Workflow Velocity for {company_name}"
-        body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. Our autonomous AI workflow platform helps enterprise teams scale operations with zero friction.\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,\nAI SDR Team"
+        body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. Our autonomous AI workflow platform helps enterprise teams scale operations with zero friction.\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,"
 
         try:
             response = await llm.ainvoke([

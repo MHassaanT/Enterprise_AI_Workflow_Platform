@@ -23,6 +23,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
     raw_tenant_id = state.get("tenant_id", "")
     tenant_id = _normalize_uuid(raw_tenant_id)
     outreach_batch = state.get("outreach_batch", [])
+    auto_send = state.get("auto_send_email", False)
     logs = list(state.get("logs", []))
 
     if not outreach_batch:
@@ -46,14 +47,15 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
 
-    # Fetch decrypted tenant credentials for Gmail tool
+    # Fetch decrypted tenant credentials for Gmail tool only if auto_send is requested
     credentials = {}
-    try:
-        credentials = await fetch_tool_credentials(raw_tenant_id, tool_id="gmail")
-        if not credentials or not credentials.get("access_token"):
-            credentials = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-    except Exception as e:
-        logger.warning(f"Could not fetch Gmail credentials: {e}")
+    if auto_send:
+        try:
+            credentials = await fetch_tool_credentials(raw_tenant_id, tool_id="gmail")
+            if not credentials or not credentials.get("access_token"):
+                credentials = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+        except Exception as e:
+            logger.warning(f"Could not fetch Gmail credentials: {e}")
 
     processed_prospects: List[Dict[str, Any]] = []
     sent_count = 0
@@ -69,27 +71,30 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         gmail_message_id = "NOT_SENT"
         deal_stage = "DISCOVERED"
 
-        try:
-            gmail_res = await execute_gmail_tool(
-                tool_name="send_email",
-                arguments={"to": contact_email, "subject": subject, "body": body},
-                credentials=credentials
-            )
-            # Only mark as OUTREACH_SENT if Gmail API explicitly returns success
-            if ("Successfully sent" in gmail_res or "Message ID" in gmail_res) and "Error" not in gmail_res:
-                deal_stage = "OUTREACH_SENT"
-                sent_count += 1
-                if "Message ID: " in gmail_res:
-                    msg_id_part = gmail_res.split("Message ID: ")[-1].strip()
-                    gmail_message_id = f"MSG-GMAIL-{msg_id_part}"
+        if auto_send:
+            try:
+                gmail_res = await execute_gmail_tool(
+                    tool_name="send_email",
+                    arguments={"to": contact_email, "subject": subject, "body": body},
+                    credentials=credentials
+                )
+                # Only mark as OUTREACH_SENT if Gmail API explicitly returns success
+                if ("Successfully sent" in gmail_res or "Message ID" in gmail_res) and "Error" not in gmail_res:
+                    deal_stage = "OUTREACH_SENT"
+                    sent_count += 1
+                    if "Message ID: " in gmail_res:
+                        msg_id_part = gmail_res.split("Message ID: ")[-1].strip()
+                        gmail_message_id = f"MSG-GMAIL-{msg_id_part}"
+                    else:
+                        gmail_message_id = "MSG-GMAIL-" + str(hash(contact_email))[-8:]
                 else:
-                    gmail_message_id = "MSG-GMAIL-" + str(hash(contact_email))[-8:]
-            else:
+                    failed_or_skipped_count += 1
+                    logger.info(f"Gmail dispatch note for {contact_email}: {gmail_res}")
+            except Exception as e:
                 failed_or_skipped_count += 1
-                logger.info(f"Gmail dispatch note for {contact_email}: {gmail_res}")
-        except Exception as e:
-            failed_or_skipped_count += 1
-            logger.warning(f"Gmail adapter dispatch exception for {contact_email}: {e}")
+                logger.warning(f"Gmail adapter dispatch exception for {contact_email}: {e}")
+        else:
+            logger.info(f"Auto-send disabled. Draft created for {contact_email} with stage DISCOVERED.")
 
         # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage
         try:
