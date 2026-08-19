@@ -112,7 +112,16 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
                 discarded_count += 1
                 continue
 
+            source = c_res.get("source")
             verify_res = await verify_email(cand_email)
+            if source != "apollo_api":
+                verify_res = {
+                    "is_valid": False,
+                    "deliverability": "UNVERIFIED",
+                    "status": "UNVERIFIED_PATTERN",
+                    "reason": "Unverified synthetic pattern. Requires real Apollo API verified contact to guarantee delivery.",
+                }
+
             cand_contact["deliverability"] = verify_res
             cand_contact["company_name"] = account.get("company_name", domain.split(".")[0].title())
             cand_contact["domain"] = domain
