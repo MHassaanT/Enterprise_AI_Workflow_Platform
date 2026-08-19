@@ -22,7 +22,11 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         verified_contacts = [state["discovered_contact"]]
 
     battlecard = icp.get("battlecard_notes", "Autonomous enterprise AI workflow platform with zero vendor lock-in.")
-    llm = get_llm()
+    llm = None
+    try:
+        llm = get_llm()
+    except Exception as e:
+        logger.warning(f"LLM gateway initialization note: {e}")
 
     outreach_batch: List[Dict[str, Any]] = []
 
@@ -69,22 +73,23 @@ Respond ONLY with valid JSON.
         subject = f"Autonomous Workflow Velocity for {company_name}"
         body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. Our autonomous AI workflow platform helps enterprise teams scale operations with zero friction.\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,"
 
-        try:
-            response = await llm.ainvoke([
-                SystemMessage(content="You generate structured sales SDR JSON output."),
-                HumanMessage(content=prompt)
-            ])
-            content = response.content.strip()
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            parsed = json.loads(content.strip())
-            icp_score = float(parsed.get("icp_score", icp_score))
-            subject = parsed.get("outreach_subject", subject)
-            body = parsed.get("outreach_body", body)
-        except Exception:
-            pass
+        if llm:
+            try:
+                response = await llm.ainvoke([
+                    SystemMessage(content="You generate structured sales SDR JSON output."),
+                    HumanMessage(content=prompt)
+                ])
+                content = response.content.strip()
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                parsed = json.loads(content.strip())
+                icp_score = float(parsed.get("icp_score", icp_score))
+                subject = parsed.get("outreach_subject", subject)
+                body = parsed.get("outreach_body", body)
+            except Exception:
+                pass
 
         quote_details = {
             "tier": "Enterprise",
