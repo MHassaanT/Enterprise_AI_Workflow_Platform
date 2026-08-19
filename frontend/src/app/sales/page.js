@@ -236,7 +236,11 @@ export default function SalesDashboard() {
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
-        setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count || prospectLimit} 100% VALID prospect profiles.`);
+        if ((result.processed_count || 0) > 0) {
+          setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count} 100% VALID deliverable prospect profiles.`);
+        } else {
+          setMessage(`⚠️ Campaign completed safely: 0 unverified synthetic emails saved to protect domain deliverability. Configure an Apollo API Key to source real executive emails.`);
+        }
         const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
         setLatestRunProspects(batch);
         setProspectSubTab('current');

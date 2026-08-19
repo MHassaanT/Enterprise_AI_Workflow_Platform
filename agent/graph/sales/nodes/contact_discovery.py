@@ -2,6 +2,7 @@
 Stage 3: Contact Discovery Node.
 Pulls direct decision-maker contact details (name, title, work email) via Apollo waterfall search.
 """
+import asyncio
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
 from tool_gateway.apollo_mcp import search_apollo_contacts_impl
@@ -24,24 +25,19 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
         except Exception:
             target_titles = [target_titles]
 
-    discovered_contacts: List[Dict[str, Any]] = []
-
-    for account in scraped_accounts:
+    async def _discover_single(account):
         domain = account.get("domain", "enterprise.com")
         company_name = account.get("company_name", domain.split(".")[0].title())
 
-        # Execute Apollo Contact Discovery Search
         contact_res = await search_apollo_contacts_impl(
             tenant_id=tenant_id,
             domain=domain,
             target_titles=target_titles
         )
 
+        source = contact_res.get("source", "unknown")
         contact = contact_res.get("contact", {})
         if not contact or not contact.get("contact_email"):
-            # Provide structured contact metadata if fallback required
-            formatted_name = f"Executive ({company_name})"
-            email_prefix = company_name.lower().replace(" ", "").replace("-", "")
             contact = {
                 "contact_name": contact.get("contact_name") or f"Head of Operations",
                 "contact_title": contact.get("contact_title") or target_titles[0],
@@ -49,17 +45,26 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
                 "company_name": company_name,
                 "domain": domain,
                 "apollo_person_id": f"APOLLO-{domain.split('.')[0].upper()}",
+                "source": source,
             }
         else:
             contact["company_name"] = company_name
             contact["domain"] = domain
+            contact["source"] = contact.get("source") or source
 
-        discovered_contacts.append(contact)
+        return contact
+
+    # Parallel contact discovery
+    accounts_to_process = scraped_accounts[:10]
+    if accounts_to_process:
+        discovered_contacts = list(await asyncio.gather(*[_discover_single(acc) for acc in accounts_to_process]))
+    else:
+        discovered_contacts = []
 
     logs.append({
         "stage": "Stage 3: Contact Discovery",
         "status": "COMPLETED",
-        "details": f"Discovered {len(discovered_contacts)} decision-maker contacts via Apollo API waterfall search."
+        "details": f"Discovered {len(discovered_contacts)} decision-maker contacts via fast parallel Apollo search."
     })
 
     return {

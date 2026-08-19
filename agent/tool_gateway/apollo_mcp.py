@@ -257,6 +257,7 @@ async def search_apollo_contacts_impl(
                                 "contact_title": found_person.get("title") or (target_titles[0] if target_titles else "Executive"),
                                 "company_name": found_person.get("organization", {}).get("name") or domain.split(".")[0].title(),
                                 "domain": domain,
+                                "source": "apollo_api",
                             }
                         }
         except Exception as e:
@@ -287,5 +288,6 @@ async def search_apollo_contacts_impl(
             "contact_title": title,
             "company_name": domain.split(".")[0].title(),
             "domain": domain,
+            "source": "apollo_domain_match",
         }
     }

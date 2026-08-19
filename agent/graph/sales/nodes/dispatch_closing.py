@@ -27,11 +27,13 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
 
     if not outreach_batch:
-        # Single prospect fallback compatibility
+        # Check if single verified contact exists
         contact = state.get("discovered_contact") or {}
-        outreach = state.get("generated_outreach") or {}
         deliverability = state.get("deliverability_result") or {}
-        if contact:
+        outreach = state.get("generated_outreach") or {}
+        
+        # Only fallback if the single contact has a valid deliverability check or real Apollo API source
+        if contact and deliverability.get("is_valid", False):
             outreach_batch = [{
                 "company_name": contact.get("company_name", "Enterprise Client"),
                 "domain": contact.get("domain", "enterprise.com"),
@@ -46,6 +48,23 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "quote_details": state.get("quote_details", {}),
                 "scraped_text": "",
             }]
+        else:
+            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified synthetic pattern emails were discarded. Set an Apollo API key to discover real decision-maker emails."
+            logs.append({
+                "stage": "Stage 6: Dispatch & Closing",
+                "status": "COMPLETED",
+                "details": log_detail
+            })
+            return {
+                "processed_count": 0,
+                "outreach_sent": False,
+                "gmail_message_id": None,
+                "discovered_contact": None,
+                "icp_score": 0,
+                "deal_stage": "NO_VERIFIED_CONTACTS",
+                "answer": "AI Sales SDR Agent complete: 0 unverified synthetic contacts saved. Please configure an Apollo Master API Key to source 100% deliverable decision-maker emails.",
+                "logs": logs,
+            }
 
     # Fetch decrypted tenant credentials for Gmail tool only if auto_send is requested
     credentials = {}

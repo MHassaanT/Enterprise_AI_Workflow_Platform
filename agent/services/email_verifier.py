@@ -93,10 +93,10 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
         if not mx_hosts:
             return {"tested": False, "exists": True, "reason": "No MX hosts resolved for SMTP check."}
 
-        for mx_host in mx_hosts[:2]:
+        for mx_host in mx_hosts[:1]:
             def _rcpt_handshake():
                 try:
-                    server = smtplib.SMTP(timeout=4)
+                    server = smtplib.SMTP(timeout=1.5)
                     server.connect(mx_host, 25)
                     server.helo("verify.ai-platform.com")
                     server.mail("verifier@ai-platform.com")
@@ -111,7 +111,7 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
                 return {"tested": True, "exists": True, "code": code, "reason": "SMTP Mailbox verified (250 OK)."}
             elif code in (550, 551, 552, 553, 501, 504):
                 lower_resp = resp_text.lower()
-                if any(term in lower_resp for term in ["5.1.1", "5.1.0", "does not exist", "user unknown", "no such user", "address rejected", "invalid recipient", "recipient rejected", "unknown user", "nosuchuser"]):
+                if any(term in lower_resp for term in ["5.1.1", "5.1.0", "does not exist", "user unknown", "no such user", "address rejected", "recipient rejected", "unknown user", "nosuchuser"]):
                     return {"tested": True, "exists": False, "code": code, "reason": f"Mailbox does not exist on target SMTP server ({code}: {resp_text})."}
                 elif any(term in lower_resp for term in ["spamhaus", "blocked", "5.7.1", "denied", "blacklist", "refused", "service unavailable"]):
                     return {"tested": False, "exists": True, "code": code, "reason": f"SMTP host IP block ({resp_text}). Fallback to MX record check."}
@@ -124,9 +124,10 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
         return {"tested": False, "exists": True, "reason": str(e)}
 
 
-async def verify_email(email: str) -> Dict[str, Any]:
+async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
     """
     Performs full deliverability verification on an email address.
+    Strictly flags synthetic pattern guesses (source != 'apollo_api') as invalid unless SMTP explicitly returns 250 OK.
     """
     email_clean = email.strip().lower()
     
@@ -216,7 +217,22 @@ async def verify_email(email: str) -> Dict[str, Any]:
             "reason": smtp_res.get("reason", "Mailbox does not exist on target SMTP server."),
         }
 
-    # 7. Summary Scoring & Status Determination
+    # 7. Strict Verification for Synthetic Pattern Guesses
+    if source != "apollo_api" and smtp_res.get("code") != 250:
+        return {
+            "email": email_clean,
+            "is_valid": False,
+            "deliverability": "UNVERIFIED",
+            "status": "UNVERIFIED_SYNTHETIC",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": False,
+            "is_free_provider": is_free,
+            "reason": "Synthetic pattern email guess. Requires real Apollo API key or direct SMTP 250 handshake to guarantee deliverability.",
+        }
+
+    # 8. Summary Scoring & Status Determination
     status = "VALID"
     deliverability = "HIGH"
     reason = smtp_res.get("reason", "Email passed syntax, MX record, and deliverability verification.")
