@@ -462,6 +462,8 @@ export default function SalesDashboard() {
                                 p.deliverability_status === 'VALID' ? 'bg-green-900/40 text-green-300' : 'bg-yellow-900/40 text-yellow-300'
                               }`}>
                                 {p.deliverability_status || 'VALID'}
+                              </span>
+                            </td>
                             <td className="p-sm font-bold text-primary">{p.icp_score || 90}/100</td>
                             <td className="p-sm">
                               <span className={`px-2 py-0.5 rounded text-xs font-bold ${
