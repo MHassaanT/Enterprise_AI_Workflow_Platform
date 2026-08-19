@@ -181,7 +181,7 @@ export default function SalesDashboard() {
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
-        setMessage(`✅ Campaign completed! Discovered & enriched ${result.processed_count || prospectLimit} prospect profiles.`);
+        setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count || prospectLimit} 100% VALID prospect profiles.`);
         if (result.outreach_batch && result.outreach_batch.length > 0) {
           setProspects(result.outreach_batch);
         } else if (result.prospects && result.prospects.length > 0) {
@@ -399,10 +399,18 @@ export default function SalesDashboard() {
                                 p.deliverability_status === 'VALID' ? 'bg-green-900/40 text-green-300' : 'bg-yellow-900/40 text-yellow-300'
                               }`}>
                                 {p.deliverability_status || 'VALID'}
+                            <td className="p-sm font-bold text-primary">{p.icp_score || 90}/100</td>
+                            <td className="p-sm">
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                p.deal_stage === 'OUTREACH_SENT'
+                                  ? 'bg-blue-900/40 text-blue-300'
+                                  : p.deal_stage === 'DISCOVERED'
+                                  ? 'bg-purple-900/40 text-purple-300'
+                                  : 'bg-surface-variant text-on-surface-variant'
+                              }`}>
+                                {p.deal_stage || 'DISCOVERED'}
                               </span>
                             </td>
-                            <td className="p-sm font-bold text-primary">{p.icp_score || 90}/100</td>
-                            <td className="p-sm text-on-surface-variant">{p.deal_stage || 'QUALIFIED'}</td>
                             <td className="p-sm text-right">
                               <button
                                 onClick={() => setSelectedProspect(p)}

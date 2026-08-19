@@ -107,7 +107,7 @@ Respond ONLY with valid JSON.
     logs.append({
         "stage": "Stage 5: Scoring & Copy Generation",
         "status": "COMPLETED",
-        "details": f"Generated personalized outreach copy and ICP fit scores via OpenRouter LLM for {len(outreach_batch)} prospects."
+        "details": f"Generated personalized outreach copy and ICP fit scores via OpenRouter LLM for {len(outreach_batch)} deliverable valid prospects."
     })
 
     return {

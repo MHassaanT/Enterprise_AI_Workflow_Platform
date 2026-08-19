@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
 from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
+from tool_gateway.credentials_manager import fetch_tool_credentials
 from services.db_client import execute_db_query
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,18 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
 
-    credentials = {"access_token": "tenant_oauth_token_placeholder"}
+    # Fetch decrypted tenant credentials for Gmail tool
+    credentials = {}
+    try:
+        credentials = await fetch_tool_credentials(raw_tenant_id, tool_id="gmail")
+        if not credentials or not credentials.get("access_token"):
+            credentials = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+    except Exception as e:
+        logger.warning(f"Could not fetch Gmail credentials: {e}")
+
     processed_prospects: List[Dict[str, Any]] = []
+    sent_count = 0
+    failed_or_skipped_count = 0
 
     for item in outreach_batch:
         contact_email = item.get("contact_email")
@@ -54,21 +65,33 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         body = item.get("body", "Connecting regarding autonomous workflows.")
         company_name = item.get("company_name", "Enterprise Client")
         domain = item.get("domain", "enterprise.com")
-        deal_stage = "OUTREACH_SENT"
 
-        gmail_message_id = "MSG-QUEUED-" + str(hash(contact_email))[-8:]
+        gmail_message_id = "NOT_SENT"
+        deal_stage = "DISCOVERED"
+
         try:
             gmail_res = await execute_gmail_tool(
                 tool_name="send_email",
                 arguments={"to": contact_email, "subject": subject, "body": body},
                 credentials=credentials
             )
-            if "Successfully sent" in gmail_res or "Message ID" in gmail_res:
-                gmail_message_id = "MSG-GMAIL-" + str(hash(contact_email))[-8:]
+            # Only mark as OUTREACH_SENT if Gmail API explicitly returns success
+            if ("Successfully sent" in gmail_res or "Message ID" in gmail_res) and "Error" not in gmail_res:
+                deal_stage = "OUTREACH_SENT"
+                sent_count += 1
+                if "Message ID: " in gmail_res:
+                    msg_id_part = gmail_res.split("Message ID: ")[-1].strip()
+                    gmail_message_id = f"MSG-GMAIL-{msg_id_part}"
+                else:
+                    gmail_message_id = "MSG-GMAIL-" + str(hash(contact_email))[-8:]
+            else:
+                failed_or_skipped_count += 1
+                logger.info(f"Gmail dispatch note for {contact_email}: {gmail_res}")
         except Exception as e:
-            logger.warning(f"Gmail adapter dispatch note: {e}")
+            failed_or_skipped_count += 1
+            logger.warning(f"Gmail adapter dispatch exception for {contact_email}: {e}")
 
-        # Persist Prospect & Deal into PostgreSQL Database
+        # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage
         try:
             query = """
             INSERT INTO sales_prospects (
@@ -105,10 +128,15 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         item["deal_stage"] = deal_stage
         processed_prospects.append(item)
 
+    if sent_count > 0:
+        log_detail = f"Dispatched outreach to {sent_count}/{len(processed_prospects)} prospects via Gmail API. Stage: OUTREACH_SENT."
+    else:
+        log_detail = f"Processed {len(processed_prospects)} prospects. Drafted outreach saved to CRM with stage DISCOVERED (Gmail OAuth not connected or API call unauthenticated)."
+
     logs.append({
         "stage": "Stage 6: Dispatch & Closing",
         "status": "COMPLETED",
-        "details": f"Dispatched outreach to {len(processed_prospects)} prospects via Gmail. All records logged to CRM database."
+        "details": log_detail
     })
 
     first_contact = processed_prospects[0] if processed_prospects else {}
@@ -116,15 +144,16 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                      f"• Primary Contact: {first_contact.get('contact_name')} ({first_contact.get('company_name')})\n" \
                      f"• Contact Email: {first_contact.get('contact_email')}\n" \
                      f"• ICP Score: {first_contact.get('icp_score')}/100\n" \
-                     f"• Deal Stage: {first_contact.get('deal_stage')}"
+                     f"• Deal Stage: {first_contact.get('deal_stage')}\n" \
+                     f"• Gmail Sent: {sent_count}/{len(processed_prospects)} messages successfully transmitted"
 
     return {
         "processed_count": len(processed_prospects),
-        "outreach_sent": True,
+        "outreach_sent": sent_count > 0,
         "gmail_message_id": first_contact.get("gmail_message_id"),
         "discovered_contact": first_contact,
         "icp_score": first_contact.get("icp_score", 90.0),
-        "deal_stage": "OUTREACH_SENT",
+        "deal_stage": first_contact.get("deal_stage", "DISCOVERED"),
         "answer": answer_summary,
         "logs": logs,
     }
