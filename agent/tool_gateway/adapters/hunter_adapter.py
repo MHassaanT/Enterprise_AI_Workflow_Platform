@@ -32,6 +32,8 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
         or credentials.get("token")
         or credentials.get("access_token")
     )
+    action = arguments.get("action") or tool_name
+    norm_action = action.lower().replace("-", "_").replace(" ", "_")
 
     logger.info(f"[HUNTER ADAPTER] Executing tool '{tool_name}' (norm_action='{norm_action}') with credentials present={bool(api_key)}")
     if api_key:
