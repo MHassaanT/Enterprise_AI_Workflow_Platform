@@ -224,4 +224,100 @@ router.get(['/hunter-key', '/apollo-key'], async (req, res) => {
   }
 });
 
+// POST /api/v1/sales/check-replies
+router.post('/check-replies', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/check-replies`,
+      { ...req.body, tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN }, timeout: 30000 }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error checking email replies:', err.message);
+    return res.status(500).json({ error: 'Failed to check email replies.' });
+  }
+});
+
+// POST /api/v1/sales/send-reply
+router.post('/send-reply', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/send-reply`,
+      { ...req.body, tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error sending AI reply:', err.message);
+    return res.status(500).json({ error: 'Failed to send AI reply.' });
+  }
+});
+
+// POST /api/v1/sales/proposals/draft
+router.post('/proposals/draft', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/proposals/draft`,
+      { ...req.body, tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN }, timeout: 30000 }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error drafting sales proposal:', err.message);
+    return res.status(500).json({ error: 'Failed to draft sales proposal.' });
+  }
+});
+
+// POST /api/v1/sales/proposals/send
+router.post('/proposals/send', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/proposals/send`,
+      { ...req.body, tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error sending sales proposal:', err.message);
+    return res.status(500).json({ error: 'Failed to send sales proposal.' });
+  }
+});
+
+// GET /api/v1/sales/analytics
+router.get('/analytics', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.get(
+      `${AGENT_URL}/agent/sales/analytics/${tenantId}`,
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error fetching sales analytics:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch sales analytics.' });
+  }
+});
+
+// POST /api/v1/sales/deal/confirm-sale
+router.post('/deal/confirm-sale', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/deal/confirm-sale`,
+      { ...req.body, tenant_id: tenantId },
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error confirming sale & notifying finance agent:', err.message);
+    return res.status(500).json({ error: 'Failed to confirm sale & notify finance agent.' });
+  }
+});
+
 module.exports = router;
+

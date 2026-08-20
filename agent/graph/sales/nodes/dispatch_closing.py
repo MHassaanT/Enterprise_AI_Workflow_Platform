@@ -133,7 +133,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                   icp_score = $5, deliverability_status = $6, scraped_context = $7,
                   outreach_subject = $8, outreach_body = $9, deal_stage = $10,
                   quote_details = $11::jsonb, hunter_person_id = $12, apollo_person_id = $13,
-                  gmail_message_id = $14, updated_at = NOW()
+                  gmail_message_id = $14, deal_value = COALESCE(deal_value, 50000.00), updated_at = NOW()
                 WHERE id = $15;
                 """
                 await execute_db_query(update_query, [
@@ -158,9 +158,9 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 INSERT INTO sales_prospects (
                   tenant_id, company_name, domain, contact_name, contact_email, contact_title,
                   icp_score, deliverability_status, scraped_context, outreach_subject, outreach_body,
-                  deal_stage, quote_details, hunter_person_id, apollo_person_id, gmail_message_id, created_at, updated_at
+                  deal_stage, quote_details, hunter_person_id, apollo_person_id, gmail_message_id, deal_value, created_at, updated_at
                 ) VALUES (
-                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, NOW(), NOW()
+                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, 50000.00, NOW(), NOW()
                 );
                 """
                 await execute_db_query(query, [
