@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
-import { getAuthHeaders } from '@/lib/api';
+import AuthGuard from '../components/AuthGuard';
+import { getAuthHeader } from '@/lib/api';
 
 export default function ProcurementPage() {
   const [activeTab, setActiveTab] = useState('intake');
@@ -33,7 +33,7 @@ export default function ProcurementPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/v1/procurement/requests', {
-        headers: getAuthHeaders()
+        headers: getAuthHeader()
       });
       const data = await res.json();
       if (data.success) {
@@ -54,7 +54,7 @@ export default function ProcurementPage() {
     if (!id) return;
     try {
       const res = await fetch(`/api/v1/procurement/requests/${id}`, {
-        headers: getAuthHeaders()
+        headers: getAuthHeader()
       });
       const data = await res.json();
       if (data.success) {
@@ -90,7 +90,7 @@ export default function ProcurementPage() {
         }
       }
 
-      const headers = getAuthHeaders();
+      const headers = getAuthHeader();
       delete headers['Content-Type']; // Let browser set boundary
 
       const res = await fetch('/api/v1/procurement/requests', {
@@ -129,7 +129,7 @@ export default function ProcurementPage() {
       const res = await fetch(`/api/v1/procurement/requests/${selectedReqId}/subagent/${stageName}`, {
         method: 'POST',
         headers: {
-          ...getAuthHeaders(),
+          ...getAuthHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ stage: stageName })
@@ -164,7 +164,7 @@ export default function ProcurementPage() {
       const res = await fetch(`/api/v1/procurement/requests/${selectedReqId}/select-vendor`, {
         method: 'POST',
         headers: {
-          ...getAuthHeaders(),
+          ...getAuthHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -207,10 +207,10 @@ export default function ProcurementPage() {
   const completedCount = requests.filter(r => r.current_stage === 'COMPLETED').length;
 
   return (
-    <div className="flex h-screen bg-background text-on-surface">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title="AI Procurement Agent Hub" />
+    <AuthGuard>
+      <div className="flex h-screen bg-background text-on-surface">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-hidden">
         
         <main className="flex-1 overflow-y-auto p-md md:p-lg space-y-lg">
           {/* Header Banner & Supervisor Badge */}
@@ -947,6 +947,7 @@ export default function ProcurementPage() {
           )}
         </main>
       </div>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }
