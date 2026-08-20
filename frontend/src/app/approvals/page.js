@@ -65,7 +65,7 @@ export default function UniversalApprovalsDashboard() {
               </div>
               <div>
                 <h1 className="font-headline-sm text-headline-sm text-on-surface m-0 leading-tight">Universal Human Approvals Dashboard</h1>
-                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Human-in-the-loop Gatekeeper for Finance, Procurement & Sales Multi-Agents</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Human-in-the-loop Gatekeeper for Finance & Sales Multi-Agents</p>
               </div>
             </div>
           </div>

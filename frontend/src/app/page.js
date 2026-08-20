@@ -176,20 +176,6 @@ export default function TenantControlPanelPage() {
                 </Link>
               </div>
 
-              {/* Procurement Agent Card */}
-              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-secondary">shopping_cart</span>
-                  <h4 className="font-body-md text-body-md font-medium text-on-surface">Procurement Agent</h4>
-                </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  Vendor Bids, RAG Compliance, Budget Verification & Purchase Orders.
-                </p>
-                <Link href="/procurement" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
-                  Open Procurement Hub ➔
-                </Link>
-              </div>
-
               {/* Sales Agent Card */}
               <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
                 <div className="flex items-center gap-3 mb-2">
@@ -211,7 +197,7 @@ export default function TenantControlPanelPage() {
                   <h4 className="font-body-md text-body-md font-medium text-on-surface">Universal Approvals Hub</h4>
                 </div>
                 <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  Review and authorize human-in-the-loop actions for Finance, Procurement, and Sales.
+                  Review and authorize human-in-the-loop actions for Finance and Sales.
                 </p>
                 <Link href="/approvals" className="inline-block w-full text-center px-md py-2 bg-error-container/20 border border-error/30 rounded-md text-error hover:bg-error-container/40 transition-colors font-label-md text-label-md">
                   Open Approvals Hub ➔

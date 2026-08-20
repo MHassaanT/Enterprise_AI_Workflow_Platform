@@ -7,7 +7,6 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from graph.supervisor.state import SupervisorState
 from graph.finance.graph import finance_head_graph
-from graph.procurement.graph import procurement_head_graph
 from graph.sales.graph import sales_head_graph
 
 
@@ -44,39 +43,6 @@ async def route_finance_node(state: SupervisorState) -> Dict[str, Any]:
     return {
         "result": fin_res,
         "answer": fin_res.get("answer", "Finance operation completed."),
-        "route_history": history
-    }
-
-
-async def route_procurement_node(state: SupervisorState) -> Dict[str, Any]:
-    tenant_id = state.get("tenant_id", "default")
-    conv_id = state.get("conversation_id", "conv-sup")
-    payload = state.get("payload") or {}
-    
-    proc_input = {
-        "tenant_id": tenant_id,
-        "conversation_id": f"{conv_id}-proc",
-        "user_id": "supervisor_graph",
-        "subagent_target": payload.get("subagent_target", "vendor_bid"),
-        "bid_data": payload.get("bid_data"),
-        "department": payload.get("department", "Engineering"),
-        "rag_policy_context": [],
-        "citations": [],
-        "compliance_status": None,
-        "budget_clearance_status": None,
-        "budget_clearance_token": None,
-        "approval_id": payload.get("approval_id"),
-        "approval_status": payload.get("approval_status"),
-        "po_record": None,
-        "answer": "",
-        "audit_logged": False,
-    }
-    
-    proc_res = await procurement_head_graph.ainvoke(proc_input, config={"configurable": {"thread_id": f"{conv_id}-proc"}})
-    history = state.get("route_history", []) + ["Supervisor -> ProcurementHead"]
-    return {
-        "result": proc_res,
-        "answer": proc_res.get("answer", "Procurement operation completed."),
         "route_history": history
     }
 
@@ -118,9 +84,7 @@ async def route_sales_node(state: SupervisorState) -> Dict[str, Any]:
 
 def route_domain(state: SupervisorState) -> str:
     domain = state.get("target_domain", "finance").lower()
-    if domain == "procurement":
-        return "procurement"
-    elif domain == "sales":
+    if domain == "sales":
         return "sales"
     return "finance"
 
@@ -129,7 +93,6 @@ def build_supervisor_graph():
     builder = StateGraph(SupervisorState)
 
     builder.add_node("finance", route_finance_node)
-    builder.add_node("procurement", route_procurement_node)
     builder.add_node("sales", route_sales_node)
 
     builder.add_conditional_edges(
@@ -137,14 +100,13 @@ def build_supervisor_graph():
         route_domain,
         {
             "finance": "finance",
-            "procurement": "procurement",
             "sales": "sales",
         }
     )
 
     builder.add_edge("finance", END)
-    builder.add_edge("procurement", END)
     builder.add_edge("sales", END)
+
 
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)

@@ -12,7 +12,6 @@ from tool_gateway.tools.check_order_status import check_order_status_impl
 from tool_gateway.tools.escalate_to_human import escalate_to_human_impl
 
 from tool_gateway.finance_mcp import execute_payment_impl, fetch_po_details_impl, update_general_ledger_impl, query_department_budget_impl
-from tool_gateway.procurement_mcp import create_purchase_order_impl, record_vendor_bid_impl
 from tool_gateway.apollo_mcp import search_apollo_accounts_impl, search_apollo_contacts_impl
 from tool_gateway.hunter_mcp import search_hunter_accounts_impl, search_hunter_contacts_impl
 from services.email_verifier import verify_email, verify_email_with_hunter
@@ -45,12 +44,6 @@ async def execute_payment(invoice_number: str, po_number: str, amount: float, ve
     res = await execute_payment_impl(invoice_number, po_number, amount, vendor_email, tenant_id)
     return str(res)
 
-
-@mcp.tool()
-async def create_purchase_order(vendor_name: str, vendor_email: str, amount: float, tenant_id: str) -> str:
-    """Creates a Purchase Order (PO) in ERP system."""
-    res = await create_purchase_order_impl(vendor_name, vendor_email, amount, [], tenant_id)
-    return str(res)
 
 
 @mcp.tool()

@@ -20,7 +20,7 @@ class AgentConfig(BaseModel):
 
 class AgentNode(BaseNode):
     type: Literal["AGENT"] = "AGENT"
-    moduleType: Literal["CustomerSupport", "WorkflowBuilder", "HR", "Finance", "Sales", "Procurement", "SoftwareEngineer", "KnowledgeBase", "Analytics"]
+    moduleType: Literal["CustomerSupport", "WorkflowBuilder", "HR", "Finance", "Sales", "SoftwareEngineer", "KnowledgeBase", "Analytics"]
     config: Optional[AgentConfig] = None
     inputMapping: Dict[str, str] = Field(default_factory=dict)
     outputVariable: str
