@@ -400,9 +400,39 @@ export default function SalesDashboard() {
     }
   };
 
-  const repliesProspects = prospects.filter((p) => p.has_reply || p.reply_content || p.deal_stage === 'REPLIED' || p.deal_stage === 'PROPOSAL_REQUESTED');
-  const proposalsProspects = prospects.filter((p) => p.proposal_status === 'DRAFTED' || p.proposal_status === 'SENT' || p.proposal_details || p.deal_stage === 'PROPOSAL_DRAFTED' || p.deal_stage === 'PROPOSAL_SENT');
-  const closedSalesProspects = prospects.filter((p) => p.deal_stage === 'CLOSED_WON' || p.sales_report);
+  const hasValidJsonData = (val) => {
+    if (!val) return false;
+    if (typeof val === 'string') {
+      if (val === '{}' || val === '[]' || val.trim() === '') return false;
+      try {
+        const parsed = JSON.parse(val);
+        return parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0;
+      } catch (e) {
+        return false;
+      }
+    }
+    if (typeof val === 'object') {
+      return Object.keys(val).length > 0;
+    }
+    return false;
+  };
+
+  const repliesProspects = prospects.filter((p) => 
+    p.has_reply === true || 
+    (p.reply_content && p.reply_content.trim() !== '') || 
+    p.deal_stage === 'REPLIED' || 
+    p.deal_stage === 'PROPOSAL_REQUESTED'
+  );
+  const proposalsProspects = prospects.filter((p) => 
+    (p.proposal_status && p.proposal_status !== 'NONE') || 
+    p.deal_stage === 'PROPOSAL_DRAFTED' || 
+    p.deal_stage === 'PROPOSAL_SENT' || 
+    hasValidJsonData(p.proposal_details)
+  );
+  const closedSalesProspects = prospects.filter((p) => 
+    p.deal_stage === 'CLOSED_WON' || 
+    hasValidJsonData(p.sales_report)
+  );
 
   return (
     <AuthGuard>
