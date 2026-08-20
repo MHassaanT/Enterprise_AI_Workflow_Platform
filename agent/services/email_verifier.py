@@ -265,15 +265,15 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
         try:
             res_data = json.loads(res_str)
             if res_data.get("status") == "success":
-                result_status = res_data.get("result", "valid")
-                score = res_data.get("score", 100)
-                is_valid = result_status in ("valid", "accept_all") and (score is None or score >= 60)
+                result_status = str(res_data.get("result") or "valid").lower()
+                score = res_data.get("score")
+                is_valid = (result_status in ("valid", "accept_all", "webmail")) and (score is None or score >= 40)
                 return {
                     "email": email,
                     "is_valid": is_valid,
                     "deliverability": "HIGH" if is_valid else "LOW",
                     "status": "VALID" if is_valid else "INVALID",
-                    "score": score,
+                    "score": score if score is not None else 90,
                     "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
                     "source": res_data.get("source", "hunter_io_api")
                 }

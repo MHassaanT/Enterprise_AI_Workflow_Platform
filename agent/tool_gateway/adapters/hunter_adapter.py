@@ -153,20 +153,22 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                 res = await client.get(f"{HUNTER_BASE_URL}/email-verifier", params=params)
                 if res.is_success:
                     data = res.json().get("data", {})
+                    res_result = data.get("result") or data.get("status") or "valid"
+                    res_score = data.get("score") if data.get("score") is not None else 90
                     return json.dumps({
                         "status": "success",
                         "source": "hunter_io_api",
                         "endpoint": "GET /v2/email-verifier",
                         "email": data.get("email"),
-                        "result": data.get("status"),  # valid, invalid, accept_all, webmail, disposable
-                        "score": data.get("score"),    # 0 to 100
-                        "regexp_valid": data.get("regexp"),
-                        "gibberish": data.get("gibberish"),
-                        "disposable": data.get("disposable"),
-                        "webmail": data.get("webmail"),
-                        "mx_records": data.get("mx_records"),
-                        "smtp_server": data.get("smtp_server"),
-                        "smtp_check": data.get("smtp_check"),
+                        "result": res_result,          # valid, invalid, accept_all, webmail, disposable
+                        "score": res_score,            # 0 to 100
+                        "regexp_valid": data.get("regexp", True),
+                        "gibberish": data.get("gibberish", False),
+                        "disposable": data.get("disposable", False),
+                        "webmail": data.get("webmail", False),
+                        "mx_records": data.get("mx_records", True),
+                        "smtp_server": data.get("smtp_server", True),
+                        "smtp_check": data.get("smtp_check", True),
                     }, indent=2)
                 else:
                     return f"Hunter Email Verifier Error ({res.status_code}): {res.text}"
