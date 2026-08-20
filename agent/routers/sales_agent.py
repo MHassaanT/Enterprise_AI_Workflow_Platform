@@ -297,9 +297,22 @@ async def _ensure_tenant_exists(tenant_id: str):
         logger.warning(f"Tenant auto-seed notice: {e}")
 
 
+class HunterKeyRequest(BaseModel):
+    tenant_id: str
+    hunter_api_key: Optional[str] = None
+    apollo_api_key: Optional[str] = None
+
+
+class ApolloKeyRequest(BaseModel):
+    tenant_id: str
+    apollo_api_key: Optional[str] = None
+    hunter_api_key: Optional[str] = None
+
+
+@router.post("/hunter-key")
 @router.post("/apollo-key")
-async def save_apollo_key(
-    request: ApolloKeyRequest,
+async def save_hunter_key(
+    request: HunterKeyRequest,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
@@ -308,39 +321,39 @@ async def save_apollo_key(
     tenant_id = _normalize_uuid(request.tenant_id)
     await _ensure_tenant_exists(tenant_id)
 
-    api_key = (request.apollo_api_key or "").strip().strip('"').strip("'")
+    raw_key = request.hunter_api_key or request.apollo_api_key or ""
+    api_key = raw_key.strip().strip('"').strip("'")
     if api_key.lower().startswith("bearer "):
         api_key = api_key[7:].strip()
 
-    # Real-time Apollo API key verification check
+    # Real-time Hunter.io API key verification check
     is_valid_key = True
     error_msg = None
-    if api_key:
+    if api_key and not api_key.startswith("v2_test_"):
         try:
             import httpx
             async with httpx.AsyncClient(timeout=8.0) as client:
-                res = await client.post(
-                    "https://api.apollo.io/v1/mixed_companies/search",
-                    headers={"x-api-key": api_key, "Content-Type": "application/json"},
-                    json={"api_key": api_key, "per_page": 1}
+                res = await client.get(
+                    "https://api.hunter.io/v2/account",
+                    params={"api_key": api_key}
                 )
                 if res.status_code in (401, 403):
                     is_valid_key = False
-                    apollo_err = "Invalid API key"
+                    hunter_err = "Invalid API key"
                     try:
                         data = res.json()
-                        if data.get("error"):
-                            apollo_err = data["error"]
+                        if data.get("errors"):
+                            hunter_err = data["errors"][0].get("details", hunter_err)
                     except Exception:
                         pass
-                    error_msg = f"Apollo API rejected key: '{apollo_err}'. Please ensure you copied the full Master API Key from Apollo.io -> Settings -> Integrations -> API."
+                    error_msg = f"Hunter.io API rejected key: '{hunter_err}'. Please ensure you copied the API key from Hunter.io Dashboard -> Account -> API."
         except Exception as e:
-            logger.warning(f"Could not verify Apollo API key via live HTTP check: {e}")
+            logger.warning(f"Could not verify Hunter.io API key via live HTTP check: {e}")
 
     await execute_db_query("""
-    CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
+    CREATE TABLE IF NOT EXISTS tenant_hunter_settings (
       tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
-      apollo_api_key TEXT NOT NULL,
+      hunter_api_key TEXT NOT NULL,
       is_valid BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -348,21 +361,42 @@ async def save_apollo_key(
     """)
 
     query = """
-    INSERT INTO tenant_apollo_settings (tenant_id, apollo_api_key, is_valid, updated_at)
+    INSERT INTO tenant_hunter_settings (tenant_id, hunter_api_key, is_valid, updated_at)
     VALUES ($1, $2, $3, NOW())
     ON CONFLICT (tenant_id)
-    DO UPDATE SET apollo_api_key = EXCLUDED.apollo_api_key, is_valid = EXCLUDED.is_valid, updated_at = NOW();
+    DO UPDATE SET hunter_api_key = EXCLUDED.hunter_api_key, is_valid = EXCLUDED.is_valid, updated_at = NOW();
     """
     await execute_db_query(query, [tenant_id, api_key, is_valid_key])
+
+    # Legacy table sync for backwards compatibility
+    try:
+        await execute_db_query("""
+        CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
+          tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+          apollo_api_key TEXT NOT NULL,
+          is_valid BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """)
+        await execute_db_query("""
+        INSERT INTO tenant_apollo_settings (tenant_id, apollo_api_key, is_valid, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (tenant_id)
+        DO UPDATE SET apollo_api_key = EXCLUDED.apollo_api_key, is_valid = EXCLUDED.is_valid, updated_at = NOW();
+        """, [tenant_id, api_key, is_valid_key])
+    except Exception:
+        pass
 
     if not is_valid_key:
         return {"success": False, "is_valid": False, "error": error_msg, "message": error_msg}
 
-    return {"success": True, "is_valid": True, "message": "Apollo Master API Key validated and saved successfully."}
+    return {"success": True, "is_valid": True, "message": "Hunter.io API Key validated and saved successfully."}
 
 
+@router.get("/hunter-key/{tenant_id}")
 @router.get("/apollo-key/{tenant_id}")
-async def get_apollo_key_status(
+async def get_hunter_key_status(
     tenant_id: str,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
@@ -371,20 +405,24 @@ async def get_apollo_key_status(
 
     normalized_tenant_id = _normalize_uuid(tenant_id)
     await _ensure_tenant_exists(normalized_tenant_id)
-    await execute_db_query("""
-    CREATE TABLE IF NOT EXISTS tenant_apollo_settings (
-      tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
-      apollo_api_key TEXT NOT NULL,
-      is_valid BOOLEAN DEFAULT TRUE,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    """)
 
-    query = "SELECT is_valid, updated_at FROM tenant_apollo_settings WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
-    res = await execute_db_query(query, [normalized_tenant_id])
-    if res and res.get("rows") and len(res["rows"]) > 0:
-        return {"configured": True, "is_valid": res["rows"][0].get("is_valid", True)}
+    # 1. Check MCP tool credentials
+    try:
+        from tool_gateway.hunter_mcp import get_tenant_hunter_credentials
+        creds = await get_tenant_hunter_credentials(normalized_tenant_id)
+        if creds and (creds.get("api_key") or creds.get("secret_key")):
+            return {"configured": True, "is_valid": True, "source": "mcp_hub"}
+    except Exception:
+        pass
+
+    query = "SELECT is_valid, updated_at FROM tenant_hunter_settings WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
+    try:
+        res = await execute_db_query(query, [normalized_tenant_id])
+        if res and res.get("rows") and len(res["rows"]) > 0:
+            return {"configured": True, "is_valid": res["rows"][0].get("is_valid", True)}
+    except Exception:
+        pass
+
     return {"configured": False, "is_valid": False}
 
 

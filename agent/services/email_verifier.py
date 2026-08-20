@@ -125,10 +125,10 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
         return {"tested": False, "exists": True, "reason": str(e)}
 
 
-async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
+async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00000000-0000-0000-0000-000000000000") -> Dict[str, Any]:
     """
     Performs full deliverability verification on an email address.
-    Strictly flags synthetic pattern guesses (source != 'apollo_api') as invalid unless SMTP explicitly returns 250 OK.
+    Leverages Hunter.io Email Verifier check when available, with fallback to local RFC-5322, MX DNS, and SMTP checks.
     """
     email_clean = email.strip().lower()
     
@@ -186,7 +186,15 @@ async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
     # 4. Free Provider Check
     is_free = domain in FREE_PROVIDERS
 
-    # 5. MX Record DNS Validation
+    # 5. Hunter.io Email Verifier check
+    try:
+        hunter_res = await verify_email_with_hunter(email_clean, tenant_id=tenant_id)
+        if hunter_res and hunter_res.get("source") == "hunter_io_api":
+            return hunter_res
+    except Exception:
+        pass
+
+    # 6. MX Record DNS Validation
     has_mx = await check_mx_records(domain)
     if not has_mx:
         return {
@@ -202,7 +210,7 @@ async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
             "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
         }
 
-    # 6. Direct SMTP Mailbox Existence Verification
+    # 7. Direct SMTP Mailbox Existence Verification
     smtp_res = await check_smtp_mailbox(email_clean, domain)
     if smtp_res.get("tested") and not smtp_res.get("exists"):
         return {
@@ -218,8 +226,7 @@ async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
             "reason": smtp_res.get("reason", "Mailbox does not exist on target SMTP server."),
         }
 
-    # 7. Deliverability Approval & Status Determination
-    # If MX DNS records exist, syntax is valid, not a disposable or role account, and SMTP didn't return 550 NoSuchUser, mark as VALID.
+    # 8. Deliverability Approval & Status Determination
     if source in ("apollo_api", "hunter_io_api"):
         status = "VALID"
         reason = smtp_res.get("reason", f"{source.replace('_', ' ').title()} verified executive contact.")
@@ -250,19 +257,24 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
         from tool_gateway.credentials_manager import fetch_tool_credentials
         
         creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Hunter.io")
+        if not creds or not creds.get("api_key"):
+            from tool_gateway.hunter_mcp import get_tenant_hunter_credentials
+            creds = await get_tenant_hunter_credentials(tenant_id)
+
         res_str = await execute_hunter_tool("hunter_verify_email", {"email": email}, creds)
         try:
             res_data = json.loads(res_str)
             if res_data.get("status") == "success":
                 result_status = res_data.get("result", "valid")
-                is_valid = result_status in ("valid", "accept_all")
+                score = res_data.get("score", 100)
+                is_valid = result_status in ("valid", "accept_all") and (score is None or score >= 60)
                 return {
                     "email": email,
                     "is_valid": is_valid,
                     "deliverability": "HIGH" if is_valid else "LOW",
                     "status": "VALID" if is_valid else "INVALID",
-                    "score": res_data.get("score"),
-                    "reason": f"Hunter.io verification status: {result_status} (Score: {res_data.get('score')}/100)",
+                    "score": score,
+                    "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
                     "source": res_data.get("source", "hunter_io_api")
                 }
         except Exception:
@@ -270,4 +282,5 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
     except Exception as e:
         logger.warning(f"Hunter.io email verifier check exception: {e}")
         
-    return await verify_email(email, source="unknown")
+    return {"email": email, "is_valid": False, "source": "fallback"}
+

@@ -57,7 +57,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
         if not email:
             return None, True
 
-        verify_res = await verify_email(email, source=source)
+        verify_res = await verify_email(email, source=source, tenant_id=tenant_id)
         contact["deliverability"] = verify_res
         if verify_res.get("is_valid", False):
             return contact, False
@@ -78,7 +78,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
         try:
             async def _fetch_and_verify_extra():
                 nonlocal evaluated_count, discarded_count
-                from tool_gateway.apollo_mcp import search_apollo_accounts_impl, search_apollo_contacts_impl
+                from tool_gateway.hunter_mcp import search_hunter_accounts_impl, search_hunter_contacts_impl
 
                 target_industries = icp.get("target_industries", ["Software", "SaaS"])
                 if isinstance(target_industries, str):
@@ -89,7 +89,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
                         target_industries = [target_industries]
 
                 all_excluded_domains = list(existing_domains.union(tested_domains))
-                extra_accounts_res = await search_apollo_accounts_impl(
+                extra_accounts_res = await search_hunter_accounts_impl(
                     tenant_id=tenant_id,
                     target_industries=target_industries,
                     limit=min(prospect_limit * 2, 10),
@@ -103,7 +103,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
                         return None
                     tested_domains.add(domain)
 
-                    c_res = await search_apollo_contacts_impl(
+                    c_res = await search_hunter_contacts_impl(
                         tenant_id=tenant_id,
                         domain=domain,
                         target_titles=target_titles if isinstance(target_titles, list) else [target_titles]
@@ -115,7 +115,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
                     if not cand_email or cand_email in existing_emails:
                         return None
 
-                    verify_res = await verify_email(cand_email, source=source)
+                    verify_res = await verify_email(cand_email, source=source, tenant_id=tenant_id)
                     cand_contact["deliverability"] = verify_res
                     cand_contact["company_name"] = account.get("company_name", domain.split(".")[0].title())
                     cand_contact["domain"] = domain
@@ -141,7 +141,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     if verified_contacts:
         log_detail = f"Evaluated {evaluated_count} candidate emails, filtered out {discarded_count} invalid/synthetic profiles, and collected {len(verified_contacts)} 100% deliverable VALID prospects."
     else:
-        log_detail = f"Evaluated {evaluated_count} candidate emails and filtered out {discarded_count} unverified synthetic pattern addresses. To discover 100% deliverable real executive leads, please configure an Apollo Master API Key in the UI."
+        log_detail = f"Evaluated {evaluated_count} candidate emails and filtered out {discarded_count} unverified synthetic pattern addresses. To discover 100% deliverable real executive leads, please configure a Hunter.io API Key in the UI."
 
     logs.append({
         "stage": "Stage 4: Deliverability Guard",

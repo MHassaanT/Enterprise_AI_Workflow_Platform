@@ -13,10 +13,10 @@ export default function SalesDashboard() {
   const [activeTab, setActiveTab] = useState('prospects'); // 'prospects' | 'icp' | 'logs'
   const [message, setMessage] = useState('');
 
-  // Apollo Key Modal & Status
-  const [apolloKeyModalOpen, setApolloKeyModalOpen] = useState(false);
-  const [apolloKeyInput, setApolloKeyInput] = useState('');
-  const [apolloStatus, setApolloStatus] = useState({ configured: false, is_valid: false });
+  // Hunter.io Key Modal & Status
+  const [hunterKeyModalOpen, setHunterKeyModalOpen] = useState(false);
+  const [hunterKeyInput, setHunterKeyInput] = useState('');
+  const [hunterStatus, setHunterStatus] = useState({ configured: false, is_valid: false });
 
   // SDR Execution Settings
   const [prospectLimit, setProspectLimit] = useState(10);
@@ -42,9 +42,9 @@ export default function SalesDashboard() {
 
   useEffect(() => {
     try {
-      const cachedApollo = localStorage.getItem('sales_apollo_status');
-      if (cachedApollo) {
-        setApolloStatus(JSON.parse(cachedApollo));
+      const cachedHunter = localStorage.getItem('sales_hunter_status');
+      if (cachedHunter) {
+        setHunterStatus(JSON.parse(cachedHunter));
       }
       const cachedIcp = localStorage.getItem('sales_icp_config');
       if (cachedIcp) {
@@ -56,7 +56,7 @@ export default function SalesDashboard() {
 
     fetchData();
     fetchIcpConfig();
-    checkApolloKeyStatus();
+    checkHunterKeyStatus();
   }, []);
 
   const getCurrentAndPastProspects = () => {
@@ -137,16 +137,16 @@ export default function SalesDashboard() {
     }
   };
 
-  const checkApolloKeyStatus = async () => {
+  const checkHunterKeyStatus = async () => {
     try {
-      const res = await fetch('/api/v1/sales/apollo-key');
+      const res = await fetch('/api/v1/sales/hunter-key');
       const data = await safeJsonParse(res);
-      setApolloStatus(data);
+      setHunterStatus(data);
       if (data.configured) {
-        try { localStorage.setItem('sales_apollo_status', JSON.stringify(data)); } catch (e) {}
+        try { localStorage.setItem('sales_hunter_status', JSON.stringify(data)); } catch (e) {}
       }
     } catch (err) {
-      console.error('Failed to check Apollo key:', err);
+      console.error('Failed to check Hunter key:', err);
     }
   };
 
@@ -174,29 +174,29 @@ export default function SalesDashboard() {
     }
   };
 
-  const handleSaveApolloKey = async (e) => {
+  const handleSaveHunterKey = async (e) => {
     e.preventDefault();
-    if (!apolloKeyInput.trim()) return;
+    if (!hunterKeyInput.trim()) return;
     try {
-      const res = await fetch('/api/v1/sales/apollo-key', {
+      const res = await fetch('/api/v1/sales/hunter-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apollo_api_key: apolloKeyInput.trim() }),
+        body: JSON.stringify({ hunter_api_key: hunterKeyInput.trim() }),
       });
       const data = await safeJsonParse(res);
       if (data.success && data.is_valid !== false) {
-        setMessage('✅ Apollo Master API Key validated and saved successfully.');
+        setMessage('✅ Hunter.io API Key validated and saved successfully.');
         const status = { configured: true, is_valid: true };
-        setApolloStatus(status);
-        try { localStorage.setItem('sales_apollo_status', JSON.stringify(status)); } catch (e) {}
-        setApolloKeyModalOpen(false);
-        setApolloKeyInput('');
+        setHunterStatus(status);
+        try { localStorage.setItem('sales_hunter_status', JSON.stringify(status)); } catch (e) {}
+        setHunterKeyModalOpen(false);
+        setHunterKeyInput('');
       } else {
-        const errDetail = data.error || data.message || 'Key rejected by Apollo API';
+        const errDetail = data.error || data.message || 'Key rejected by Hunter.io API';
         setMessage(`❌ Key Validation Error: ${errDetail}`);
         const status = { configured: true, is_valid: false };
-        setApolloStatus(status);
-        try { localStorage.setItem('sales_apollo_status', JSON.stringify(status)); } catch (e) {}
+        setHunterStatus(status);
+        try { localStorage.setItem('sales_hunter_status', JSON.stringify(status)); } catch (e) {}
       }
     } catch (err) {
       setMessage(`❌ Error saving key: ${err.message}`);
@@ -243,7 +243,7 @@ export default function SalesDashboard() {
         if ((result.processed_count || 0) > 0) {
           setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count} 100% VALID deliverable prospect profiles.`);
         } else {
-          setMessage(`⚠️ Campaign completed safely: 0 unverified synthetic emails saved to protect domain deliverability. Configure an Apollo API Key to source real executive emails.`);
+          setMessage(`⚠️ Campaign completed safely: 0 unverified synthetic emails saved to protect domain deliverability. Configure a Hunter.io API Key to source real executive emails.`);
         }
         const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
         setLatestRunProspects(batch);
@@ -324,21 +324,21 @@ export default function SalesDashboard() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setApolloKeyModalOpen(true)}
+              onClick={() => setHunterKeyModalOpen(true)}
               className={`px-md py-sm rounded-md text-body-sm font-label-md transition-colors flex items-center gap-2 border ${
-                apolloStatus.configured && apolloStatus.is_valid !== false
+                hunterStatus.configured && hunterStatus.is_valid !== false
                   ? 'bg-surface-variant text-primary border-outline-variant'
-                  : apolloStatus.configured && apolloStatus.is_valid === false
+                  : hunterStatus.configured && hunterStatus.is_valid === false
                   ? 'bg-error-container text-error border-error'
                   : 'bg-primary text-on-primary border-primary'
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">key</span>
-              {apolloStatus.configured && apolloStatus.is_valid !== false
-                ? 'Apollo Configured'
-                : apolloStatus.configured && apolloStatus.is_valid === false
-                ? 'Apollo Key Invalid'
-                : 'Set Apollo Key'}
+              {hunterStatus.configured && hunterStatus.is_valid !== false
+                ? 'Hunter.io Configured'
+                : hunterStatus.configured && hunterStatus.is_valid === false
+                ? 'Hunter Key Invalid'
+                : 'Set Hunter.io Key'}
             </button>
 
             <button
@@ -673,32 +673,35 @@ export default function SalesDashboard() {
           </div>
         </main>
 
-        {/* Apollo Key Modal */}
-        {apolloKeyModalOpen && (
+        {/* Hunter Key Modal */}
+        {hunterKeyModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-md w-full shadow-lg">
               <div className="flex justify-between items-center mb-md">
-                <h3 className="font-title-md text-on-surface m-0">Set Apollo API Key</h3>
-                <button onClick={() => setApolloKeyModalOpen(false)} className="text-on-surface-variant font-bold">✕</button>
+                <h3 className="font-title-md text-on-surface m-0">Set Hunter.io API Key</h3>
+                <button onClick={() => setHunterKeyModalOpen(false)} className="text-on-surface-variant font-bold">✕</button>
               </div>
 
-              <form onSubmit={handleSaveApolloKey} className="flex flex-col gap-md">
+              <form onSubmit={handleSaveHunterKey} className="flex flex-col gap-md">
                 <div>
-                  <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Apollo Master API Key</label>
+                  <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Hunter.io API Key</label>
                   <input
                     type="password"
-                    placeholder="apollo_api_key_..."
-                    value={apolloKeyInput}
-                    onChange={(e) => setApolloKeyInput(e.target.value)}
+                    placeholder="Enter Hunter.io API Key..."
+                    value={hunterKeyInput}
+                    onChange={(e) => setHunterKeyInput(e.target.value)}
                     className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
                     required
                   />
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    Get your API key from Hunter.io Dashboard → Account → API. You can also configure MCP tool credentials in the <Link href="/mcp" className="text-primary underline">Integration Hub</Link>.
+                  </p>
                 </div>
 
                 <div className="flex justify-end gap-sm">
                   <button
                     type="button"
-                    onClick={() => setApolloKeyModalOpen(false)}
+                    onClick={() => setHunterKeyModalOpen(false)}
                     className="px-md py-sm bg-surface-variant text-on-surface rounded-md text-body-sm"
                   >
                     Cancel

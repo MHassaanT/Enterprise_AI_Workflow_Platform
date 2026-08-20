@@ -49,7 +49,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
         else:
-            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified synthetic pattern emails were discarded. Set an Apollo API key to discover real decision-maker emails."
+            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified synthetic pattern emails were discarded. Set a Hunter.io API key to discover real decision-maker emails."
             logs.append({
                 "stage": "Stage 6: Dispatch & Closing",
                 "status": "COMPLETED",
@@ -62,7 +62,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "discovered_contact": None,
                 "icp_score": 0,
                 "deal_stage": "NO_VERIFIED_CONTACTS",
-                "answer": "AI Sales SDR Agent complete: 0 unverified synthetic contacts saved. Please configure an Apollo Master API Key to source 100% deliverable decision-maker emails.",
+                "answer": "AI Sales SDR Agent complete: 0 unverified synthetic contacts saved. Please configure a Hunter.io API Key to source 100% deliverable decision-maker emails.",
                 "logs": logs,
             }
 
@@ -117,13 +117,14 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
 
         # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage
         try:
+            hunter_id = item.get("hunter_person_id") or item.get("apollo_person_id", "HUNTER-1")
             query = """
             INSERT INTO sales_prospects (
               tenant_id, company_name, domain, contact_name, contact_email, contact_title,
               icp_score, deliverability_status, scraped_context, outreach_subject, outreach_body,
-              deal_stage, quote_details, apollo_person_id, gmail_message_id, created_at, updated_at
+              deal_stage, quote_details, hunter_person_id, apollo_person_id, gmail_message_id, created_at, updated_at
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, NOW(), NOW()
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, NOW(), NOW()
             );
             """
             await execute_db_query(query, [
@@ -140,7 +141,8 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 body,
                 deal_stage,
                 json.dumps(item.get("quote_details", {})),
-                item.get("apollo_person_id", "APOLLO-1"),
+                hunter_id,
+                hunter_id,
                 gmail_message_id,
             ])
             item["logged_to_db"] = True

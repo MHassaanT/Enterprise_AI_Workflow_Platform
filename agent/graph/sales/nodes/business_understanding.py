@@ -1,10 +1,10 @@
 """
 Stage 1: Business Understanding & Lead Sourcing Node.
-Ingests ICP parameters, competitor battlecards, and queries candidate accounts via Apollo API.
+Ingests ICP parameters, competitor battlecards, and queries candidate accounts via Hunter.io API.
 """
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
-from tool_gateway.apollo_mcp import search_apollo_accounts_impl
+from tool_gateway.hunter_mcp import search_hunter_accounts_impl
 from services.db_client import execute_db_query
 
 
@@ -62,9 +62,9 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     except Exception as e:
         pass
 
-    # 3. Query Candidate Target Accounts (Apollo API Sourcing with Domain Exclusion)
+    # 3. Query Candidate Target Accounts (Hunter.io API Sourcing with Domain Exclusion)
     fetch_limit = max(prospect_limit * 4, 40)
-    sourcing_res = await search_apollo_accounts_impl(
+    sourcing_res = await search_hunter_accounts_impl(
         tenant_id=tenant_id,
         target_industries=target_industries,
         company_size_min=icp.get("company_size_min", 10),
