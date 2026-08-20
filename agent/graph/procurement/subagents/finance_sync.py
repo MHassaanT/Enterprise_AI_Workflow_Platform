@@ -2,7 +2,10 @@ import json
 import random
 import time
 from typing import Dict, Any, List
-from agent.services.llm_gateway import get_llm
+try:
+    from services.llm_gateway import get_llm
+except ModuleNotFoundError:
+    from agent.services.llm_gateway import get_llm
 
 class FinanceSyncSubAgent:
     """

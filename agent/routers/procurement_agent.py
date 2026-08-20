@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException, Header, Body
 from typing import Dict, Any, Optional
-from agent.graph.procurement.supervisor import ProcurementSupervisor
+try:
+    from graph.procurement.supervisor import ProcurementSupervisor
+except ModuleNotFoundError:
+    from agent.graph.procurement.supervisor import ProcurementSupervisor
 
 router = APIRouter(prefix="/agent/procurement", tags=["Procurement Agent"])
 supervisor = ProcurementSupervisor()

@@ -1,11 +1,19 @@
 import json
 from typing import Dict, Any, List, Optional
-from agent.graph.procurement.subagents.intake_spec import IntakeSpecSubAgent
-from agent.graph.procurement.subagents.vendor_research import VendorResearchSubAgent
-from agent.graph.procurement.subagents.rfq_outreach import RFQOutreachSubAgent
-from agent.graph.procurement.subagents.negotiation_synthesis import NegotiationSynthesisSubAgent
-from agent.graph.procurement.subagents.vendor_comms import VendorCommsSubAgent
-from agent.graph.procurement.subagents.finance_sync import FinanceSyncSubAgent
+try:
+    from graph.procurement.subagents.intake_spec import IntakeSpecSubAgent
+    from graph.procurement.subagents.vendor_research import VendorResearchSubAgent
+    from graph.procurement.subagents.rfq_outreach import RFQOutreachSubAgent
+    from graph.procurement.subagents.negotiation_synthesis import NegotiationSynthesisSubAgent
+    from graph.procurement.subagents.vendor_comms import VendorCommsSubAgent
+    from graph.procurement.subagents.finance_sync import FinanceSyncSubAgent
+except ModuleNotFoundError:
+    from agent.graph.procurement.subagents.intake_spec import IntakeSpecSubAgent
+    from agent.graph.procurement.subagents.vendor_research import VendorResearchSubAgent
+    from agent.graph.procurement.subagents.rfq_outreach import RFQOutreachSubAgent
+    from agent.graph.procurement.subagents.negotiation_synthesis import NegotiationSynthesisSubAgent
+    from agent.graph.procurement.subagents.vendor_comms import VendorCommsSubAgent
+    from agent.graph.procurement.subagents.finance_sync import FinanceSyncSubAgent
 
 class ProcurementSupervisor:
     """
