@@ -43,16 +43,19 @@ def _normalize_uuid(tenant_id: str) -> str:
 async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
     """Retrieves Hunter.io API credentials for given tenant from DB/MCP credentials manager or environment."""
     norm_tenant_id = _normalize_uuid(tenant_id)
+    logger.info(f"[HUNTER CREDS] Starting credential lookup for tenant_id='{tenant_id}' -> normalized='{norm_tenant_id}'")
 
     # 1. Check MCP tool_credentials via backend credentials manager
     try:
         creds = await fetch_tool_credentials(tenant_id=norm_tenant_id, tool_id="Hunter.io")
         if creds and (creds.get("api_key") or creds.get("secret_key")):
+            logger.info(f"[HUNTER CREDS] ✅ Found credentials via MCP credentials manager")
             return creds
+        logger.info(f"[HUNTER CREDS] Step 1 (MCP creds): no key found, result={creds}")
     except Exception as e:
-        logger.warning(f"Failed to fetch Hunter.io credentials from MCP manager for tenant {norm_tenant_id}: {e}")
+        logger.warning(f"[HUNTER CREDS] Step 1 (MCP creds) exception: {e}")
 
-    # 2. Check tenant_hunter_settings table with normalized tenant UUID
+    # 2. Direct query to tenant_hunter_settings table via backend /internal/db/query
     try:
         query = """
             SELECT hunter_api_key as api_key FROM tenant_hunter_settings 
@@ -60,38 +63,77 @@ async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
             ORDER BY updated_at DESC LIMIT 1;
         """
         res = await execute_db_query(query, [norm_tenant_id])
-        if res and res.get("rows") and res["rows"][0].get("api_key"):
-            key = res["rows"][0]["api_key"]
-            if key and len(key.strip()) > 5:
+        logger.info(f"[HUNTER CREDS] Step 2 (tenant_hunter_settings $1): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        if res and res.get("rows") and len(res["rows"]) > 0:
+            key = res["rows"][0].get("api_key")
+            if key and len(str(key).strip()) > 5:
+                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_hunter_settings (length={len(key.strip())})")
                 return {"api_key": key.strip()}
+            else:
+                logger.info(f"[HUNTER CREDS] Step 2: key found but too short or empty: '{key}'")
     except Exception as e:
-        logger.warning(f"Error querying tenant_hunter_settings: {e}")
+        logger.warning(f"[HUNTER CREDS] Step 2 exception: {e}")
 
-    # 2b. Global tenant_hunter_settings fallback
+    # 2b. Global tenant_hunter_settings fallback (no tenant filter)
     try:
         res = await execute_db_query("SELECT hunter_api_key as api_key FROM tenant_hunter_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
-        if res and res.get("rows") and res["rows"][0].get("api_key"):
-            key = res["rows"][0]["api_key"]
-            if key and len(key.strip()) > 5:
+        logger.info(f"[HUNTER CREDS] Step 2b (global hunter_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        if res and res.get("rows") and len(res["rows"]) > 0:
+            key = res["rows"][0].get("api_key")
+            if key and len(str(key).strip()) > 5:
+                logger.info(f"[HUNTER CREDS] ✅ Found key in global tenant_hunter_settings")
                 return {"api_key": key.strip()}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[HUNTER CREDS] Step 2b exception: {e}")
 
     # 2c. Legacy tenant_apollo_settings fallback
     try:
         res = await execute_db_query("SELECT apollo_api_key as api_key FROM tenant_apollo_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
-        if res and res.get("rows") and res["rows"][0].get("api_key"):
-            key = res["rows"][0]["api_key"]
-            if key and len(key.strip()) > 5:
+        logger.info(f"[HUNTER CREDS] Step 2c (legacy apollo_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        if res and res.get("rows") and len(res["rows"]) > 0:
+            key = res["rows"][0].get("api_key")
+            if key and len(str(key).strip()) > 5:
+                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_apollo_settings")
                 return {"api_key": key.strip()}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[HUNTER CREDS] Step 2c exception: {e}")
 
-    # 3. Fallback to env variable
+    # 3. Direct HTTP call to our own hunter-key status endpoint (same path the UI uses successfully)
+    try:
+        import httpx
+        from config import settings as _settings
+        backend_url = _settings.BACKEND_URL
+        internal_token = _settings.INTERNAL_SERVICE_TOKEN
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"{backend_url}/api/v1/sales/hunter-key",
+                headers={"X-Internal-Token": internal_token, "x-tenant-id": norm_tenant_id},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info(f"[HUNTER CREDS] Step 3 (direct HTTP /sales/hunter-key): {data}")
+                # If key is configured, query the DB directly to get the actual key value
+                if data.get("configured") and data.get("is_valid"):
+                    # Try fetching the raw key
+                    key_res = await execute_db_query(
+                        "SELECT hunter_api_key FROM tenant_hunter_settings ORDER BY updated_at DESC LIMIT 1;"
+                    )
+                    logger.info(f"[HUNTER CREDS] Step 3 re-query: rows={len(key_res.get('rows', []))}")
+                    if key_res and key_res.get("rows") and len(key_res["rows"]) > 0:
+                        raw = key_res["rows"][0].get("hunter_api_key")
+                        if raw and len(str(raw).strip()) > 5:
+                            logger.info(f"[HUNTER CREDS] ✅ Found key via direct HTTP + re-query")
+                            return {"api_key": raw.strip()}
+    except Exception as e:
+        logger.warning(f"[HUNTER CREDS] Step 3 (direct HTTP) exception: {e}")
+
+    # 4. Fallback to env variable
     env_key = os.getenv("HUNTER_API_KEY")
     if env_key:
+        logger.info(f"[HUNTER CREDS] ✅ Found key from HUNTER_API_KEY environment variable")
         return {"api_key": env_key.strip()}
 
+    logger.warning(f"[HUNTER CREDS] ❌ No Hunter.io API key found through any method for tenant {norm_tenant_id}")
     return {}
 
 

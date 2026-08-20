@@ -239,7 +239,12 @@ export default function SalesDashboard() {
         if ((result.processed_count || 0) > 0) {
           setMessage(`✅ Campaign completed! Discovered & verified ${result.processed_count} 100% VALID deliverable prospect profiles.`);
         } else {
-          setMessage(`⚠️ Campaign completed safely: 0 unverified synthetic emails saved to protect domain deliverability. Configure a Hunter.io API Key to source real executive emails.`);
+          // Extract detail from logs if available
+          const logDetails = (result.logs || []).map(l => l.details || '').filter(Boolean);
+          const lastStageDetail = logDetails.length > 0 ? logDetails[logDetails.length - 1] : '';
+          const answerDetail = result.answer || '';
+          const detail = lastStageDetail || answerDetail || 'No prospects passed deliverability verification.';
+          setMessage(`⚠️ Campaign completed with 0 verified prospects. Detail: ${detail}`);
         }
         const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
         setLatestRunProspects(batch);
