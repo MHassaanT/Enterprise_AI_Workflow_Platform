@@ -115,39 +115,71 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         else:
             logger.info(f"Auto-send disabled. Draft created for {contact_email} with stage DISCOVERED.")
 
-        # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage
+        # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage and deduplication
         try:
             hunter_id = item.get("hunter_person_id") or item.get("apollo_person_id", "HUNTER-1")
-            query = """
-            INSERT INTO sales_prospects (
-              tenant_id, company_name, domain, contact_name, contact_email, contact_title,
-              icp_score, deliverability_status, scraped_context, outreach_subject, outreach_body,
-              deal_stage, quote_details, hunter_person_id, apollo_person_id, gmail_message_id, created_at, updated_at
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, NOW(), NOW()
-            );
-            """
-            await execute_db_query(query, [
-                tenant_id,
-                company_name,
-                domain,
-                item.get("contact_name", "Decision Maker"),
-                contact_email,
-                item.get("contact_title", "Executive"),
-                item.get("icp_score", 90.0),
-                item.get("deliverability_status", "VALID"),
-                item.get("scraped_text", "")[:1000],
-                subject,
-                body,
-                deal_stage,
-                json.dumps(item.get("quote_details", {})),
-                hunter_id,
-                hunter_id,
-                gmail_message_id,
-            ])
+            check_query = "SELECT id FROM sales_prospects WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000') AND LOWER(contact_email) = LOWER($2);"
+            check_res = await execute_db_query(check_query, [tenant_id, contact_email])
+
+            if check_res and check_res.get("rows") and len(check_res["rows"]) > 0:
+                existing_id = check_res["rows"][0]["id"]
+                update_query = """
+                UPDATE sales_prospects SET
+                  company_name = $1, domain = $2, contact_name = $3, contact_title = $4,
+                  icp_score = $5, deliverability_status = $6, scraped_context = $7,
+                  outreach_subject = $8, outreach_body = $9, deal_stage = $10,
+                  quote_details = $11::jsonb, hunter_person_id = $12, apollo_person_id = $13,
+                  gmail_message_id = $14, updated_at = NOW()
+                WHERE id = $15;
+                """
+                await execute_db_query(update_query, [
+                    company_name,
+                    domain,
+                    item.get("contact_name", "Decision Maker"),
+                    item.get("contact_title", "Executive"),
+                    item.get("icp_score", 90.0),
+                    item.get("deliverability_status", "VALID"),
+                    item.get("scraped_text", "")[:1000],
+                    subject,
+                    body,
+                    deal_stage,
+                    json.dumps(item.get("quote_details", {})),
+                    hunter_id,
+                    hunter_id,
+                    gmail_message_id,
+                    existing_id,
+                ])
+            else:
+                query = """
+                INSERT INTO sales_prospects (
+                  tenant_id, company_name, domain, contact_name, contact_email, contact_title,
+                  icp_score, deliverability_status, scraped_context, outreach_subject, outreach_body,
+                  deal_stage, quote_details, hunter_person_id, apollo_person_id, gmail_message_id, created_at, updated_at
+                ) VALUES (
+                  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, NOW(), NOW()
+                );
+                """
+                await execute_db_query(query, [
+                    tenant_id,
+                    company_name,
+                    domain,
+                    item.get("contact_name", "Decision Maker"),
+                    contact_email,
+                    item.get("contact_title", "Executive"),
+                    item.get("icp_score", 90.0),
+                    item.get("deliverability_status", "VALID"),
+                    item.get("scraped_text", "")[:1000],
+                    subject,
+                    body,
+                    deal_stage,
+                    json.dumps(item.get("quote_details", {})),
+                    hunter_id,
+                    hunter_id,
+                    gmail_message_id,
+                ])
             item["logged_to_db"] = True
         except Exception as e:
-            logger.warning(f"Failed to insert sales_prospects record: {e}")
+            logger.warning(f"Failed to upsert sales_prospects record: {e}")
             item["logged_to_db"] = False
 
         item["gmail_message_id"] = gmail_message_id

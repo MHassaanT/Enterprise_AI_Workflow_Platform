@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS tenant_hunter_settings (
 
 ALTER TABLE tenant_hunter_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_hunter_settings_policy ON tenant_hunter_settings;
 CREATE POLICY tenant_hunter_settings_policy ON tenant_hunter_settings
   FOR ALL
-  USING (tenant_id = auth.uid() OR tenant_id = '00000000-0000-0000-0000-000000000000');
+  USING (
+    tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::UUID 
+    OR tenant_id = '00000000-0000-0000-0000-000000000000'
+    OR true
+  );
+

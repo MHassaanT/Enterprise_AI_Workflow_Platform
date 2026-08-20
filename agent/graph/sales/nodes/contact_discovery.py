@@ -59,8 +59,10 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
 
         return contact
 
-    # Parallel contact discovery
-    accounts_to_process = scraped_accounts[:10]
+    prospect_limit = state.get("prospect_limit") or 5
+
+    # Parallel contact discovery bounded strictly by prospect_limit
+    accounts_to_process = scraped_accounts[:prospect_limit]
     if accounts_to_process:
         discovered_contacts = list(await asyncio.gather(*[_discover_single(acc) for acc in accounts_to_process]))
     else:

@@ -61,20 +61,13 @@ export default function SalesDashboard() {
 
   const getCurrentAndPastProspects = () => {
     if (!prospects || prospects.length === 0) {
-      return { currentProspects: [], pastProspects: [] };
+      return { currentProspects: latestRunProspects || [], pastProspects: [] };
     }
 
     if (latestRunProspects && latestRunProspects.length > 0) {
       const latestEmails = new Set(latestRunProspects.map((p) => (p.contact_email || p.email || '').toLowerCase().trim()));
-      const latestDomains = new Set(latestRunProspects.map((p) => (p.domain || '').toLowerCase().trim()));
-      
-      const current = prospects.filter((p) => 
-        (p.contact_email && latestEmails.has(p.contact_email.toLowerCase().trim())) ||
-        (p.domain && latestDomains.has(p.domain.toLowerCase().trim()))
-      );
-      const currentIds = new Set(current.map((p) => p.id));
-      const past = prospects.filter((p) => !currentIds.has(p.id));
-      return { currentProspects: current.length > 0 ? current : latestRunProspects, pastProspects: past };
+      const past = prospects.filter((p) => !latestEmails.has((p.contact_email || p.email || '').toLowerCase().trim()));
+      return { currentProspects: latestRunProspects, pastProspects: past };
     }
 
     // Fallback on page refresh: group by newest timestamp batch (created within 60s of the newest prospect)
@@ -85,10 +78,13 @@ export default function SalesDashboard() {
 
     const current = [];
     const past = [];
+    const seenEmails = new Set();
     for (const p of prospects) {
+      const email = (p.contact_email || p.email || '').toLowerCase().trim();
       const pTime = p.created_at ? new Date(p.created_at).getTime() : 0;
-      if (Math.abs(newestCreatedAt - pTime) <= 60000) {
+      if (Math.abs(newestCreatedAt - pTime) <= 60000 && !seenEmails.has(email)) {
         current.push(p);
+        if (email) seenEmails.add(email);
       } else {
         past.push(p);
       }
