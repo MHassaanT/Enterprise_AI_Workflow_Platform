@@ -197,27 +197,29 @@ async def build_icp_from_knowledge_base(
     try:
         from services.rag_client import query_rag, fetch_all_tenant_chunks
         
-        # Fetch all uploaded document chunks for tenant
-        all_chunks = await fetch_all_tenant_chunks(tenant_id, limit=40)
-        for c in all_chunks:
-            txt = c.get("text", "").strip()
-            if txt and txt not in kb_chunks:
-                kb_chunks.append(txt)
+        # Fetch all uploaded document chunks for normalized tenant_id and raw_tenant
+        for tid in set([tenant_id, raw_tenant]):
+            all_chunks = await fetch_all_tenant_chunks(tid, limit=40)
+            for c in all_chunks:
+                txt = c.get("text", "").strip()
+                if txt and txt not in kb_chunks:
+                    kb_chunks.append(txt)
         
         # Also run focused RAG semantic query
-        rag_res = await query_rag(
-            "What products or services do we offer? What is our value proposition, target customer profiles, and ideal buyer personas?",
-            tenant_id
-        )
-        for c in rag_res.get("chunks", []):
-            txt = c.get("text", "").strip()
-            if txt and txt not in kb_chunks:
-                kb_chunks.append(txt)
+        for tid in set([tenant_id, raw_tenant]):
+            rag_res = await query_rag(
+                "What products or services do we offer? What is our value proposition, target customer profiles, and ideal buyer personas?",
+                tid
+            )
+            for c in rag_res.get("chunks", []):
+                txt = c.get("text", "").strip()
+                if txt and txt not in kb_chunks:
+                    kb_chunks.append(txt)
     except Exception as e:
         logger.warning(f"RAG query for ICP build failed/skipped: {e}")
 
     kb_context = "\n---\n".join(kb_chunks[:25])
-    logger.info(f"[ICP BUILD] Ingested {len(kb_chunks)} KB text chunks for tenant '{tenant_id}'. Total context length: {len(kb_context)} chars.")
+    logger.info(f"[ICP BUILD] Ingested {len(kb_chunks)} KB text chunks for tenant '{tenant_id}'. Snippet: {kb_chunks[0][:100] if kb_chunks else 'NONE'}")
 
     # 2. Synthesize ICP grounded in actual Knowledge Base content with LLM
     from services.llm_gateway import get_llm

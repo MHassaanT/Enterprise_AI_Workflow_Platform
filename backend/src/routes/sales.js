@@ -9,7 +9,7 @@ const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_ch
 // GET /api/v1/sales/prospects — Fetch AI SDR discovered lead prospects & CRM deals
 router.get('/prospects', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     let prospects = [];
     try {
       await query(`
@@ -88,7 +88,7 @@ router.get('/prospects', async (req, res) => {
 // POST /api/v1/sales/pipeline/run — Trigger autonomous 6-stage AI SDR pipeline
 router.post('/pipeline/run', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const { target_domain, prospect_limit, icp_config, auto_send_email } = req.body;
 
     console.log(`[BACKEND RUN PIPELINE] Initiating campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send=${auto_send_email}`);
@@ -120,7 +120,7 @@ router.post('/pipeline/run', async (req, res) => {
 // POST /api/v1/sales/send-email — Manually send single outreach email via Gmail API
 router.post('/send-email', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const { prospect_id, contact_email, subject, body } = req.body;
 
     const response = await axios.post(
@@ -147,7 +147,7 @@ router.post('/send-email', async (req, res) => {
 // POST /api/v1/sales/icp/build — Auto-build ICP from Knowledge Base scanning
 router.post('/icp/build', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/icp/build`,
       { tenant_id: tenantId },
@@ -163,7 +163,7 @@ router.post('/icp/build', async (req, res) => {
 // GET /api/v1/sales/icp — Fetch ICP Configuration
 router.get('/icp', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     const response = await axios.get(
       `${AGENT_URL}/agent/sales/icp/${tenantId}`,
       { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
@@ -178,7 +178,7 @@ router.get('/icp', async (req, res) => {
 // POST /api/v1/sales/icp — Save ICP Configuration
 router.post('/icp', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/icp`,
       { ...req.body, tenant_id: tenantId },
@@ -194,7 +194,7 @@ router.post('/icp', async (req, res) => {
 // POST /api/v1/sales/hunter-key & /api/v1/sales/apollo-key — Save Hunter.io API Key
 router.post(['/hunter-key', '/apollo-key'], async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const { hunter_api_key, apollo_api_key } = req.body;
     const apiKey = hunter_api_key || apollo_api_key;
     const response = await axios.post(

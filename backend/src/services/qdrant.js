@@ -96,12 +96,13 @@ const searchByTenant = async (queryVector, tenantId, { limit = 5, scoreThreshold
   }));
 };
 
-const getTenantChunks = async (tenantId, { limit = 30 } = {}) => {
+const getTenantChunks = async (tenantId, { limit = 40 } = {}) => {
   const qdrant = getClient();
   await ensureCollection();
 
   try {
-    const res = await qdrant.scroll(COLLECTION_NAME, {
+    // 1. Try filtering by payload.tenant_id
+    let res = await qdrant.scroll(COLLECTION_NAME, {
       filter: {
         must: [
           { key: 'tenant_id', match: { value: tenantId } },
@@ -111,11 +112,37 @@ const getTenantChunks = async (tenantId, { limit = 30 } = {}) => {
       with_payload: true,
       with_vector: false,
     });
-    const points = res.points || [];
+    let points = res.points || [];
+
+    // 2. If 0 points, try filtering by payload.tenantId
+    if (points.length === 0) {
+      res = await qdrant.scroll(COLLECTION_NAME, {
+        filter: {
+          must: [
+            { key: 'tenantId', match: { value: tenantId } },
+          ],
+        },
+        limit,
+        with_payload: true,
+        with_vector: false,
+      });
+      points = res.points || [];
+    }
+
+    // 3. Fallback: scroll all available points in Qdrant collection
+    if (points.length === 0) {
+      res = await qdrant.scroll(COLLECTION_NAME, {
+        limit,
+        with_payload: true,
+        with_vector: false,
+      });
+      points = res.points || [];
+    }
+
     return points.map((p) => ({
       text: p.payload?.text || '',
-      documentName: p.payload?.document_name || 'Document',
-      documentId: p.payload?.document_id || '',
+      documentName: p.payload?.document_name || p.payload?.documentName || 'Document',
+      documentId: p.payload?.document_id || p.payload?.documentId || '',
     }));
   } catch (err) {
     console.error('Error fetching tenant chunks from Qdrant:', err.message);
