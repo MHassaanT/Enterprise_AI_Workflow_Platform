@@ -18,6 +18,7 @@ from tool_gateway.adapters.stripe_adapter import execute_stripe_tool
 from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
 from tool_gateway.adapters.google_docs_adapter import execute_google_docs_tool
 from tool_gateway.adapters.google_sheets_adapter import execute_google_sheets_tool
+from tool_gateway.adapters.hunter_adapter import execute_hunter_tool
 
 
 
@@ -111,6 +112,8 @@ async def execute_mcp_tool(
             return await execute_google_docs_tool(tool_name, arguments, credentials)
         elif provider_type == "google_sheets" or "google_sheets" in tool_name.lower() or "google_sheet" in tool_name.lower() or "sheets" in tool_name.lower():
             return await execute_google_sheets_tool(tool_name, arguments, credentials)
+        elif provider_type == "hunter" or "hunter" in tool_name.lower():
+            return await execute_hunter_tool(tool_name, arguments, credentials)
         elif provider_type == "builtin" or tool_name in TOOL_REGISTRY or "order" in tool_name.lower() or "escalat" in tool_name.lower():
             norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
             tool_fn = TOOL_REGISTRY.get(norm_name) or TOOL_REGISTRY.get(tool_name)

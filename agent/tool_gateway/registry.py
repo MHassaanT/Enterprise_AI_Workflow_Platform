@@ -169,6 +169,17 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
             values: Any = Field(default=None, description="Values/rows data (2D array)")
             title: str = Field(default=None, description="Title for new spreadsheet")
         return GoogleSheetsDynamicInput
+    elif "hunter" in tool_name.lower():
+        class HunterDynamicInput(BaseModel):
+            action: str = Field(default="domain_search", description="Action: 'discover', 'domain_search', 'email_finder', 'verify_email', 'company_enrichment', 'person_enrichment', 'combined_enrichment', or 'account_info'")
+            domain: str = Field(default=None, description="Target company website domain (e.g. stripe.com)")
+            email: str = Field(default=None, description="Email address for verification or enrichment")
+            first_name: str = Field(default=None, description="First name of target contact")
+            last_name: str = Field(default=None, description="Last name of target contact")
+            company: str = Field(default=None, description="Company name")
+            query: Any = Field(default=None, description="Search query criteria object for discovery")
+            limit: int = Field(default=10, description="Max results")
+        return HunterDynamicInput
 
     params_raw = config.get("parameters") or config.get("params") or {}
 

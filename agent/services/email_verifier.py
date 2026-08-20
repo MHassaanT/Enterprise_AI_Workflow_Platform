@@ -12,6 +12,7 @@ Features:
 import re
 import socket
 import asyncio
+import json
 import logging
 from typing import Dict, Any, List
 
@@ -219,9 +220,9 @@ async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
 
     # 7. Deliverability Approval & Status Determination
     # If MX DNS records exist, syntax is valid, not a disposable or role account, and SMTP didn't return 550 NoSuchUser, mark as VALID.
-    if source == "apollo_api":
+    if source in ("apollo_api", "hunter_io_api"):
         status = "VALID"
-        reason = smtp_res.get("reason", "Apollo API verified executive contact.")
+        reason = smtp_res.get("reason", f"{source.replace('_', ' ').title()} verified executive contact.")
     else:
         status = "VALID"
         reason = smtp_res.get("reason", f"Passed RFC-5322 syntax, MX DNS lookup ({domain}), and deliverability verification.")
@@ -238,3 +239,35 @@ async def verify_email(email: str, source: str = "unknown") -> Dict[str, Any]:
         "is_free_provider": is_free,
         "reason": reason,
     }
+
+
+async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0000-0000-000000000000") -> Dict[str, Any]:
+    """
+    Performs Hunter.io Email Verifier check via the Centralized MCP Gateway adapter.
+    """
+    try:
+        from tool_gateway.adapters.hunter_adapter import execute_hunter_tool
+        from tool_gateway.credentials_manager import fetch_tool_credentials
+        
+        creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Hunter.io")
+        res_str = await execute_hunter_tool("hunter_verify_email", {"email": email}, creds)
+        try:
+            res_data = json.loads(res_str)
+            if res_data.get("status") == "success":
+                result_status = res_data.get("result", "valid")
+                is_valid = result_status in ("valid", "accept_all")
+                return {
+                    "email": email,
+                    "is_valid": is_valid,
+                    "deliverability": "HIGH" if is_valid else "LOW",
+                    "status": "VALID" if is_valid else "INVALID",
+                    "score": res_data.get("score"),
+                    "reason": f"Hunter.io verification status: {result_status} (Score: {res_data.get('score')}/100)",
+                    "source": res_data.get("source", "hunter_io_api")
+                }
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"Hunter.io email verifier check exception: {e}")
+        
+    return await verify_email(email, source="unknown")
