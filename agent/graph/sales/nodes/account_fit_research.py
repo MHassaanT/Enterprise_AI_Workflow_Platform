@@ -58,7 +58,7 @@ async def account_fit_research_node(state: SalesAgentState) -> Dict[str, Any]:
         }
 
     # Parallelize scraping with fast concurrency cap
-    accounts_to_scrape = raw_accounts[:min(prospect_limit, 5)]
+    accounts_to_scrape = raw_accounts[:prospect_limit]
     scraped_accounts = await asyncio.gather(*[_scrape_single(acc) for acc in accounts_to_scrape])
 
     logs.append({

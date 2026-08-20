@@ -17,7 +17,7 @@ def _normalize_uuid(tenant_id: str) -> str:
 async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     tenant_id = _normalize_uuid(state.get("tenant_id", ""))
     logs = list(state.get("logs", []))
-    prospect_limit = state.get("prospect_limit") or 5
+    prospect_limit = state.get("prospect_limit") or 10
 
     # 1. Fetch ICP Configuration from Database or State
     icp = state.get("icp_config") or {}
