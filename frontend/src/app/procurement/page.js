@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import { getAuthHeader } from '@/lib/api';
 
@@ -208,10 +207,7 @@ export default function ProcurementPage() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen bg-background text-on-surface">
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-        
+      <div className="min-h-screen bg-background text-on-surface font-body-md flex flex-col h-screen overflow-hidden">
         <main className="flex-1 overflow-y-auto p-md md:p-lg space-y-lg">
           {/* Header Banner & Supervisor Badge */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-md bg-surface-container border border-outline-variant rounded-2xl p-lg bg-gradient-to-r from-surface-container via-surface-container-high to-surface-container-highest">
@@ -946,7 +942,6 @@ export default function ProcurementPage() {
             </div>
           )}
         </main>
-      </div>
       </div>
     </AuthGuard>
   );
