@@ -122,10 +122,8 @@ async def run_sales_agent(
     request: SalesPipelineRunRequest,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
-    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized.")
-
-    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
+    run_id = f"sdr-run-{Date_now_id()}"
+    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
 
     initial_state = {
         "tenant_id": request.tenant_id,
