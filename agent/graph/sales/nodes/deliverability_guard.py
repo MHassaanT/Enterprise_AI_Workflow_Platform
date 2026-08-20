@@ -26,12 +26,10 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     if not existing_domains and not existing_emails:
         try:
             from services.db_client import execute_db_query
-            ex_query = "SELECT LOWER(domain) as domain, LOWER(contact_email) as contact_email FROM sales_prospects WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000');"
+            ex_query = "SELECT LOWER(contact_email) as contact_email FROM sales_prospects WHERE outreach_sent = true AND (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000');"
             ex_res = await execute_db_query(ex_query, [tenant_id])
             if ex_res and ex_res.get("rows"):
                 for row in ex_res["rows"]:
-                    if row.get("domain"):
-                        existing_domains.add(row["domain"].strip().lower())
                     if row.get("contact_email"):
                         existing_emails.add(row["contact_email"].strip().lower())
         except Exception:
@@ -57,8 +55,8 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
         if domain:
             tested_domains.add(domain)
 
-        if (domain and domain in existing_domains) or (email and email in existing_emails):
-            logger.info(f"[STAGE 4 DELIVERABILITY] Contact '{email}' or domain '{domain}' already exists in DB. Skipping duplicate.")
+        if email and email in existing_emails:
+            logger.info(f"[STAGE 4 DELIVERABILITY] Contact '{email}' already received outreach in DB. Skipping duplicate.")
             return None, True
 
         if not email:
