@@ -189,39 +189,55 @@ async def build_icp_from_knowledge_base(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    tenant_id = payload.get("tenant_id", "default_tenant")
+    raw_tenant = payload.get("tenant_id", "00000000-0000-0000-0000-000000000000")
+    tenant_id = _normalize_uuid(raw_tenant)
     
-    # 1. Query Knowledge Base via RAG Client
-    kb_context = ""
+    # 1. Fetch text chunks from Knowledge Base (both full document scroll and targeted RAG)
+    kb_chunks = []
     try:
-        from services.rag_client import query_rag
+        from services.rag_client import query_rag, fetch_all_tenant_chunks
+        
+        # Fetch all uploaded document chunks for tenant
+        all_chunks = await fetch_all_tenant_chunks(tenant_id, limit=40)
+        for c in all_chunks:
+            txt = c.get("text", "").strip()
+            if txt and txt not in kb_chunks:
+                kb_chunks.append(txt)
+        
+        # Also run focused RAG semantic query
         rag_res = await query_rag(
-            "What products/services do we sell? What is our value proposition, target customer roles, pricing, and ideal customer profile?",
+            "What products or services do we offer? What is our value proposition, target customer profiles, and ideal buyer personas?",
             tenant_id
         )
-        chunks = rag_res.get("chunks", [])
-        if chunks:
-            kb_context = "\n".join([c.get("text", "") for c in chunks[:5]])
+        for c in rag_res.get("chunks", []):
+            txt = c.get("text", "").strip()
+            if txt and txt not in kb_chunks:
+                kb_chunks.append(txt)
     except Exception as e:
         logger.warning(f"RAG query for ICP build failed/skipped: {e}")
 
-    # 2. Synthesize ICP with OpenRouter LLM
+    kb_context = "\n---\n".join(kb_chunks[:25])
+    logger.info(f"[ICP BUILD] Ingested {len(kb_chunks)} KB text chunks for tenant '{tenant_id}'. Total context length: {len(kb_context)} chars.")
+
+    # 2. Synthesize ICP grounded in actual Knowledge Base content with LLM
     from services.llm_gateway import get_llm
     from langchain_core.messages import SystemMessage, HumanMessage
 
-    prompt = f"""You are an expert B2B Sales Strategy Director. Analyze the following Knowledge Base context about our enterprise product offerings and synthesize a highly accurate Ideal Customer Profile (ICP).
+    prompt = f"""You are an expert B2B Sales Strategy Director. Analyze the following uploaded Knowledge Base context about our company's product offerings and synthesize an Ideal Customer Profile (ICP) STRICTLY grounded in these document excerpts.
 
 KNOWLEDGE BASE CONTEXT:
-{kb_context if kb_context else "Enterprise AI Workflow Platform with multi-agent orchestration for Finance, Procurement, HR, and Sales automation."}
+{kb_context if kb_context else "No uploaded documents found. Synthesize an enterprise B2B workflow automation ICP."}
 
 INSTRUCTIONS:
+Extract and synthesize the ICP directly matching our company's true products, services, value proposition, and customer base described in the Knowledge Base above.
+
 Return ONLY a valid JSON object with these exact keys:
 - "target_industries": list of 3 to 5 target industries (e.g. ["Software & SaaS", "Fintech", "HealthTech", "E-Commerce"])
 - "target_titles": list of 3 to 5 key decision-maker titles (e.g. ["VP of Sales", "CTO", "Head of Growth", "Director of Operations"])
 - "company_size_min": integer minimum headcount (e.g. 10)
 - "company_size_max": integer maximum headcount (e.g. 1000)
-- "battlecard_notes": summary string of key differentiators, competitive advantage, and ROI hook
-- "playbook_strategy": strategy string for outreach angle
+- "battlecard_notes": concise summary of our actual product differentiators, value proposition, and pain points solved
+- "playbook_strategy": strategic messaging angle and sales pitch hook tailored to our target buyers
 
 Respond ONLY with valid JSON.
 """
@@ -229,7 +245,7 @@ Respond ONLY with valid JSON.
     llm = get_llm()
     try:
         res = await llm.ainvoke([
-            SystemMessage(content="You generate structured B2B ICP JSON configurations."),
+            SystemMessage(content="You generate structured B2B ICP JSON configurations based on uploaded company documents."),
             HumanMessage(content=prompt)
         ])
         content = res.content.strip()
@@ -241,12 +257,12 @@ Respond ONLY with valid JSON.
     except Exception as e:
         logger.warning(f"Fallback to default ICP due to: {e}")
         parsed_icp = {
-            "target_industries": ["Software", "SaaS", "Fintech"],
+            "target_industries": ["Software & SaaS", "Fintech", "Enterprise Tech"],
             "target_titles": ["VP of Sales", "CTO", "Head of Growth"],
             "company_size_min": 10,
             "company_size_max": 1000,
-            "battlecard_notes": "Key Differentiator: Autonomous multi-agent workflow engine with zero vendor lock-in.",
-            "playbook_strategy": "Focus on operational cost savings and 10x workflow speedup.",
+            "battlecard_notes": "Key Differentiator: Grounded enterprise AI agent solutions with full data privacy.",
+            "playbook_strategy": "Focus on operational cost savings and workflow automation efficiency.",
         }
 
     # Save to Database

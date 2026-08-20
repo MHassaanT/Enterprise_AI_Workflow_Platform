@@ -152,6 +152,24 @@ router.post('/rag/query', async (req, res) => {
   });
 });
 
+// ── POST /internal/rag/all-chunks ──
+// Called by the Sales Agent ICP builder to fetch all uploaded knowledge base text chunks for grounding
+router.post('/rag/all-chunks', async (req, res) => {
+  const { tenantId, limit } = req.body;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId required.' });
+  }
+
+  try {
+    const { getTenantChunks } = require('../services/qdrant');
+    const chunks = await getTenantChunks(tenantId, { limit: limit || 40 });
+    return res.json({ chunks });
+  } catch (err) {
+    console.error('Error fetching all RAG chunks:', err.message);
+    return res.json({ chunks: [] });
+  }
+});
+
 // ── POST /internal/hr/search-resumes ──
 // Called by the Python HR agent to search resume vectors against JD text
 router.post('/hr/search-resumes', async (req, res) => {

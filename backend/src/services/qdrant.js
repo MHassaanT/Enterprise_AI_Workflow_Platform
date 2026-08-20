@@ -66,7 +66,7 @@ const upsertChunks = async (chunks, vectors) => {
   return points.length;
 };
 
-const searchByTenant = async (queryVector, tenantId, { limit = 5, scoreThreshold = 0.5 } = {}) => {
+const searchByTenant = async (queryVector, tenantId, { limit = 5, scoreThreshold = 0.1 } = {}) => {
   const qdrant = getClient();
   await ensureCollection();
 
@@ -96,6 +96,33 @@ const searchByTenant = async (queryVector, tenantId, { limit = 5, scoreThreshold
   }));
 };
 
+const getTenantChunks = async (tenantId, { limit = 30 } = {}) => {
+  const qdrant = getClient();
+  await ensureCollection();
+
+  try {
+    const res = await qdrant.scroll(COLLECTION_NAME, {
+      filter: {
+        must: [
+          { key: 'tenant_id', match: { value: tenantId } },
+        ],
+      },
+      limit,
+      with_payload: true,
+      with_vector: false,
+    });
+    const points = res.points || [];
+    return points.map((p) => ({
+      text: p.payload?.text || '',
+      documentName: p.payload?.document_name || 'Document',
+      documentId: p.payload?.document_id || '',
+    }));
+  } catch (err) {
+    console.error('Error fetching tenant chunks from Qdrant:', err.message);
+    return [];
+  }
+};
+
 const deleteDocumentChunks = async (documentId, tenantId) => {
   const qdrant = getClient();
   await ensureCollection();
@@ -115,6 +142,7 @@ module.exports = {
   ensureCollection,
   upsertChunks,
   searchByTenant,
+  getTenantChunks,
   deleteDocumentChunks,
   COLLECTION_NAME,
 };

@@ -35,3 +35,22 @@ async def query_rag(question: str, tenant_id: str) -> dict:
     except Exception as e:
         logger.warning(f"RAG query to {settings.BACKEND_URL}/internal/rag/query failed: {e}")
         return {"chunks": [], "citations": []}
+
+
+async def fetch_all_tenant_chunks(tenant_id: str, limit: int = 40) -> list:
+    """
+    Fetches all uploaded Knowledge Base text chunks for a tenant without vector query constraints.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/rag/all-chunks",
+                json={"tenantId": tenant_id, "limit": limit},
+                headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("chunks", [])
+    except Exception as e:
+        logger.warning(f"Failed to fetch all tenant chunks from {settings.BACKEND_URL}/internal/rag/all-chunks: {e}")
+        return []
