@@ -190,10 +190,9 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     try:
         hunter_res = await verify_email_with_hunter(email_clean, tenant_id=tenant_id)
         logger.info(f"[EMAIL VERIFIER] Hunter verifier res for '{email_clean}': {hunter_res}")
-        if hunter_res and hunter_res.get("source") in ("hunter_io_api", "hunter_sandbox_mock"):
-            if hunter_res.get("is_valid"):
-                logger.info(f"[EMAIL VERIFIER] ✅ Hunter verified '{email_clean}' as VALID")
-                return hunter_res
+        if hunter_res and hunter_res.get("is_valid"):
+            logger.info(f"[EMAIL VERIFIER] ✅ Hunter verified '{email_clean}' as VALID")
+            return hunter_res
     except Exception as e:
         logger.warning(f"[EMAIL VERIFIER] Hunter verification exception: {e}")
 

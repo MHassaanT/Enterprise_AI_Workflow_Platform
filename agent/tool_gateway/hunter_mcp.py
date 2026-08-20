@@ -59,44 +59,30 @@ async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
     try:
         query = """
             SELECT hunter_api_key as api_key FROM tenant_hunter_settings 
-            WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' 
+            WHERE hunter_api_key IS NOT NULL AND LENGTH(TRIM(hunter_api_key)) > 5
             ORDER BY updated_at DESC LIMIT 1;
         """
-        res = await execute_db_query(query, [norm_tenant_id])
-        logger.info(f"[HUNTER CREDS] Step 2 (tenant_hunter_settings $1): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        res = await execute_db_query(query, [])
+        logger.info(f"[HUNTER CREDS] Step 2 (tenant_hunter_settings latest): rows={len(res.get('rows', []))}, error={res.get('error')}")
         if res and res.get("rows") and len(res["rows"]) > 0:
             key = res["rows"][0].get("api_key")
             if key and len(str(key).strip()) > 5:
                 logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_hunter_settings (length={len(key.strip())})")
                 return {"api_key": key.strip()}
-            else:
-                logger.info(f"[HUNTER CREDS] Step 2: key found but too short or empty: '{key}'")
     except Exception as e:
         logger.warning(f"[HUNTER CREDS] Step 2 exception: {e}")
 
-    # 2b. Global tenant_hunter_settings fallback (no tenant filter)
+    # 2b. Legacy tenant_apollo_settings fallback
     try:
-        res = await execute_db_query("SELECT hunter_api_key as api_key FROM tenant_hunter_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
-        logger.info(f"[HUNTER CREDS] Step 2b (global hunter_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
-        if res and res.get("rows") and len(res["rows"]) > 0:
-            key = res["rows"][0].get("api_key")
-            if key and len(str(key).strip()) > 5:
-                logger.info(f"[HUNTER CREDS] ✅ Found key in global tenant_hunter_settings")
-                return {"api_key": key.strip()}
-    except Exception as e:
-        logger.warning(f"[HUNTER CREDS] Step 2b exception: {e}")
-
-    # 2c. Legacy tenant_apollo_settings fallback
-    try:
-        res = await execute_db_query("SELECT apollo_api_key as api_key FROM tenant_apollo_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
-        logger.info(f"[HUNTER CREDS] Step 2c (legacy apollo_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        res = await execute_db_query("SELECT apollo_api_key as api_key FROM tenant_apollo_settings WHERE apollo_api_key IS NOT NULL AND LENGTH(TRIM(apollo_api_key)) > 5 ORDER BY updated_at DESC LIMIT 1;")
+        logger.info(f"[HUNTER CREDS] Step 2b (legacy apollo_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
         if res and res.get("rows") and len(res["rows"]) > 0:
             key = res["rows"][0].get("api_key")
             if key and len(str(key).strip()) > 5:
                 logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_apollo_settings")
                 return {"api_key": key.strip()}
     except Exception as e:
-        logger.warning(f"[HUNTER CREDS] Step 2c exception: {e}")
+        logger.warning(f"[HUNTER CREDS] Step 2b exception: {e}")
 
     # 3. Direct HTTP call to our own hunter-key status endpoint (same path the UI uses successfully)
     try:
