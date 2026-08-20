@@ -1,8 +1,11 @@
 -- Migration 027: Procurement Multi-Agent System Schema (V2)
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE IF NOT EXISTS procurement_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     budget_limit NUMERIC(15, 2) DEFAULT 0.00,
@@ -22,9 +25,9 @@ CREATE TABLE IF NOT EXISTS procurement_requests (
 );
 
 CREATE TABLE IF NOT EXISTS procurement_vendors (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     procurement_id UUID REFERENCES procurement_requests(id) ON DELETE CASCADE,
-    tenant_id UUID NOT NULL,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     vendor_name VARCHAR(255) NOT NULL,
     vendor_email VARCHAR(255) NOT NULL,
     domain VARCHAR(255),
@@ -40,9 +43,9 @@ CREATE TABLE IF NOT EXISTS procurement_vendors (
 );
 
 CREATE TABLE IF NOT EXISTS procurement_documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     procurement_id UUID REFERENCES procurement_requests(id) ON DELETE CASCADE,
-    tenant_id UUID NOT NULL,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     filename VARCHAR(255) NOT NULL,
     mime_type VARCHAR(100),
     parsed_text TEXT,
@@ -50,9 +53,9 @@ CREATE TABLE IF NOT EXISTS procurement_documents (
 );
 
 CREATE TABLE IF NOT EXISTS procurement_agent_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     procurement_id UUID REFERENCES procurement_requests(id) ON DELETE CASCADE,
-    tenant_id UUID NOT NULL,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     subagent_name VARCHAR(100) NOT NULL,
     action VARCHAR(255) NOT NULL,
     log_payload JSONB DEFAULT '{}'::jsonb,
