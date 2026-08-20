@@ -57,7 +57,9 @@ router.get('/prospects', async (req, res) => {
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
         );
-        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS hunter_person_id VARCHAR(100);
+      `);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS hunter_person_id VARCHAR(100);`);
+      await query(`
         CREATE TABLE IF NOT EXISTS tenant_hunter_settings (
           tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
           hunter_api_key TEXT NOT NULL,

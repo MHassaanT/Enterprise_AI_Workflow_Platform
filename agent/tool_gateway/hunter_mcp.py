@@ -30,24 +30,56 @@ class HunterContactSearchInput(BaseModel):
     target_titles: List[str] = Field(default_factory=list, description="Target job role titles")
 
 
+def _normalize_uuid(tenant_id: str) -> str:
+    if not tenant_id or len(tenant_id) < 30 or tenant_id in ("default_tenant", "sales_sdr"):
+        return "00000000-0000-0000-0000-000000000000"
+    try:
+        import uuid
+        return str(uuid.UUID(tenant_id))
+    except Exception:
+        return "00000000-0000-0000-0000-000000000000"
+
+
 async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
     """Retrieves Hunter.io API credentials for given tenant from DB/MCP credentials manager or environment."""
+    norm_tenant_id = _normalize_uuid(tenant_id)
+
     # 1. Check MCP tool_credentials via backend credentials manager
     try:
-        creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Hunter.io")
+        creds = await fetch_tool_credentials(tenant_id=norm_tenant_id, tool_id="Hunter.io")
         if creds and (creds.get("api_key") or creds.get("secret_key")):
             return creds
     except Exception as e:
-        logger.warning(f"Failed to fetch Hunter.io credentials from MCP manager for tenant {tenant_id}: {e}")
+        logger.warning(f"Failed to fetch Hunter.io credentials from MCP manager for tenant {norm_tenant_id}: {e}")
 
-    # 2. Check legacy tenant_hunter_settings or tenant_apollo_settings table
+    # 2. Check tenant_hunter_settings table with normalized tenant UUID
     try:
         query = """
             SELECT hunter_api_key as api_key FROM tenant_hunter_settings 
             WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' 
             ORDER BY updated_at DESC LIMIT 1;
         """
-        res = await execute_db_query(query, [tenant_id])
+        res = await execute_db_query(query, [norm_tenant_id])
+        if res and res.get("rows") and res["rows"][0].get("api_key"):
+            key = res["rows"][0]["api_key"]
+            if key and len(key.strip()) > 5:
+                return {"api_key": key.strip()}
+    except Exception as e:
+        logger.warning(f"Error querying tenant_hunter_settings: {e}")
+
+    # 2b. Global tenant_hunter_settings fallback
+    try:
+        res = await execute_db_query("SELECT hunter_api_key as api_key FROM tenant_hunter_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
+        if res and res.get("rows") and res["rows"][0].get("api_key"):
+            key = res["rows"][0]["api_key"]
+            if key and len(key.strip()) > 5:
+                return {"api_key": key.strip()}
+    except Exception:
+        pass
+
+    # 2c. Legacy tenant_apollo_settings fallback
+    try:
+        res = await execute_db_query("SELECT apollo_api_key as api_key FROM tenant_apollo_settings WHERE is_valid = true ORDER BY updated_at DESC LIMIT 1;")
         if res and res.get("rows") and res["rows"][0].get("api_key"):
             key = res["rows"][0]["api_key"]
             if key and len(key.strip()) > 5:
