@@ -18,11 +18,15 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
     scraped_accounts = state.get("scraped_accounts", [])
     logs = list(state.get("logs", []))
 
+    logger.info(f"[STAGE 5 SCORING & COPY GEN] Starting. verified_contacts count: {len(verified_contacts) if verified_contacts is not None else 'None'}")
+
     # Only use discovered_contact if verified_contacts is None (Stage 4 was skipped). If Stage 4 ran and verified_contacts is empty [], respect deliverability guard.
     if verified_contacts is None and state.get("discovered_contact"):
         verified_contacts = [state["discovered_contact"]]
     elif verified_contacts is None:
         verified_contacts = []
+
+    logger.info(f"[STAGE 5] Verified contacts to process into outreach_batch: {len(verified_contacts)}")
 
     battlecard = icp.get("battlecard_notes", "Autonomous enterprise AI workflow platform with zero vendor lock-in.")
     llm = None

@@ -42,23 +42,33 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     discarded_count = 0
     tested_domains = set()
 
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[STAGE 4 DELIVERABILITY] Starting verification. Discovered contacts count: {len(discovered_contacts)}")
+
     # 1. Parallel verification of contacts discovered in Stage 3
     async def _verify_single(contact):
         domain = (contact.get("domain") or "").strip().lower()
         email = (contact.get("contact_email") or "").strip().lower()
         source = contact.get("source") or "unknown"
 
+        logger.info(f"[STAGE 4 DELIVERABILITY] Verifying contact: email='{email}', domain='{domain}', source='{source}'")
+
         if domain:
             tested_domains.add(domain)
 
         if (domain and domain in existing_domains) or (email and email in existing_emails):
+            logger.info(f"[STAGE 4 DELIVERABILITY] Contact '{email}' or domain '{domain}' already exists in DB. Skipping duplicate.")
             return None, True
 
         if not email:
+            logger.info(f"[STAGE 4 DELIVERABILITY] Empty email for contact. Discarding.")
             return None, True
 
         verify_res = await verify_email(email, source=source, tenant_id=tenant_id)
         contact["deliverability"] = verify_res
+        logger.info(f"[STAGE 4 DELIVERABILITY] Verification result for '{email}': is_valid={verify_res.get('is_valid')}, status={verify_res.get('status')}, reason='{verify_res.get('reason')}'")
+        
         if verify_res.get("is_valid", False):
             return contact, False
         else:

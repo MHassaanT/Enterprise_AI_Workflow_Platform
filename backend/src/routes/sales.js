@@ -91,6 +91,8 @@ router.post('/pipeline/run', async (req, res) => {
     const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
     const { target_domain, prospect_limit, icp_config, auto_send_email } = req.body;
 
+    console.log(`[BACKEND RUN PIPELINE] Initiating campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send=${auto_send_email}`);
+
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/run`,
       {
@@ -107,10 +109,11 @@ router.post('/pipeline/run', async (req, res) => {
       }
     );
 
+    console.log(`[BACKEND RUN PIPELINE] Agent response received! Success=${response.data?.success}, processed_count=${response.data?.processed_count}`);
     return res.json({ success: true, result: response.data });
   } catch (err) {
-    console.error('Error executing Sales SDR agent:', err.message);
-    return res.status(500).json({ error: 'Sales SDR Agent execution failed.' });
+    console.error('[BACKEND RUN PIPELINE ERROR] Error executing Sales SDR agent:', err.message, err.response?.data);
+    return res.status(500).json({ error: 'Sales SDR Agent execution failed.', detail: err.response?.data || err.message });
   }
 });
 

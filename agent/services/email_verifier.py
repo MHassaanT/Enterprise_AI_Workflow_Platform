@@ -189,13 +189,17 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     # 5. Hunter.io Email Verifier check
     try:
         hunter_res = await verify_email_with_hunter(email_clean, tenant_id=tenant_id)
-        if hunter_res and hunter_res.get("source") == "hunter_io_api":
-            return hunter_res
-    except Exception:
-        pass
+        logger.info(f"[EMAIL VERIFIER] Hunter verifier res for '{email_clean}': {hunter_res}")
+        if hunter_res and hunter_res.get("source") in ("hunter_io_api", "hunter_sandbox_mock"):
+            if hunter_res.get("is_valid"):
+                logger.info(f"[EMAIL VERIFIER] ✅ Hunter verified '{email_clean}' as VALID")
+                return hunter_res
+    except Exception as e:
+        logger.warning(f"[EMAIL VERIFIER] Hunter verification exception: {e}")
 
     # 6. MX Record DNS Validation
     has_mx = await check_mx_records(domain)
+    logger.info(f"[EMAIL VERIFIER] MX record check for domain '{domain}': has_mx={has_mx}")
     if not has_mx:
         return {
             "email": email_clean,
@@ -212,6 +216,7 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
 
     # 7. Direct SMTP Mailbox Existence Verification
     smtp_res = await check_smtp_mailbox(email_clean, domain)
+    logger.info(f"[EMAIL VERIFIER] SMTP mailbox check for '{email_clean}': {smtp_res}")
     if smtp_res.get("tested") and not smtp_res.get("exists"):
         return {
             "email": email_clean,
@@ -252,22 +257,28 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
     """
     Performs Hunter.io Email Verifier check via the Centralized MCP Gateway adapter.
     """
+    logger.info(f"[VERIFY WITH HUNTER] Starting Hunter verify for email='{email}', tenant_id='{tenant_id}'")
     try:
         from tool_gateway.adapters.hunter_adapter import execute_hunter_tool
         from tool_gateway.credentials_manager import fetch_tool_credentials
         
         creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Hunter.io")
+        logger.info(f"[VERIFY WITH HUNTER] fetch_tool_credentials output: {bool(creds and creds.get('api_key'))}")
         if not creds or not creds.get("api_key"):
             from tool_gateway.hunter_mcp import get_tenant_hunter_credentials
             creds = await get_tenant_hunter_credentials(tenant_id)
+            logger.info(f"[VERIFY WITH HUNTER] get_tenant_hunter_credentials output: {bool(creds and creds.get('api_key'))}")
 
+        logger.info(f"[VERIFY WITH HUNTER] Executing hunter_verify_email tool with creds length: {len(creds.get('api_key', '')) if creds else 0}")
         res_str = await execute_hunter_tool("hunter_verify_email", {"email": email}, creds)
+        logger.info(f"[VERIFY WITH HUNTER] Raw execute_hunter_tool response: {res_str[:300]}")
         try:
             res_data = json.loads(res_str)
             if res_data.get("status") == "success":
                 result_status = str(res_data.get("result") or "valid").lower()
                 score = res_data.get("score")
                 is_valid = (result_status in ("valid", "accept_all", "webmail")) and (score is None or score >= 40)
+                logger.info(f"[VERIFY WITH HUNTER] Result parsed: result_status='{result_status}', score={score}, is_valid={is_valid}, source='{res_data.get('source')}'")
                 return {
                     "email": email,
                     "is_valid": is_valid,
@@ -277,10 +288,10 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
                     "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
                     "source": res_data.get("source", "hunter_io_api")
                 }
-        except Exception:
-            pass
+        except Exception as parse_err:
+            logger.warning(f"[VERIFY WITH HUNTER] JSON parse error: {parse_err}")
     except Exception as e:
-        logger.warning(f"Hunter.io email verifier check exception: {e}")
+        logger.warning(f"[VERIFY WITH HUNTER] Hunter.io email verifier check exception: {e}")
         
     return {"email": email, "is_valid": False, "source": "fallback"}
 

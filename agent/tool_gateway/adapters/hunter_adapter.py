@@ -33,13 +33,16 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
         or credentials.get("access_token")
     )
 
-    action = arguments.get("action") or tool_name
-    norm_action = action.lower().replace("-", "_").replace(" ", "_")
+    logger.info(f"[HUNTER ADAPTER] Executing tool '{tool_name}' (norm_action='{norm_action}') with credentials present={bool(api_key)}")
+    if api_key:
+        logger.info(f"[HUNTER ADAPTER] API Key length: {len(api_key.strip())}, preview: '{api_key[:4]}...{api_key[-4:] if len(api_key) > 8 else ''}'")
 
     # If no API key set or test key, perform sandbox dry-run execution
     if not api_key or api_key.startswith("v2_test_") or len(api_key.strip()) < 5:
+        logger.warning(f"[HUNTER ADAPTER] ⚠️ No valid API Key found! Using sandbox fallback for '{norm_action}'")
         return await _execute_sandbox_fallback(norm_action, arguments)
 
+    logger.info(f"[HUNTER ADAPTER] 🚀 Executing LIVE Hunter.io API request for '{norm_action}'")
     params = {"api_key": api_key.strip()}
 
     try:

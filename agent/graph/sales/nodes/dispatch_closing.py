@@ -26,11 +26,14 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
     auto_send = state.get("auto_send_email", False)
     logs = list(state.get("logs", []))
 
+    logger.info(f"[STAGE 6 DISPATCH] Starting. outreach_batch len={len(outreach_batch)}, raw_tenant_id='{raw_tenant_id}', tenant_id='{tenant_id}'")
+
     if not outreach_batch:
         # Check if single verified contact exists
         contact = state.get("discovered_contact") or {}
         deliverability = state.get("deliverability_result") or {}
         outreach = state.get("generated_outreach") or {}
+        logger.info(f"[STAGE 6 DISPATCH] outreach_batch is empty. Checking single contact: email='{contact.get('contact_email')}', deliverability.is_valid={deliverability.get('is_valid')}")
         
         # Only fallback if the single contact has a valid deliverability check or real Apollo API source
         if contact and deliverability.get("is_valid", False):
@@ -50,6 +53,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
             }]
         else:
             log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified synthetic pattern emails were discarded. Set a Hunter.io API key to discover real decision-maker emails."
+            logger.warning(f"[STAGE 6 DISPATCH] ❌ Ending stage with processed_count=0. Detail: {log_detail}")
             logs.append({
                 "stage": "Stage 6: Dispatch & Closing",
                 "status": "COMPLETED",

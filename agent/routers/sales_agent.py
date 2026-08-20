@@ -125,7 +125,7 @@ async def run_sales_agent(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    run_id = f"sdr-run-{Date_now_id()}"
+    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
 
     initial_state = {
         "tenant_id": request.tenant_id,
@@ -153,9 +153,14 @@ async def run_sales_agent(
     config = {"configurable": {"thread_id": run_id}}
 
     try:
+        logger.info(f"[SALES AGENT ROUTER] Invoking sales_head_graph with initial_state: {initial_state}")
         final_state = await sales_head_graph.ainvoke(initial_state, config=config)
         outreach_batch = final_state.get("outreach_batch", [])
         processed_count = final_state.get("processed_count", len(outreach_batch))
+        logger.info(f"[SALES AGENT ROUTER] sales_head_graph completed! processed_count={processed_count}, outreach_batch len={len(outreach_batch)}, verified_contacts len={len(final_state.get('verified_contacts', []))}")
+        for idx, log in enumerate(final_state.get("logs", [])):
+            logger.info(f"[SALES AGENT LOG #{idx+1}] {log.get('stage')}: {log.get('status')} - {log.get('details')}")
+
         return {
             "success": True,
             "run_id": run_id,
@@ -172,6 +177,7 @@ async def run_sales_agent(
             "logs": final_state.get("logs", []),
         }
     except Exception as e:
+        logger.error(f"[SALES AGENT ROUTER ERROR] sales_head_graph invocation failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Sales agent execution failed: {str(e)}")
