@@ -135,6 +135,24 @@ async def get_tenant_hunter_key(tenant_id: str) -> Optional[str]:
     return creds.get("api_key") or creds.get("secret_key") or creds.get("token")
 
 
+def _company_size_to_headcount(min_size: int, max_size: int) -> List[str]:
+    """Maps company size range to Hunter Discover API headcount bands."""
+    bands = []
+    if min_size <= 10 and max_size >= 1:
+        bands.append("1-10")
+    if min_size <= 50 and max_size >= 11:
+        bands.append("11-50")
+    if min_size <= 200 and max_size >= 51:
+        bands.append("51-200")
+    if min_size <= 500 and max_size >= 201:
+        bands.append("201-500")
+    if min_size <= 1000 and max_size >= 501:
+        bands.append("501-1000")
+    if max_size > 1000:
+        bands.append("1001-5000")
+    return bands
+
+
 async def search_hunter_accounts_impl(
     tenant_id: str,
     target_industries: List[str],
@@ -144,20 +162,25 @@ async def search_hunter_accounts_impl(
     exclude_domains: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Queries candidate target accounts from Hunter.io Discover/Domain Search API excluding leads already in database.
+    Queries candidate target accounts from Hunter.io Discover/Domain Search API with headcount filtering,
+    excluding leads already in database. Returns empty list if no real accounts found (zero fake fallbacks).
     """
     excluded_set = {d.strip().lower() for d in (exclude_domains or []) if d}
     creds = await get_tenant_hunter_credentials(tenant_id)
 
-    # 1. Execute Hunter Lead Discover via adapter
+    # 1. Execute Hunter Lead Discover via adapter with headcount and industry filters
     try:
-        discover_query = {
+        headcount_bands = _company_size_to_headcount(company_size_min, company_size_max)
+        discover_query: Dict[str, Any] = {
             "industry": target_industries[0] if target_industries else "Software",
             "type": "company"
         }
+        if headcount_bands:
+            discover_query["headcount"] = headcount_bands
+
         res_str = await execute_hunter_tool(
             "hunter_discover",
-            {"query": discover_query, "limit": limit * 2},
+            {"query": discover_query, "limit": limit * 3},
             creds
         )
         if res_str and res_str.startswith("{"):
@@ -172,7 +195,7 @@ async def search_hunter_accounts_impl(
                             "company_name": item.get("name") or item.get("company_name") or domain.split(".")[0].title(),
                             "domain": domain,
                             "industry": item.get("industry") or (target_industries[0] if target_industries else "Software"),
-                            "estimated_num_employees": item.get("employees") or item.get("estimated_num_employees") or "10-500",
+                            "estimated_num_employees": item.get("employees") or item.get("estimated_num_employees") or f"{company_size_min}-{company_size_max}",
                             "city": item.get("city"),
                             "country": item.get("country"),
                             "source": res_data.get("source", "hunter_io_api")
@@ -184,68 +207,13 @@ async def search_hunter_accounts_impl(
     except Exception as e:
         logger.error(f"Hunter account search exception: {e}")
 
-    # Fallback default target domains matching ICP parameters (40+ enterprise/SaaS domains)
-    sample_domains = [
-        {"company_name": "Stripe Inc", "domain": "stripe.com", "industry": target_industries[0] if target_industries else "Fintech"},
-        {"company_name": "GitHub", "domain": "github.com", "industry": "Software & Dev Tools"},
-        {"company_name": "Google", "domain": "google.com", "industry": "Cloud & AI"},
-        {"company_name": "Microsoft", "domain": "microsoft.com", "industry": "Enterprise Software"},
-        {"company_name": "Salesforce", "domain": "salesforce.com", "industry": "CRM & SaaS"},
-        {"company_name": "Shopify", "domain": "shopify.com", "industry": "E-Commerce & SaaS"},
-        {"company_name": "HubSpot", "domain": "hubspot.com", "industry": "Marketing & Sales"},
-        {"company_name": "Atlassian", "domain": "atlassian.com", "industry": "Dev Tools & SaaS"},
-        {"company_name": "Cloudflare", "domain": "cloudflare.com", "industry": "Infrastructure"},
-        {"company_name": "Slack", "domain": "slack.com", "industry": "Collaboration"},
-        {"company_name": "Figma", "domain": "figma.com", "industry": "Design & SaaS"},
-        {"company_name": "Canva", "domain": "canva.com", "industry": "Design & Tech"},
-        {"company_name": "Notion", "domain": "notion.so", "industry": "Productivity & SaaS"},
-        {"company_name": "Vercel", "domain": "vercel.com", "industry": "Cloud Platform"},
-        {"company_name": "Datadog", "domain": "datadoghq.com", "industry": "Observability & DevOps"},
-        {"company_name": "Snowflake", "domain": "snowflake.com", "industry": "Data & Cloud"},
-        {"company_name": "Twilio", "domain": "twilio.com", "industry": "Communications API"},
-        {"company_name": "Asana", "domain": "asana.com", "industry": "Project Management"},
-        {"company_name": "Zoom", "domain": "zoom.us", "industry": "Communications"},
-        {"company_name": "Monday.com", "domain": "monday.com", "industry": "Work OS & SaaS"},
-        {"company_name": "Airtable", "domain": "airtable.com", "industry": "Low-Code & SaaS"},
-        {"company_name": "Intercom", "domain": "intercom.com", "industry": "Customer Support"},
-        {"company_name": "Brex", "domain": "brex.com", "industry": "Fintech"},
-        {"company_name": "Ramp", "domain": "ramp.com", "industry": "Fintech"},
-        {"company_name": "Linear", "domain": "linear.app", "industry": "Software & Project Tools"},
-        {"company_name": "Retool", "domain": "retool.com", "industry": "Developer Tools"},
-        {"company_name": "Supabase", "domain": "supabase.com", "industry": "Database & Cloud"},
-        {"company_name": "Postman", "domain": "postman.com", "industry": "API Infrastructure"},
-        {"company_name": "Vanta", "domain": "vanta.com", "industry": "Security & Compliance"},
-        {"company_name": "Loom", "domain": "loom.com", "industry": "Video Messaging"},
-        {"company_name": "Zendesk", "domain": "zendesk.com", "industry": "Customer Support"},
-        {"company_name": "GitLab", "domain": "gitlab.com", "industry": "DevOps & Software"},
-        {"company_name": "HashiCorp", "domain": "hashicorp.com", "industry": "Cloud Security"},
-        {"company_name": "Databricks", "domain": "databricks.com", "industry": "Data & AI"},
-        {"company_name": "Elastic", "domain": "elastic.co", "industry": "Search & Analytics"},
-        {"company_name": "MongoDB", "domain": "mongodb.com", "industry": "Database Platform"},
-        {"company_name": "Okta", "domain": "okta.com", "industry": "Identity & Security"},
-        {"company_name": "PagerDuty", "domain": "pagerduty.com", "industry": "Operations & Incident"},
-        {"company_name": "Fastly", "domain": "fastly.com", "industry": "Edge Cloud & CDN"},
-        {"company_name": "Mixpanel", "domain": "mixpanel.com", "industry": "Product Analytics"},
-    ]
-
-    import random
-    # Filter out domains that already exist in database
-    available = [item for item in sample_domains if item["domain"].lower() not in excluded_set]
-    if len(available) < limit:
-        # If running low on excluded domains, use full pool with shuffle
-        available = list(sample_domains)
-
-    # Shuffle available domains to guarantee fresh results across campaign runs
-    random.seed(int(time.time() * 1000) % 10000)
-    random.shuffle(available)
-
-    selected = available[:limit]
-
+    # Honest empty response: DO NOT return hardcoded tech giant domains (Stripe, Google, etc.)
+    logger.info(f"[HUNTER SOURCING] Hunter API returned 0 candidate accounts for tenant '{tenant_id}'. Returning empty accounts list.")
     return {
-        "status": "success",
-        "source": "hunter_icp_matching",
-        "accounts": selected,
-        "message": f"Fetched {len(selected)} target accounts matching ICP criteria."
+        "status": "empty",
+        "source": "hunter_io_api",
+        "accounts": [],
+        "message": f"No candidate target accounts found on Hunter.io matching ICP criteria (Industries: {target_industries}, Size: {company_size_min}-{company_size_max}). Please configure a valid Hunter.io API key."
     }
 
 
@@ -255,106 +223,73 @@ async def search_hunter_contacts_impl(
     target_titles: List[str],
 ) -> Dict[str, Any]:
     """
-    Finds target decision-maker contacts for a domain using Hunter.io Domain Search & Email Finder.
+    Finds real decision-maker contacts for a domain using Hunter.io Domain Search API.
+    Returns contact: None if no real personal work email is found (zero fake persona fallbacks).
     """
     creds = await get_tenant_hunter_credentials(tenant_id)
     clean_domain = domain.replace("http://", "").replace("https://", "").strip("/")
 
     try:
-        # 1. Execute Hunter Domain Search
+        # Execute Hunter Domain Search for personal executive emails
         ds_res_str = await execute_hunter_tool(
             "hunter_domain_search",
-            {"domain": clean_domain, "limit": 10, "type": "personal"},
+            {"domain": clean_domain, "limit": 15, "type": "personal"},
             creds
         )
         if ds_res_str and ds_res_str.startswith("{"):
             ds_data = json.loads(ds_res_str)
             if ds_data.get("status") == "success":
                 emails = ds_data.get("emails", [])
+                
+                # First pass: try matching preferred executive target titles
+                target_titles_lower = [t.lower() for t in target_titles] if target_titles else []
+                matched_contact = None
+                
                 for e_item in emails:
-                    email_val = e_item.get("email")
-                    fn = e_item.get("first_name") or ""
-                    ln = e_item.get("last_name") or ""
-                    pos = e_item.get("position") or (target_titles[0] if target_titles else "Executive")
+                    email_val = (e_item.get("email") or e_item.get("value") or "").strip()
+                    fn = (e_item.get("first_name") or "").strip()
+                    ln = (e_item.get("last_name") or "").strip()
+                    pos = (e_item.get("position") or "").strip()
                     
-                    if email_val and "@" in email_val:
-                        contact_name = f"{fn} {ln}".strip() or "Executive Leader"
+                    if email_val and "@" in email_val and e_item.get("type") != "generic":
+                        contact_name = f"{fn} {ln}".strip() if (fn or ln) else ""
                         hunter_id = f"HUNTER-{clean_domain.split('.')[0].upper()}"
-                        return {
-                            "status": "found",
+                        
+                        candidate = {
+                            "hunter_person_id": hunter_id,
+                            "apollo_person_id": hunter_id,
+                            "contact_name": contact_name or f"{pos or 'Executive'} Leader",
+                            "contact_email": email_val,
+                            "contact_title": pos or (target_titles[0] if target_titles else "Executive"),
+                            "company_name": ds_data.get("organization") or clean_domain.split(".")[0].title(),
+                            "domain": clean_domain,
+                            "confidence": e_item.get("confidence"),
                             "source": ds_data.get("source", "hunter_io_api"),
-                            "contact": {
-                                "hunter_person_id": hunter_id,
-                                "apollo_person_id": hunter_id, # Alias for backwards compatibility
-                                "contact_name": contact_name,
-                                "contact_email": email_val,
-                                "contact_title": pos,
-                                "company_name": ds_data.get("organization") or clean_domain.split(".")[0].title(),
-                                "domain": clean_domain,
-                                "confidence": e_item.get("confidence"),
-                                "source": ds_data.get("source", "hunter_io_api"),
-                            }
                         }
+                        
+                        # Check title alignment
+                        if pos and any(t_title in pos.lower() for t_title in target_titles_lower):
+                            matched_contact = candidate
+                            break
+                        elif not matched_contact:
+                            matched_contact = candidate
 
-        # 2. Try Hunter Email Finder with target executive role if domain search yielded no personal emails
-        fn_sample = "Alex"
-        ln_sample = "Vance"
-        ef_res_str = await execute_hunter_tool(
-            "hunter_email_finder",
-            {"domain": clean_domain, "first_name": fn_sample, "last_name": ln_sample},
-            creds
-        )
-        if ef_res_str and ef_res_str.startswith("{"):
-            ef_data = json.loads(ef_res_str)
-            if ef_data.get("status") == "success" and ef_data.get("email"):
-                hunter_id = f"HUNTER-{clean_domain.split('.')[0].upper()}"
-                return {
-                    "status": "found",
-                    "source": ef_data.get("source", "hunter_io_api"),
-                    "contact": {
-                        "hunter_person_id": hunter_id,
-                        "apollo_person_id": hunter_id,
-                        "contact_name": f"{fn_sample} {ln_sample}",
-                        "contact_email": ef_data.get("email"),
-                        "contact_title": ef_data.get("position") or (target_titles[0] if target_titles else "Executive"),
-                        "company_name": clean_domain.split(".")[0].title(),
-                        "domain": clean_domain,
-                        "source": ef_data.get("source", "hunter_io_api"),
+                if matched_contact:
+                    return {
+                        "status": "found",
+                        "source": ds_data.get("source", "hunter_io_api"),
+                        "contact": matched_contact
                     }
-                }
+
     except Exception as e:
         logger.error(f"Hunter contact search exception for domain {domain}: {e}")
 
-    # Fallback realistic domain contact with dynamic executive persona generation
-    import random
-    personas = [
-        ("Sarah", "Chen", "VP of Sales"),
-        ("Marcus", "Thorne", "CTO"),
-        ("Elena", "Rostova", "Head of Growth"),
-        ("David", "Miller", "Director of Business Development"),
-        ("Rachel", "Adams", "Chief Revenue Officer"),
-        ("James", "Wilson", "VP of Enterprise Solutions"),
-        ("Michael", "Chang", "Head of Operations"),
-        ("Sophia", "Patel", "Director of Global Sales"),
-    ]
-    # Deterministically select persona based on domain name hash
-    hash_val = sum(ord(c) for c in clean_domain)
-    first_name, last_name, default_title = personas[hash_val % len(personas)]
-    title = target_titles[0] if target_titles else default_title
-    exec_email = f"{first_name.lower()}.{last_name.lower()}@{clean_domain}"
-    hunter_id = f"HUNTER-{clean_domain[:4].upper()}"
-
+    # Honest result: DO NOT generate fake personas (Alex Vance, Sarah Chen, Marcus Thorne) or guessed emails
+    logger.info(f"[HUNTER CONTACT SEARCH] No real personal work email found on Hunter.io for domain '{clean_domain}'. Dropping domain.")
     return {
-        "status": "found",
-        "source": "hunter_domain_match",
-        "contact": {
-            "hunter_person_id": hunter_id,
-            "apollo_person_id": hunter_id,
-            "contact_name": f"{first_name} {last_name}",
-            "contact_email": exec_email,
-            "contact_title": title,
-            "company_name": clean_domain.split(".")[0].title(),
-            "domain": clean_domain,
-            "source": "hunter_domain_match",
-        }
+        "status": "not_found",
+        "source": "hunter_io_api",
+        "contact": None,
+        "message": f"No real executive contact with a verified personal email found for domain '{clean_domain}' on Hunter.io."
     }
+

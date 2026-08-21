@@ -53,9 +53,31 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         if idx < len(scraped_accounts):
             scraped_text = scraped_accounts[idx].get("scraped_text", "")
 
-        icp_score = 92.5 - (idx * 2.5)
-        if not deliverability.get("is_valid", True):
-            icp_score -= 20.0
+        # Real dynamic ICP scoring calculation (0-100) based on title, industry, web context & deliverability
+        target_titles = [t.lower() for t in (icp.get("target_titles", []) if isinstance(icp.get("target_titles"), list) else [icp.get("target_titles", "")])]
+        target_industries = [i.lower() for i in (icp.get("target_industries", []) if isinstance(icp.get("target_industries"), list) else [icp.get("target_industries", "")])]
+        
+        base_score = 50.0
+        if contact_title and any(t in contact_title.lower() for t in target_titles if t):
+            base_score += 20.0
+        elif contact_title and any(w in contact_title.lower() for w in ["vp", "director", "head", "chief", "officer", "cro", "cto", "ceo"]):
+            base_score += 15.0
+
+        prospect_ind = (contact.get("industry") or "").lower()
+        if prospect_ind and any(ind in prospect_ind for ind in target_industries if ind):
+            base_score += 15.0
+        else:
+            base_score += 8.0
+
+        if scraped_text and len(scraped_text) > 100:
+            base_score += 10.0
+
+        if deliverability.get("is_valid", True):
+            base_score += 5.0
+        else:
+            base_score -= 20.0
+
+        icp_score = round(min(98.0, max(40.0, base_score)), 1)
 
         sender_company = company_context.get("company_name", "Enterprise Client")
         sender_desc = company_context.get("description") or battlecard
@@ -74,11 +96,12 @@ OUR COMPANY & VALUE PROP:
 TARGET PROSPECT:
 - Company: {company_name} ({domain})
 - Contact Name: {contact_name} ({contact_title})
+- Calculated Fit Base Score: {icp_score}/100
 - Web Context: {scraped_text[:500]}
 
 INSTRUCTIONS:
 Return a JSON object with:
-- "icp_score": number between 70 and 100
+- "icp_score": refined score between 60 and 100 based on prospect fit
 - "outreach_subject": compelling personalized subject line
 - "outreach_body": personalized cold outreach body signed off as "{sender_name}, {sender_role} at {sender_company}"
 
@@ -90,7 +113,7 @@ Respond ONLY with valid JSON.
 """
 
         subject = f"Autonomous Workflow Velocity for {company_name} | {sender_company}"
-        body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. At {sender_company}, {sender_desc[:150]}...\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,\n{sender_name}\n{sender_role}, {sender_company}"
+        body = f"Hi {contact_name},\n\nI saw {company_name}'s work in digital transformation. At {sender_company}, {sender_desc[:150]}...\n\nWould you be open to a brief discussion next week?\n\nBest regards,\n{sender_name}\n{sender_role}, {sender_company}"
 
         if llm:
             try:

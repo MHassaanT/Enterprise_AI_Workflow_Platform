@@ -147,13 +147,15 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     verified_contacts = valid_contacts[:prospect_limit]
 
     if verified_contacts:
-        log_detail = f"Evaluated {evaluated_count} candidate emails, filtered out {discarded_count} invalid/synthetic profiles, and collected {len(verified_contacts)} 100% deliverable VALID prospects."
+        log_detail = f"Evaluated {evaluated_count} candidate emails, filtered out {discarded_count} invalid/unverified profiles, and collected {len(verified_contacts)} deliverable VALID prospects."
+        status_str = "COMPLETED"
     else:
-        log_detail = f"Evaluated {evaluated_count} candidate emails and filtered out {discarded_count} unverified synthetic pattern addresses. To discover 100% deliverable real executive leads, please configure a Hunter.io API Key in the UI."
+        log_detail = f"Evaluated {evaluated_count} candidate emails and filtered out {discarded_count} unverified or invalid addresses. 0 deliverable prospects found. Please check your Hunter.io API key configuration."
+        status_str = "FAILED"
 
     logs.append({
         "stage": "Stage 4: Deliverability Guard",
-        "status": "COMPLETED",
+        "status": status_str,
         "details": log_detail
     })
 
@@ -162,3 +164,4 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
         "deliverability_result": verified_contacts[0].get("deliverability") if verified_contacts else None,
         "logs": logs,
     }
+

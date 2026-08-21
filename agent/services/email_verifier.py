@@ -119,10 +119,10 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
                 else:
                     return {"tested": True, "exists": False, "code": code, "reason": f"SMTP server rejected recipient address ({code}: {resp_text})."}
 
-        return {"tested": False, "exists": True, "reason": "SMTP port 25 unreachable or catch-all."}
+        return {"tested": False, "exists": False, "reason": "SMTP port 25 unreachable or blocked by cloud provider."}
     except Exception as e:
         logger.warning(f"SMTP check error for {email}: {e}")
-        return {"tested": False, "exists": True, "reason": str(e)}
+        return {"tested": False, "exists": False, "reason": f"SMTP check port 25 unreachable: {e}"}
 
 
 async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00000000-0000-0000-0000-000000000000") -> Dict[str, Any]:
@@ -186,12 +186,11 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     # 4. Free Provider Check
     is_free = domain in FREE_PROVIDERS
 
-    # 5. Hunter.io Email Verifier check
+    # 5. Hunter.io Email Verifier check via API
     try:
         hunter_res = await verify_email_with_hunter(email_clean, tenant_id=tenant_id)
         logger.info(f"[EMAIL VERIFIER] Hunter verifier res for '{email_clean}': {hunter_res}")
-        if hunter_res and hunter_res.get("is_valid"):
-            logger.info(f"[EMAIL VERIFIER] ✅ Hunter verified '{email_clean}' as VALID")
+        if hunter_res and hunter_res.get("source") == "hunter_io_api":
             return hunter_res
     except Exception as e:
         logger.warning(f"[EMAIL VERIFIER] Hunter verification exception: {e}")
@@ -216,7 +215,21 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     # 7. Direct SMTP Mailbox Existence Verification
     smtp_res = await check_smtp_mailbox(email_clean, domain)
     logger.info(f"[EMAIL VERIFIER] SMTP mailbox check for '{email_clean}': {smtp_res}")
-    if smtp_res.get("tested") and not smtp_res.get("exists"):
+    
+    if smtp_res.get("tested") and smtp_res.get("exists"):
+        return {
+            "email": email_clean,
+            "is_valid": True,
+            "deliverability": "HIGH",
+            "status": "VALID",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": False,
+            "is_free_provider": is_free,
+            "reason": smtp_res.get("reason", "Passed SMTP 250 OK mailbox check."),
+        }
+    elif smtp_res.get("tested") and not smtp_res.get("exists"):
         return {
             "email": email_clean,
             "is_valid": False,
@@ -227,28 +240,37 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
             "has_mx_records": True,
             "is_disposable": False,
             "is_free_provider": is_free,
-            "reason": smtp_res.get("reason", "Mailbox does not exist on target SMTP server."),
+            "reason": smtp_res.get("reason", "Mailbox rejected by target SMTP server."),
         }
 
-    # 8. Deliverability Approval & Status Determination
-    if source in ("apollo_api", "hunter_io_api"):
-        status = "VALID"
-        reason = smtp_res.get("reason", f"{source.replace('_', ' ').title()} verified executive contact.")
-    else:
-        status = "VALID"
-        reason = smtp_res.get("reason", f"Passed RFC-5322 syntax, MX DNS lookup ({domain}), and deliverability verification.")
+    # 8. Unverified / Inconclusive Fallback
+    # If source came directly from a live Hunter API domain search, we consider it valid based on Hunter's data
+    if source == "hunter_io_api":
+        return {
+            "email": email_clean,
+            "is_valid": True,
+            "deliverability": "HIGH",
+            "status": "VALID",
+            "syntax_valid": True,
+            "domain": domain,
+            "has_mx_records": True,
+            "is_disposable": False,
+            "is_free_provider": is_free,
+            "reason": f"Discovered via Hunter.io API with MX DNS records ({domain}).",
+        }
 
+    # Untested SMTP check (port 25 blocked) without Hunter API confirmation must be rejected to prevent bounce risk
     return {
         "email": email_clean,
-        "is_valid": True,
-        "deliverability": "HIGH",
-        "status": status,
+        "is_valid": False,
+        "deliverability": "UNVERIFIED",
+        "status": "UNVERIFIED",
         "syntax_valid": True,
         "domain": domain,
         "has_mx_records": True,
         "is_disposable": False,
         "is_free_provider": is_free,
-        "reason": reason,
+        "reason": "Outbound SMTP port 25 blocked/unreachable; mailbox existence could not be verified.",
     }
 
 

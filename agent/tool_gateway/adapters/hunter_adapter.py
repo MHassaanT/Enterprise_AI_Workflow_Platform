@@ -274,69 +274,48 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
 
 
 async def _execute_sandbox_fallback(action: str, arguments: Dict[str, Any]) -> str:
-    """Provides fallback sandbox responses for Hunter.io API v2 endpoints."""
+    """Provides fallback sandbox responses for Hunter.io API v2 endpoints when API key is unconfigured or invalid."""
     if action in ("discover", "hunter_discover", "lead_discover"):
         return json.dumps({
-            "status": "success",
+            "status": "error",
             "source": "hunter_sandbox_mock",
             "endpoint": "POST /v2/discover",
-            "results": [
-                {"name": "Stripe", "domain": "stripe.com", "industry": "Financial Technology", "employees": "5000+"},
-                {"name": "Reddit", "domain": "reddit.com", "industry": "Internet & Media", "employees": "2000+"}
-            ],
-            "note": "Sandbox mode: Connect Hunter.io API Key in Integration Hub for live Discover data."
+            "results": [],
+            "message": "Hunter.io API Key is unconfigured or invalid. Please connect a valid Hunter.io API Key in Integration Hub."
         }, indent=2)
     elif "domain_search" in action or action == "hunter_domain_search":
-        domain = arguments.get("domain") or "stripe.com"
+        domain = arguments.get("domain") or ""
         clean = domain.replace("http://", "").replace("https://", "").strip("/")
         return json.dumps({
-            "status": "success",
+            "status": "error",
             "source": "hunter_sandbox_mock",
             "endpoint": "GET /v2/domain-search",
-            "organization": clean.split(".")[0].title(),
+            "organization": clean.split(".")[0].title() if clean else "",
             "domain": clean,
-            "email_pattern": "{first}.{last}@" + clean,
-            "total_emails_found": 3,
-            "emails": [
-                {"email": f"alex.vance@{clean}", "type": "personal", "confidence": 95, "first_name": "Alex", "last_name": "Vance", "position": "VP of Sales"},
-                {"email": f"elena.rostova@{clean}", "type": "personal", "confidence": 92, "first_name": "Elena", "last_name": "Rostova", "position": "Head of Growth"},
-                {"email": f"contact@{clean}", "type": "generic", "confidence": 88, "first_name": None, "last_name": None, "position": "Support"}
-            ],
-            "note": "Sandbox mode: Connect Hunter.io API Key in Integration Hub for live Hunter data."
+            "total_emails_found": 0,
+            "emails": [],
+            "message": "Hunter.io API Key is unconfigured or invalid. Please connect a valid Hunter.io API Key in Integration Hub."
         }, indent=2)
     elif "email_finder" in action or action == "hunter_email_finder" or "find_email" in action:
-        domain = arguments.get("domain") or "reddit.com"
-        fn = arguments.get("first_name") or "Alexis"
-        ln = arguments.get("last_name") or "Ohanian"
         return json.dumps({
-            "status": "success",
+            "status": "error",
             "source": "hunter_sandbox_mock",
             "endpoint": "GET /v2/email-finder",
-            "email": f"{fn.lower()}.{ln.lower()}@{domain}",
-            "score": 98,
-            "domain": domain,
-            "position": "Co-founder",
-            "verification_status": "valid",
-            "note": "Sandbox mode: Connect Hunter.io API Key in Integration Hub for live Hunter data."
+            "email": None,
+            "message": "Hunter.io API Key is unconfigured or invalid."
         }, indent=2)
     elif "verify_email" in action or action == "hunter_verify_email" or "email_verifier" in action:
-        email = arguments.get("email") or "patrick@stripe.com"
+        email = arguments.get("email") or ""
         return json.dumps({
-            "status": "success",
+            "status": "error",
             "source": "hunter_sandbox_mock",
             "endpoint": "GET /v2/email-verifier",
             "email": email,
-            "result": "valid",
-            "score": 99,
-            "regexp_valid": True,
-            "gibberish": False,
-            "disposable": False,
-            "webmail": False,
-            "mx_records": True,
-            "smtp_server": True,
-            "smtp_check": True,
-            "note": "Sandbox mode: Connect Hunter.io API Key in Integration Hub for live Hunter verification."
+            "result": "unverified",
+            "score": 0,
+            "message": "Hunter.io API Key is unconfigured or invalid."
         }, indent=2)
+
     elif "company_enrichment" in action or action == "hunter_company_enrichment" or "company" in action:
         domain = arguments.get("domain") or "stripe.com"
         return json.dumps({

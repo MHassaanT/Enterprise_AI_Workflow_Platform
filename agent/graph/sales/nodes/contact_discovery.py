@@ -43,29 +43,19 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
         )
 
         source = contact_res.get("source", "unknown")
-        contact = contact_res.get("contact", {})
-        hunter_id = contact.get("hunter_person_id") or f"HUNTER-{domain.split('.')[0].upper()}"
-        logger.info(f"[STAGE 3] Hunter result for {domain}: source='{source}', email='{contact.get('contact_email', 'NONE')}', status='{contact_res.get('status')}'")
+        contact = contact_res.get("contact")
+        hunter_id = (contact.get("hunter_person_id") if contact else None) or f"HUNTER-{domain.split('.')[0].upper()}"
 
         if not contact or not contact.get("contact_email"):
-            contact = {
-                "contact_name": contact.get("contact_name") or f"Head of Operations",
-                "contact_title": contact.get("contact_title") or target_titles[0],
-                "contact_email": contact.get("contact_email") or f"contact@{domain}",
-                "company_name": company_name,
-                "domain": domain,
-                "hunter_person_id": hunter_id,
-                "apollo_person_id": hunter_id,
-                "source": source,
-            }
-            logger.info(f"[STAGE 3] No real contact found for {domain}, using fallback: {contact.get('contact_email')}")
-        else:
-            contact["company_name"] = company_name
-            contact["domain"] = domain
-            contact["hunter_person_id"] = hunter_id
-            contact["apollo_person_id"] = hunter_id
-            contact["source"] = contact.get("source") or source
-            logger.info(f"[STAGE 3] ✅ Real contact found: {contact.get('contact_email')} (source={contact.get('source')})")
+            logger.info(f"[STAGE 3] No real contact found on Hunter.io for domain '{domain}'. Dropping account.")
+            return None
+        
+        contact["company_name"] = company_name
+        contact["domain"] = domain
+        contact["hunter_person_id"] = hunter_id
+        contact["apollo_person_id"] = hunter_id
+        contact["source"] = contact.get("source") or source
+        logger.info(f"[STAGE 3] ✅ Real contact found for {domain}: {contact.get('contact_email')} (source={contact.get('source')})")
 
         return contact
 
@@ -75,18 +65,20 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
     accounts_to_process = scraped_accounts[:prospect_limit]
     logger.info(f"[STAGE 3] Processing {len(accounts_to_process)} accounts (prospect_limit={prospect_limit})")
     if accounts_to_process:
-        discovered_contacts = list(await asyncio.gather(*[_discover_single(acc) for acc in accounts_to_process]))
+        raw_discovered = await asyncio.gather(*[_discover_single(acc) for acc in accounts_to_process])
+        discovered_contacts = [c for c in raw_discovered if c is not None]
     else:
         discovered_contacts = []
 
     # Log summary of all discovered contacts
     for idx, c in enumerate(discovered_contacts):
-        logger.info(f"[STAGE 3] Contact #{idx+1}: email='{c.get('contact_email')}', source='{c.get('source')}', domain='{c.get('domain')}'")
+        logger.info(f"[STAGE 3] Real Contact #{idx+1}: email='{c.get('contact_email')}', source='{c.get('source')}', domain='{c.get('domain')}'")
 
+    status_str = "COMPLETED" if discovered_contacts else "NO_LEADS_FOUND"
     logs.append({
         "stage": "Stage 3: Contact Discovery",
-        "status": "COMPLETED",
-        "details": f"Discovered {len(discovered_contacts)} decision-maker contacts via fast parallel Hunter.io search."
+        "status": status_str,
+        "details": f"Discovered {len(discovered_contacts)} real decision-maker contacts via Hunter.io search."
     })
 
     return {
