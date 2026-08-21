@@ -11,14 +11,18 @@ class RFQOutreachSubAgent:
     Formats formal Request for Quotation (RFQ) communications and dispatches emails to candidate vendors.
     """
 
-    def process(self, title: str, extracted_specs: Dict[str, Any], vendors: List[Dict[str, Any]], tenant_id: str) -> Dict[str, Any]:
+    def process(self, title: str, extracted_specs: Dict[str, Any], vendors: List[Dict[str, Any]], tenant_id: str, company_context: Dict[str, Any] = None) -> Dict[str, Any]:
         tech_reqs = "\n- ".join(extracted_specs.get("technical_requirements", ["Standard specification"]))
         deliverables = "\n- ".join(extracted_specs.get("key_deliverables", ["Full fulfillment"]))
         timeline = extracted_specs.get("target_timeline", "30 days")
+        ctx = company_context or {}
+        comp_name = ctx.get("company_name", "Enterprise Client")
+        sender_name = ctx.get("sender_name", "Procurement Department")
 
-        prompt = f"""You are an AI Procurement Sub-Agent specializing in vendor communications.
-Draft a professional Request for Quotation (RFQ) email template for:
+        prompt = f"""You are an AI Procurement Sub-Agent representing {comp_name}.
+Draft a professional Request for Quotation (RFQ) email template on behalf of {comp_name} ({ctx.get('description', '')[:150]}) for:
 
+BUYING COMPANY: {comp_name}
 PROJECT TITLE: {title}
 REQUIREMENTS:
 - {tech_reqs}
@@ -27,8 +31,8 @@ DELIVERABLES:
 TIMELINE: {timeline}
 
 Draft a template JSON object with:
-1. "subject": Crisp professional email subject line.
-2. "body_template": The email text body requesting a detailed quotation, pricing tiers, lead time, and SLA terms. Use {{vendor_name}} as placeholder.
+1. "subject": Crisp professional email subject line including buying company name {comp_name}.
+2. "body_template": The email text body requesting a detailed quotation, pricing tiers, lead time, and SLA terms. Use {{vendor_name}} as placeholder. Sign off as {sender_name} at {comp_name}.
 
 Return ONLY valid JSON matching this schema:
 {{

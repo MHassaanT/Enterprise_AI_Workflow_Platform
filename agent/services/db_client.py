@@ -112,3 +112,40 @@ async def execute_db_query(sql: str, params: list = None, tenant_id: str = None)
         print(f"[DB QUERY ERROR] Failed to execute DB query via backend: {e}")
         return {"rows": [], "rowCount": 0, "error": str(e)}
 
+
+async def get_tenant_company_context(tenant_id: str) -> dict:
+    """
+    Fetches tenant company details & sender metadata for agent email context.
+    Returns: {"company_name", "description", "website", "industry", "sender_name", "sender_role", "sender_email"}
+    """
+    if not tenant_id:
+        return {
+            "company_name": "Enterprise Client",
+            "description": "",
+            "website": "",
+            "industry": "",
+            "sender_name": "Team Representative",
+            "sender_role": "Representative",
+            "sender_email": ""
+        }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/company-context",
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"[COMPANY CONTEXT ERROR] Failed to fetch company context for tenant {tenant_id}: {e}")
+        return {
+            "company_name": "Enterprise Client",
+            "description": "",
+            "website": "",
+            "industry": "",
+            "sender_name": "Team Representative",
+            "sender_role": "Representative",
+            "sender_email": ""
+        }
+
+

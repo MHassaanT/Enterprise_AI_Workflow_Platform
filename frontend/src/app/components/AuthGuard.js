@@ -9,8 +9,9 @@ export default function AuthGuard({ children }) {
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
-    // Exclude public pages (/login, /attendance/*) from protection check
-    if (pathname === '/login' || pathname.startsWith('/attendance')) {
+    // Exclude public pages (/, /signup, /login, /attendance/*) from protection check
+    const isPublic = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance');
+    if (isPublic) {
       setAuthorized(true);
       return;
     }
@@ -24,7 +25,9 @@ export default function AuthGuard({ children }) {
     }
   }, [pathname, router]);
 
-  if (!authorized && pathname !== '/login' && !pathname.startsWith('/attendance')) {
+  const isPublicPage = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance');
+
+  if (!authorized && !isPublicPage) {
     return (
       <div style={{
         display: 'flex',

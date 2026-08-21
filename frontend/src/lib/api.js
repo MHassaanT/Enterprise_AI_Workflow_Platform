@@ -63,11 +63,33 @@ export async function login(email, password) {
   return data;
 }
 
-export async function register(companyName, email, password) {
+export async function crawlCompanyWebsite(website) {
+  const res = await fetch('/api/auth/crawl-company', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ website })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let data = {};
+    try { data = JSON.parse(text); } catch (e) {}
+    throw new Error(data.error || `Website crawl failed (HTTP ${res.status}).`);
+  }
+
+  return res.json();
+}
+
+export async function register(payload) {
+  // Support both legacy positional parameters or object payload
+  const body = typeof payload === 'object' 
+    ? payload 
+    : { companyName: arguments[0], email: arguments[1], password: arguments[2] };
+
   const res = await fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ companyName, email, password })
+    body: JSON.stringify(body)
   });
 
   if (!res.ok) {

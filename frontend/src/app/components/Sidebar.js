@@ -16,14 +16,14 @@ export default function Sidebar() {
     setUser(getUser());
   }, []);
 
-  if (pathname === '/login' || pathname.startsWith('/attendance')) {
+  if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance')) {
     return null;
   }
 
   const isAdmin = user?.role === 'admin';
 
   const navItems = [
-    { label: 'Dashboard', href: '/', icon: 'dashboard' },
+    { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
     { label: 'Support Chat', href: '/chat', icon: 'forum' },
     { label: 'Finance Agent', href: '/finance', icon: 'payments' },
     { label: 'Sales Agent', href: '/sales', icon: 'trending_up' },
@@ -47,7 +47,7 @@ export default function Sidebar() {
     <>
       {/* Mobile Top Bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant z-40 px-lg flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/dashboard" className="flex items-center gap-2">
           <div className="h-8 w-8 rounded bg-primary-container/20 flex items-center justify-center border border-primary/30 text-primary">
             <span className="material-symbols-outlined text-lg">hexagon</span>
           </div>
@@ -78,7 +78,7 @@ export default function Sidebar() {
         <div className="space-y-lg">
           {/* Logo & Header */}
           <div className={`px-sm pt-xs flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
-            <Link href="/" className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} group`} onClick={() => setIsOpenMobile(false)}>
+            <Link href="/dashboard" className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} group`} onClick={() => setIsOpenMobile(false)}>
               <div className="h-10 w-10 rounded-xl bg-primary-container/20 flex items-center justify-center shrink-0 border border-primary/30 group-hover:border-primary/60 transition-colors">
                 <span className="material-symbols-outlined text-primary text-xl">hexagon</span>
               </div>

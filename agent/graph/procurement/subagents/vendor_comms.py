@@ -13,9 +13,12 @@ class VendorCommsSubAgent:
     Strictly enforces zero disclosure of the winning vendor's identity or pricing to non-selected vendors.
     """
 
-    def process(self, title: str, selected_vendor_id: str, selection_notes: str, vendors: List[Dict[str, Any]], tenant_id: str) -> Dict[str, Any]:
+    def process(self, title: str, selected_vendor_id: str, selection_notes: str, vendors: List[Dict[str, Any]], tenant_id: str, company_context: Dict[str, Any] = None) -> Dict[str, Any]:
         winning_vendor = None
         other_vendors = []
+        ctx = company_context or {}
+        comp_name = ctx.get("company_name", "Enterprise Client")
+        sender_name = ctx.get("sender_name", "Procurement Department")
 
         for v in vendors:
             if str(v.get("id")) == str(selected_vendor_id) or str(v.get("vendor_name")) == str(selected_vendor_id):
@@ -30,9 +33,10 @@ class VendorCommsSubAgent:
         llm = get_llm()
 
         # 1. Draft Acceptance Email
-        acceptance_prompt = f"""You are an AI Procurement Sub-Agent.
-Draft a formal Vendor Award & Selection Acceptance Email for the winning vendor:
+        acceptance_prompt = f"""You are an AI Procurement Sub-Agent representing {comp_name}.
+Draft a formal Vendor Award & Selection Acceptance Email for the winning vendor on behalf of {comp_name}:
 
+BUYING COMPANY: {comp_name} ({ctx.get('description', '')[:200]})
 PROJECT TITLE: {title}
 WINNING VENDOR: {winning_vendor.get('vendor_name')}
 AGREED QUOTE AMOUNT: ${winning_vendor.get('quote_amount', 0):,.2f}
@@ -40,7 +44,7 @@ SELECTION RATIONALE / NOTES: {selection_notes}
 
 Generate JSON containing:
 1. "subject": Professional award email subject.
-2. "body": Email body instructing the vendor on contract execution, purchase order issuance, and onboarding steps.
+2. "body": Email body instructing the vendor on contract execution, purchase order issuance, and onboarding steps signed off by {sender_name} at {comp_name}.
 
 Return ONLY valid JSON:
 {{ "subject": "...", "body": "..." }}
@@ -53,8 +57,8 @@ Return ONLY valid JSON:
             acceptance_email = json.loads(content.strip())
         except Exception:
             acceptance_email = {
-                "subject": f"Notice of Award - Vendor Selection for {title}",
-                "body": f"Dear {winning_vendor.get('vendor_name')} Team,\n\nWe are pleased to inform you that your bid for '{title}' has been selected. Our finance department will follow up with formal contracting details and Purchase Order documentation.\n\nBest regards,\nProcurement Department"
+                "subject": f"Notice of Award - Vendor Selection for {title} | {comp_name}",
+                "body": f"Dear {winning_vendor.get('vendor_name')} Team,\n\nWe are pleased to inform you that your bid for '{title}' has been selected by {comp_name}. Our finance department will follow up with formal contracting details and Purchase Order documentation.\n\nBest regards,\n{sender_name}\n{comp_name}"
             }
 
         # 2. Draft Non-Disclosure Regret Email (Strict Privacy Enforcement)

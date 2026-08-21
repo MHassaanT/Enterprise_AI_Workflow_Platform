@@ -49,6 +49,52 @@ router.use((req, res, next) => {
   next();
 });
 
+// ── GET /internal/tenants/:tenantId/company-context ──
+// Returns tenant company details (name, description, website, industry, admin contact) for agent email context
+router.get('/tenants/:tenantId/company-context', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const tenantRes = await query(
+      `SELECT id, name, description, website, industry FROM tenants WHERE id = $1`,
+      [tenantId],
+      tenantId
+    );
+
+    const userRes = await query(
+      `SELECT full_name, company_role, email FROM users WHERE tenant_id = $1 AND role = 'admin' LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    const tenant = tenantRes.rows[0] || {};
+    const adminUser = userRes.rows[0] || {};
+
+    res.json({
+      tenant_id: tenantId,
+      company_name: tenant.name || 'Enterprise Client',
+      description: tenant.description || '',
+      website: tenant.website || '',
+      industry: tenant.industry || '',
+      sender_name: adminUser.full_name || 'Team Lead',
+      sender_role: adminUser.company_role || 'Representative',
+      sender_email: adminUser.email || '',
+    });
+  } catch (error) {
+    console.error(`Error fetching company context for tenant ${tenantId}:`, error);
+    res.json({
+      tenant_id: tenantId,
+      company_name: 'Enterprise Client',
+      description: '',
+      website: '',
+      industry: '',
+      sender_name: 'Team Lead',
+      sender_role: 'Representative',
+      sender_email: '',
+    });
+  }
+});
+
 // ── GET /internal/agents/:agentInstanceId/tools ──
 // Returns the allowed tool bindings & MCP server endpoints for an agent instance
 router.get('/agents/:agentInstanceId/tools', async (req, res) => {

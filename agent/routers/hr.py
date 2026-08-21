@@ -168,19 +168,25 @@ async def send_interview_emails(
                 "title": row['title'] or "Job Role"
             })
 
-    llm = get_llm()
-    results = []
+    from services.db_client import get_tenant_company_context
+    company_context = await get_tenant_company_context(request.tenant_id)
+    comp_name = company_context.get("company_name", "Enterprise Client")
+    sender_name = company_context.get("sender_name", "HR Department")
+    sender_role = company_context.get("sender_role", "Recruitment Team")
 
     for c in candidates:
         prompt = f"""
-You are an HR Assistant. Draft a professional interview invitation email for a candidate.
+You are an HR Assistant representing {comp_name}. Draft a warm, professional interview invitation email for a candidate on behalf of {comp_name}.
+
+Company Name: {comp_name}
+Company Overview: {company_context.get("description", "")[:200]}
 Candidate Name: {c["name"]}
 Job Title: {c["title"]}
 Interview Details: {request.interview_details}
 
 Output a JSON object with:
-1. "subject": The email subject line.
-2. "body": The plain text email body.
+1. "subject": The email subject line including {comp_name}.
+2. "body": The plain text email body signed off as {sender_name}, {sender_role} at {comp_name}.
 
 Return ONLY valid JSON. No markdown backticks.
 """

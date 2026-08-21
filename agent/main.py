@@ -22,6 +22,7 @@ from routers.tools import router as tools_router
 from routers.finance_agent import router as finance_router
 from routers.sales_agent import router as sales_router
 from routers.procurement_agent import router as procurement_router
+from routers.company_crawler import router as company_crawler_router
 
 # Build MCP HTTP app (Streamable HTTP transport)
 mcp_http_app = mcp.http_app(path="/mcp")
@@ -82,6 +83,7 @@ app.include_router(hr_router, prefix="/agent/hr", tags=["HR Agent"])
 
 # Internal tools route
 app.include_router(tools_router, prefix="/agent/tools", tags=["Tools"])
+app.include_router(company_crawler_router, prefix="/agent", tags=["Company Crawler"])
 
 # MCP gateway (external tool clients can connect here)
 app.mount("/mcp", mcp_http_app)

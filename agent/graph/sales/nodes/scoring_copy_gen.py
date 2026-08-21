@@ -7,12 +7,15 @@ import logging
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
 from services.llm_gateway import get_llm
+from services.db_client import get_tenant_company_context
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
 
 async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
+    tenant_id = state.get("tenant_id")
+    company_context = await get_tenant_company_context(tenant_id)
     icp = state.get("icp_config") or {}
     verified_contacts = state.get("verified_contacts", [])
     scraped_accounts = state.get("scraped_accounts", [])
@@ -54,31 +57,40 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         if not deliverability.get("is_valid", True):
             icp_score -= 20.0
 
-        prompt = f"""You are an elite AI Sales SDR/BDR. Analyze the following prospect and generate a personalized cold outreach email.
+        sender_company = company_context.get("company_name", "Enterprise Client")
+        sender_desc = company_context.get("description") or battlecard
+        sender_name = company_context.get("sender_name", "Account Executive")
+        sender_role = company_context.get("sender_role", "Sales Representative")
+
+        prompt = f"""You are an elite AI Sales SDR representing {sender_company}. Analyze the following prospect and generate a highly personalized cold outreach email on behalf of {sender_company}.
+
+OUR COMPANY & VALUE PROP:
+- Company Name: {sender_company}
+- Industry: {company_context.get("industry", "Technology")}
+- Company Overview: {sender_desc}
+- Value Proposition: {battlecard}
+- Sender Representative: {sender_name} ({sender_role})
 
 TARGET PROSPECT:
 - Company: {company_name} ({domain})
 - Contact Name: {contact_name} ({contact_title})
 - Web Context: {scraped_text[:500]}
 
-OUR VALUE PROP:
-{battlecard}
-
 INSTRUCTIONS:
 Return a JSON object with:
 - "icp_score": number between 70 and 100
 - "outreach_subject": compelling personalized subject line
-- "outreach_body": personalized cold outreach body
+- "outreach_body": personalized cold outreach body signed off as "{sender_name}, {sender_role} at {sender_company}"
 
 CRITICAL FORMATTING RULES FOR OUTREACH BODY:
 DO NOT include generic bracketed placeholders like "[Your Name]", "[Your Position]", "[Your Company Name]", or "[Your Contact Information]".
-If sender details are not specified, sign off cleanly with "Best regards," or "Sincerely," without any trailing bracketed placeholders or blank bracket tokens.
+Sign off cleanly with "{sender_name}, {sender_role} at {sender_company}".
 
 Respond ONLY with valid JSON.
 """
 
-        subject = f"Autonomous Workflow Velocity for {company_name}"
-        body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. Our autonomous AI workflow platform helps enterprise teams scale operations with zero friction.\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,"
+        subject = f"Autonomous Workflow Velocity for {company_name} | {sender_company}"
+        body = f"Hi {contact_name},\n\nI saw {company_name}'s recent work in digital transformation. At {sender_company}, {sender_desc[:150]}...\n\nWould you be open to a 15-minute demo next week?\n\nBest regards,\n{sender_name}\n{sender_role}, {sender_company}"
 
         if llm:
             try:
