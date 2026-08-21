@@ -169,8 +169,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "verification_status": data.get("verification", {}).get("status"),
                     }, indent=2)
                 else:
-                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Finder returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
-                    return await _execute_sandbox_fallback(norm_action, arguments)
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Finder returned HTTP {res.status_code}: {res.text}")
+                    return json.dumps({
+                        "status": "error",
+                        "source": "hunter_io_api",
+                        "http_status": res.status_code,
+                        "endpoint": "GET /v2/email-finder",
+                        "message": f"Hunter.io API returned HTTP {res.status_code}: {res.text}"
+                    }, indent=2)
 
             # 4. Email Verifier: GET /v2/email-verifier
             elif "verify_email" in norm_action or norm_action == "hunter_verify_email" or "email_verifier" in norm_action:
@@ -200,8 +206,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "smtp_check": data.get("smtp_check", True),
                     }, indent=2)
                 else:
-                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Verifier returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
-                    return await _execute_sandbox_fallback(norm_action, arguments)
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Verifier returned HTTP {res.status_code}: {res.text}")
+                    return json.dumps({
+                        "status": "error",
+                        "source": "hunter_io_api",
+                        "http_status": res.status_code,
+                        "endpoint": "GET /v2/email-verifier",
+                        "message": f"Hunter.io API returned HTTP {res.status_code}: {res.text}"
+                    }, indent=2)
 
             # 5. Company Enrichment: GET /v2/companies/find
             elif "company_enrichment" in norm_action or norm_action == "hunter_company_enrichment" or "company" in norm_action:
