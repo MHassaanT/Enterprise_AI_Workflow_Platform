@@ -439,7 +439,7 @@ async def get_hunter_key_status(
     except Exception:
         pass
 
-    query = "SELECT is_valid, updated_at FROM tenant_hunter_settings WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
+    query = "SELECT is_valid, updated_at FROM tenant_hunter_settings WHERE tenant_id = $1 ORDER BY updated_at DESC;"
     try:
         res = await execute_db_query(query, [normalized_tenant_id])
         if res and res.get("rows") and len(res["rows"]) > 0:
@@ -527,7 +527,7 @@ async def get_icp_config(
     );
     """)
 
-    query = "SELECT * FROM sales_icp_configs WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC;"
+    query = "SELECT * FROM sales_icp_configs WHERE tenant_id = $1 ORDER BY updated_at DESC;"
     res = await execute_db_query(query, [normalized_tenant_id])
     if res and res.get("rows") and len(res["rows"]) > 0:
         return {"success": True, "icp": res["rows"][0]}
@@ -610,12 +610,12 @@ async def check_email_replies(
     await _ensure_v2_columns_exist()
 
     if request.prospect_id:
-        query = "SELECT * FROM sales_prospects WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000') AND id::text = $2;"
+        query = "SELECT * FROM sales_prospects WHERE tenant_id = $1 AND id::text = $2;"
         res = await execute_db_query(query, [tenant_id, str(request.prospect_id)])
     else:
         query = """
         SELECT * FROM sales_prospects 
-        WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000')
+        WHERE tenant_id = $1
           AND deal_stage IN ('OUTREACH_SENT', 'PROPOSAL_SENT', 'DEMO_SCHEDULED', 'REPLIED', 'PROPOSAL_REQUESTED')
         ORDER BY updated_at DESC LIMIT 20;
         """
@@ -625,7 +625,7 @@ async def check_email_replies(
     if not prospects and not request.simulate_reply:
         # Fallback to fetching recent prospects if none in active outreach stage
         res_all = await execute_db_query(
-            "SELECT * FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY updated_at DESC LIMIT 5;",
+            "SELECT * FROM sales_prospects WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 5;",
             [tenant_id]
         )
         prospects = res_all.get("rows", []) if res_all else []
@@ -996,7 +996,7 @@ async def get_sales_analytics(
       COALESCE(SUM(CASE WHEN deal_stage = 'CLOSED_WON' THEN deal_value ELSE 0 END), 0.00) AS total_revenue,
       COALESCE(SUM(CASE WHEN deal_stage IN ('PROPOSAL_DRAFTED', 'PROPOSAL_SENT', 'PROPOSAL_REQUESTED') THEN deal_value ELSE 0 END), 0.00) AS active_pipeline_value
     FROM sales_prospects
-    WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000';
+    WHERE tenant_id = $1;
     """
 
     res = await execute_db_query(query, [normalized_tenant_id])

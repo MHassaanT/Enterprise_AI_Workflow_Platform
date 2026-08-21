@@ -26,7 +26,7 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     if not existing_domains and not existing_emails:
         try:
             from services.db_client import execute_db_query
-            ex_query = "SELECT LOWER(contact_email) as contact_email FROM sales_prospects WHERE (deal_stage = 'SENT' OR gmail_message_id IS NOT NULL) AND (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000');"
+            ex_query = "SELECT LOWER(contact_email) as contact_email FROM sales_prospects WHERE (deal_stage = 'SENT' OR gmail_message_id IS NOT NULL) AND tenant_id = $1;"
             ex_res = await execute_db_query(ex_query, [tenant_id])
             if ex_res and ex_res.get("rows"):
                 for row in ex_res["rows"]:

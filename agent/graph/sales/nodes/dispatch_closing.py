@@ -122,7 +122,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage and deduplication
         try:
             hunter_id = item.get("hunter_person_id") or item.get("apollo_person_id", "HUNTER-1")
-            check_query = "SELECT id FROM sales_prospects WHERE (tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000') AND LOWER(contact_email) = LOWER($2);"
+            check_query = "SELECT id FROM sales_prospects WHERE tenant_id = $1 AND LOWER(contact_email) = LOWER($2);"
             check_res = await execute_db_query(check_query, [tenant_id, contact_email])
 
             if check_res and check_res.get("rows") and len(check_res["rows"]) > 0:

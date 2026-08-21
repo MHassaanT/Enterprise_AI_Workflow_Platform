@@ -2,14 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const axios = require('axios');
+const { authenticate } = require('../middleware/auth');
 
 const AGENT_URL = process.env.AGENT_SERVICE_URL || process.env.AGENT_URL || 'http://localhost:8000';
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production';
 
+router.use(authenticate);
+
 // GET /api/v1/finance/invoices — Fetch all invoices
 router.get('/invoices', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
     const result = await query(
       'SELECT * FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC;',
       [tenantId],
@@ -25,7 +28,7 @@ router.get('/invoices', async (req, res) => {
 // GET /api/v1/finance/ledger — Fetch General Ledger
 router.get('/ledger', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
     const result = await query(
       'SELECT * FROM general_ledger WHERE tenant_id = $1 ORDER BY created_at DESC;',
       [tenantId],
@@ -41,7 +44,7 @@ router.get('/ledger', async (req, res) => {
 // GET /api/v1/finance/budgets — Fetch Department Budgets
 router.get('/budgets', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
     const result = await query(
       'SELECT * FROM department_budgets WHERE tenant_id = $1;',
       [tenantId],
@@ -57,7 +60,7 @@ router.get('/budgets', async (req, res) => {
 // POST /api/v1/finance/process-invoice — Run Invoice Ingestion & Reconciliation Sub-Agent
 router.post('/process-invoice', async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id;
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id;
     const { invoice_data } = req.body;
 
     const response = await axios.post(

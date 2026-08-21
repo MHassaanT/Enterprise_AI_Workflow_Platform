@@ -2,14 +2,20 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const axios = require('axios');
+const { authenticate } = require('../middleware/auth');
 
 const AGENT_URL = process.env.AGENT_SERVICE_URL || process.env.AGENT_URL || 'http://localhost:8000';
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production';
 
+router.use(authenticate);
+
 // GET /api/v1/sales/prospects — Fetch AI SDR discovered lead prospects & CRM deals
 router.get('/prospects', async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant context missing.' });
+    }
     let prospects = [];
     try {
       await query(`
@@ -70,7 +76,7 @@ router.get('/prospects', async (req, res) => {
       `);
 
       const result = await query(
-        "SELECT * FROM sales_prospects WHERE tenant_id = $1 OR tenant_id = '00000000-0000-0000-0000-000000000000' ORDER BY created_at DESC;",
+        "SELECT * FROM sales_prospects WHERE tenant_id = $1 ORDER BY created_at DESC;",
         [tenantId],
         tenantId
       );

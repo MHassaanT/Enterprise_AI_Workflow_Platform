@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
+import { getAuthHeader } from '@/lib/api';
 
 export default function SalesDashboard() {
   const [prospects, setProspects] = useState([]);
@@ -97,7 +98,9 @@ export default function SalesDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/sales/prospects');
+      const res = await fetch('/api/v1/sales/prospects', {
+        headers: { ...getAuthHeader() },
+      });
       const data = await safeJsonParse(res);
       setProspects(data.prospects || []);
     } catch (err) {
@@ -109,7 +112,9 @@ export default function SalesDashboard() {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch('/api/v1/sales/analytics');
+      const res = await fetch('/api/v1/sales/analytics', {
+        headers: { ...getAuthHeader() },
+      });
       const data = await safeJsonParse(res);
       if (data.success && data.analytics) {
         setAnalytics(data.analytics);
@@ -121,7 +126,9 @@ export default function SalesDashboard() {
 
   const fetchIcpConfig = async () => {
     try {
-      const res = await fetch('/api/v1/sales/icp');
+      const res = await fetch('/api/v1/sales/icp', {
+        headers: { ...getAuthHeader() },
+      });
       const data = await safeJsonParse(res);
       if (data.success && data.icp) {
         setIcpConfig(data.icp);
@@ -134,7 +141,9 @@ export default function SalesDashboard() {
 
   const checkHunterKeyStatus = async () => {
     try {
-      const res = await fetch('/api/v1/sales/hunter-key');
+      const res = await fetch('/api/v1/sales/hunter-key', {
+        headers: { ...getAuthHeader() },
+      });
       const data = await safeJsonParse(res);
       setHunterStatus(data);
     } catch (err) {
@@ -178,7 +187,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/icp/build', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       });
       const data = await safeJsonParse(res);
       if (data.success && data.icp) {
@@ -202,7 +211,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/pipeline/run', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prospect_limit: prospectLimit,
           auto_send_email: autoSendEmail,
@@ -239,7 +248,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/check-replies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           simulate_reply: simulate,
           prospect_id: prospectId,
@@ -269,7 +278,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/send-reply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prospect_id: prospect.id,
           reply_text: prospect.ai_reply_draft,
@@ -298,7 +307,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/proposals/draft', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prospect_id: prospect.id,
           pricing_tier: 'Enterprise',
@@ -327,7 +336,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/proposals/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({ prospect_id: prospect.id }),
       });
       const data = await safeJsonParse(res);
@@ -353,7 +362,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/deal/confirm-sale', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prospect_id: prospect.id,
           final_deal_value: parseFloat(finalDealValueInput) || 50000,
@@ -383,7 +392,7 @@ export default function SalesDashboard() {
     try {
       const res = await fetch('/api/v1/sales/hunter-key', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({ hunter_api_key: hunterKeyInput.trim() }),
       });
       const data = await safeJsonParse(res);
