@@ -86,6 +86,20 @@ export default function SalesDashboard() {
     checkHunterKeyStatus();
   }, []);
 
+  const formatList = (val, maxCount) => {
+    if (!val) return '';
+    let arr = [];
+    if (Array.isArray(val)) {
+      arr = val;
+    } else if (typeof val === 'string') {
+      arr = val.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+    if (maxCount && arr.length > maxCount) {
+      arr = arr.slice(0, maxCount);
+    }
+    return arr.join(', ');
+  };
+
   const safeJsonParse = async (res) => {
     const text = await res.text();
     try {
@@ -666,11 +680,11 @@ export default function SalesDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-on-surface-variant">Industries:</span>
-                <span className="font-bold text-right">{icpConfig.target_industries?.slice(0, 2).join(', ')}</span>
+                <span className="font-bold text-right">{formatList(icpConfig?.target_industries, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-on-surface-variant">Roles:</span>
-                <span className="font-bold text-right">{icpConfig.target_titles?.slice(0, 2).join(', ')}</span>
+                <span className="font-bold text-right">{formatList(icpConfig?.target_titles, 2)}</span>
               </div>
             </div>
 
@@ -1094,7 +1108,7 @@ export default function SalesDashboard() {
                     </label>
                     <input
                       type="text"
-                      value={Array.isArray(icpConfig.target_industries) ? icpConfig.target_industries.join(', ') : (icpConfig.target_industries || '')}
+                      value={typeof icpConfig?.target_industries === 'string' ? icpConfig.target_industries : formatList(icpConfig?.target_industries)}
                       onChange={(e) => setIcpConfig({ ...icpConfig, target_industries: e.target.value })}
                       placeholder="e.g. Software, SaaS, Fintech, HealthTech"
                       className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
@@ -1107,7 +1121,7 @@ export default function SalesDashboard() {
                     </label>
                     <input
                       type="text"
-                      value={Array.isArray(icpConfig.target_titles) ? icpConfig.target_titles.join(', ') : (icpConfig.target_titles || '')}
+                      value={typeof icpConfig?.target_titles === 'string' ? icpConfig.target_titles : formatList(icpConfig?.target_titles)}
                       onChange={(e) => setIcpConfig({ ...icpConfig, target_titles: e.target.value })}
                       placeholder="e.g. VP of Sales, CTO, Head of Growth"
                       className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
