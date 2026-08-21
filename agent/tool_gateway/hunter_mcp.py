@@ -178,9 +178,11 @@ async def search_hunter_accounts_impl(
         if headcount_bands:
             discover_query["headcount"] = headcount_bands
 
+        # Ensure requested limit does not exceed Hunter API limit constraint (100)
+        fetch_limit = min(max(1, limit * 2), 50)
         res_str = await execute_hunter_tool(
             "hunter_discover",
-            {"query": discover_query, "limit": limit * 3},
+            {"query": discover_query, "limit": fetch_limit},
             creds
         )
         if res_str and res_str.startswith("{"):
@@ -204,6 +206,8 @@ async def search_hunter_accounts_impl(
                             break
                 if accounts:
                     return {"status": "success", "source": res_data.get("source", "hunter_io_api"), "accounts": accounts}
+            elif res_data.get("status") == "error":
+                logger.warning(f"[HUNTER SOURCING] Hunter API error response: {res_data.get('message')}")
     except Exception as e:
         logger.error(f"Hunter account search exception: {e}")
 

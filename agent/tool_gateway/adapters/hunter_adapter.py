@@ -55,8 +55,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                 payload = arguments.get("query") or arguments.get("payload") or {}
                 if not isinstance(payload, dict):
                     payload = {"query": str(payload)}
-                if arguments.get("limit"):
-                    payload["limit"] = arguments.get("limit")
+
+                raw_limit = arguments.get("limit") or payload.get("limit") or 20
+                try:
+                    limit_val = int(raw_limit)
+                except Exception:
+                    limit_val = 20
+                # Hunter API strictly requires limit between 1 and 100
+                payload["limit"] = min(max(1, limit_val), 100)
 
                 res = await client.post(f"{HUNTER_BASE_URL}/discover", params=params, json=payload)
                 if res.is_success:
@@ -67,8 +73,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "data": res.json().get("data", {})
                     }, indent=2)
                 else:
-                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Discover returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
-                    return await _execute_sandbox_fallback(norm_action, arguments)
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Discover returned HTTP {res.status_code}: {res.text}")
+                    return json.dumps({
+                        "status": "error",
+                        "source": "hunter_io_api",
+                        "http_status": res.status_code,
+                        "endpoint": "POST /v2/discover",
+                        "message": f"Hunter.io API returned HTTP {res.status_code}: {res.text}"
+                    }, indent=2)
 
             # 2. Domain Search: GET /v2/domain-search
             elif "domain_search" in norm_action or norm_action == "hunter_domain_search":
@@ -79,7 +91,10 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                 clean_domain = domain.replace("http://", "").replace("https://", "").strip("/")
                 params["domain"] = clean_domain
                 if arguments.get("limit"):
-                    params["limit"] = arguments.get("limit")
+                    try:
+                        params["limit"] = str(min(max(1, int(arguments.get("limit"))), 100))
+                    except Exception:
+                        params["limit"] = "10"
                 if arguments.get("type"):
                     params["type"] = arguments.get("type")
 
@@ -112,8 +127,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "emails": email_summary,
                     }, indent=2)
                 else:
-                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Domain Search returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
-                    return await _execute_sandbox_fallback(norm_action, arguments)
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Domain Search returned HTTP {res.status_code}: {res.text}")
+                    return json.dumps({
+                        "status": "error",
+                        "source": "hunter_io_api",
+                        "http_status": res.status_code,
+                        "endpoint": "GET /v2/domain-search",
+                        "message": f"Hunter.io API returned HTTP {res.status_code}: {res.text}"
+                    }, indent=2)
 
             # 3. Email Finder: GET /v2/email-finder
             elif "email_finder" in norm_action or norm_action == "hunter_email_finder" or "find_email" in norm_action:
