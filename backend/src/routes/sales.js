@@ -218,7 +218,7 @@ router.post(['/hunter-key', '/apollo-key'], async (req, res) => {
 // GET /api/v1/sales/hunter-key & /api/v1/sales/apollo-key — Check Key Status
 router.get(['/hunter-key', '/apollo-key'], async (req, res) => {
   try {
-    const tenantId = req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     const response = await axios.get(
       `${AGENT_URL}/agent/sales/hunter-key/${tenantId}`,
       { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }

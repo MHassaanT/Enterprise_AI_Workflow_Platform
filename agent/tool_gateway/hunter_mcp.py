@@ -60,27 +60,32 @@ async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
     try:
         query = """
             SELECT hunter_api_key as api_key FROM tenant_hunter_settings 
-            WHERE hunter_api_key IS NOT NULL AND LENGTH(TRIM(hunter_api_key)) > 5
+            WHERE tenant_id = $1 AND hunter_api_key IS NOT NULL AND LENGTH(TRIM(hunter_api_key)) > 5
             ORDER BY updated_at DESC LIMIT 1;
         """
-        res = await execute_db_query(query, [])
-        logger.info(f"[HUNTER CREDS] Step 2 (tenant_hunter_settings latest): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        res = await execute_db_query(query, [norm_tenant_id])
+        logger.info(f"[HUNTER CREDS] Step 2 (tenant_hunter_settings for tenant {norm_tenant_id}): rows={len(res.get('rows', []))}, error={res.get('error')}")
         if res and res.get("rows") and len(res["rows"]) > 0:
             key = res["rows"][0].get("api_key")
             if key and len(str(key).strip()) > 5:
-                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_hunter_settings (length={len(key.strip())})")
+                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_hunter_settings for tenant {norm_tenant_id} (length={len(key.strip())})")
                 return {"api_key": key.strip()}
     except Exception as e:
         logger.warning(f"[HUNTER CREDS] Step 2 exception: {e}")
 
     # 2b. Legacy tenant_apollo_settings fallback
     try:
-        res = await execute_db_query("SELECT apollo_api_key as api_key FROM tenant_apollo_settings WHERE apollo_api_key IS NOT NULL AND LENGTH(TRIM(apollo_api_key)) > 5 ORDER BY updated_at DESC LIMIT 1;")
-        logger.info(f"[HUNTER CREDS] Step 2b (legacy apollo_settings): rows={len(res.get('rows', []))}, error={res.get('error')}")
+        query = """
+            SELECT apollo_api_key as api_key FROM tenant_apollo_settings 
+            WHERE tenant_id = $1 AND apollo_api_key IS NOT NULL AND LENGTH(TRIM(apollo_api_key)) > 5
+            ORDER BY updated_at DESC LIMIT 1;
+        """
+        res = await execute_db_query(query, [norm_tenant_id])
+        logger.info(f"[HUNTER CREDS] Step 2b (legacy apollo_settings for tenant {norm_tenant_id}): rows={len(res.get('rows', []))}, error={res.get('error')}")
         if res and res.get("rows") and len(res["rows"]) > 0:
             key = res["rows"][0].get("api_key")
             if key and len(str(key).strip()) > 5:
-                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_apollo_settings")
+                logger.info(f"[HUNTER CREDS] ✅ Found key in tenant_apollo_settings for tenant {norm_tenant_id}")
                 return {"api_key": key.strip()}
     except Exception as e:
         logger.warning(f"[HUNTER CREDS] Step 2b exception: {e}")
@@ -99,17 +104,17 @@ async def get_tenant_hunter_credentials(tenant_id: str) -> Dict[str, Any]:
             if resp.status_code == 200:
                 data = resp.json()
                 logger.info(f"[HUNTER CREDS] Step 3 (direct HTTP /sales/hunter-key): {data}")
-                # If key is configured, query the DB directly to get the actual key value
+                # If key is configured for this tenant, query DB for this tenant's raw key
                 if data.get("configured") and data.get("is_valid"):
-                    # Try fetching the raw key
                     key_res = await execute_db_query(
-                        "SELECT hunter_api_key FROM tenant_hunter_settings ORDER BY updated_at DESC LIMIT 1;"
+                        "SELECT hunter_api_key FROM tenant_hunter_settings WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 1;",
+                        [norm_tenant_id]
                     )
                     logger.info(f"[HUNTER CREDS] Step 3 re-query: rows={len(key_res.get('rows', []))}")
                     if key_res and key_res.get("rows") and len(key_res["rows"]) > 0:
                         raw = key_res["rows"][0].get("hunter_api_key")
                         if raw and len(str(raw).strip()) > 5:
-                            logger.info(f"[HUNTER CREDS] ✅ Found key via direct HTTP + re-query")
+                            logger.info(f"[HUNTER CREDS] ✅ Found key via direct HTTP + re-query for tenant {norm_tenant_id}")
                             return {"api_key": raw.strip()}
     except Exception as e:
         logger.warning(f"[HUNTER CREDS] Step 3 (direct HTTP) exception: {e}")

@@ -270,25 +270,30 @@ async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0
 
         logger.info(f"[VERIFY WITH HUNTER] Executing hunter_verify_email tool with creds length: {len(creds.get('api_key', '')) if creds else 0}")
         res_str = await execute_hunter_tool("hunter_verify_email", {"email": email}, creds)
-        logger.info(f"[VERIFY WITH HUNTER] Raw execute_hunter_tool response: {res_str[:300]}")
-        try:
-            res_data = json.loads(res_str)
-            if res_data.get("status") == "success":
-                result_status = str(res_data.get("result") or "valid").lower()
-                score = res_data.get("score")
-                is_valid = (result_status in ("valid", "accept_all", "webmail")) and (score is None or score >= 40)
-                logger.info(f"[VERIFY WITH HUNTER] Result parsed: result_status='{result_status}', score={score}, is_valid={is_valid}, source='{res_data.get('source')}'")
-                return {
-                    "email": email,
-                    "is_valid": is_valid,
-                    "deliverability": "HIGH" if is_valid else "LOW",
-                    "status": "VALID" if is_valid else "INVALID",
-                    "score": score if score is not None else 90,
-                    "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
-                    "source": res_data.get("source", "hunter_io_api")
-                }
-        except Exception as parse_err:
-            logger.warning(f"[VERIFY WITH HUNTER] JSON parse error: {parse_err}")
+        logger.info(f"[VERIFY WITH HUNTER] Raw execute_hunter_tool response: {res_str[:300] if res_str else 'EMPTY'}")
+        if res_str and res_str.strip().startswith("{"):
+            try:
+                res_data = json.loads(res_str)
+                if res_data.get("status") == "success":
+                    result_status = str(res_data.get("result") or "valid").lower()
+                    score = res_data.get("score")
+                    is_valid = (result_status in ("valid", "accept_all", "webmail")) and (score is None or score >= 40)
+                    logger.info(f"[VERIFY WITH HUNTER] Result parsed: result_status='{result_status}', score={score}, is_valid={is_valid}, source='{res_data.get('source')}'")
+                    return {
+                        "email": email,
+                        "is_valid": is_valid,
+                        "deliverability": "HIGH" if is_valid else "LOW",
+                        "status": "VALID" if is_valid else "INVALID",
+                        "score": score if score is not None else 90,
+                        "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
+                        "source": res_data.get("source", "hunter_io_api")
+                    }
+                else:
+                    logger.warning(f"[VERIFY WITH HUNTER] Hunter response status: {res_data.get('status')}, message: {res_data.get('message')}")
+            except Exception as parse_err:
+                logger.warning(f"[VERIFY WITH HUNTER] JSON parse error: {parse_err}")
+        else:
+            logger.warning(f"[VERIFY WITH HUNTER] Non-JSON response received: {res_str[:200] if res_str else 'EMPTY'}")
     except Exception as e:
         logger.warning(f"[VERIFY WITH HUNTER] Hunter.io email verifier check exception: {e}")
         

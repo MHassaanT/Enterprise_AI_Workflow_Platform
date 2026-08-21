@@ -67,13 +67,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "data": res.json().get("data", {})
                     }, indent=2)
                 else:
-                    return f"Hunter Discover Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Discover returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 2. Domain Search: GET /v2/domain-search
             elif "domain_search" in norm_action or norm_action == "hunter_domain_search":
                 domain = arguments.get("domain") or arguments.get("company_domain")
                 if not domain:
-                    return "Error: 'domain' is required for Hunter Domain Search."
+                    return json.dumps({"status": "error", "message": "Error: 'domain' is required for Hunter Domain Search."})
                 
                 clean_domain = domain.replace("http://", "").replace("https://", "").strip("/")
                 params["domain"] = clean_domain
@@ -111,7 +112,8 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "emails": email_summary,
                     }, indent=2)
                 else:
-                    return f"Hunter Domain Search Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Domain Search returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 3. Email Finder: GET /v2/email-finder
             elif "email_finder" in norm_action or norm_action == "hunter_email_finder" or "find_email" in norm_action:
@@ -121,9 +123,9 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                 company = arguments.get("company")
 
                 if not domain and not company:
-                    return "Error: Either 'domain' or 'company' is required for Hunter Email Finder."
+                    return json.dumps({"status": "error", "message": "Error: Either 'domain' or 'company' is required for Hunter Email Finder."})
                 if not first_name or not last_name:
-                    return "Error: Both 'first_name' and 'last_name' are required for Hunter Email Finder."
+                    return json.dumps({"status": "error", "message": "Error: Both 'first_name' and 'last_name' are required for Hunter Email Finder."})
 
                 if domain:
                     params["domain"] = domain.replace("http://", "").replace("https://", "").strip("/")
@@ -146,13 +148,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "verification_status": data.get("verification", {}).get("status"),
                     }, indent=2)
                 else:
-                    return f"Hunter Email Finder Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Finder returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 4. Email Verifier: GET /v2/email-verifier
             elif "verify_email" in norm_action or norm_action == "hunter_verify_email" or "email_verifier" in norm_action:
                 email = arguments.get("email")
                 if not email:
-                    return "Error: 'email' is required for Hunter Email Verifier."
+                    return json.dumps({"status": "error", "message": "Error: 'email' is required for Hunter Email Verifier."})
 
                 params["email"] = email.strip()
                 res = await client.get(f"{HUNTER_BASE_URL}/email-verifier", params=params)
@@ -176,13 +179,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "smtp_check": data.get("smtp_check", True),
                     }, indent=2)
                 else:
-                    return f"Hunter Email Verifier Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Email Verifier returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 5. Company Enrichment: GET /v2/companies/find
             elif "company_enrichment" in norm_action or norm_action == "hunter_company_enrichment" or "company" in norm_action:
                 domain = arguments.get("domain") or arguments.get("company_domain")
                 if not domain:
-                    return "Error: 'domain' is required for Hunter Company Enrichment."
+                    return json.dumps({"status": "error", "message": "Error: 'domain' is required for Hunter Company Enrichment."})
 
                 clean_domain = domain.replace("http://", "").replace("https://", "").strip("/")
                 params["domain"] = clean_domain
@@ -196,13 +200,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "company": res.json().get("data", {})
                     }, indent=2)
                 else:
-                    return f"Hunter Company Enrichment Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Company Enrichment returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 6. Person Enrichment: GET /v2/people/find
             elif "person_enrichment" in norm_action or norm_action == "hunter_person_enrichment" or "person" in norm_action:
                 email = arguments.get("email")
                 if not email:
-                    return "Error: 'email' is required for Hunter Person Enrichment."
+                    return json.dumps({"status": "error", "message": "Error: 'email' is required for Hunter Person Enrichment."})
 
                 params["email"] = email.strip()
 
@@ -215,13 +220,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "person": res.json().get("data", {})
                     }, indent=2)
                 else:
-                    return f"Hunter Person Enrichment Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Person Enrichment returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 7. Combined Enrichment: GET /v2/combined/find
             elif "combined" in norm_action or norm_action == "hunter_combined_enrichment":
                 email = arguments.get("email")
                 if not email:
-                    return "Error: 'email' is required for Hunter Combined Enrichment."
+                    return json.dumps({"status": "error", "message": "Error: 'email' is required for Hunter Combined Enrichment."})
 
                 params["email"] = email.strip()
 
@@ -234,7 +240,8 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "combined": res.json().get("data", {})
                     }, indent=2)
                 else:
-                    return f"Hunter Combined Enrichment Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Combined Enrichment returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             # 8. Account Info: GET /v2/account
             elif "account" in norm_action or norm_action == "hunter_account_info":
@@ -256,13 +263,14 @@ async def execute_hunter_tool(tool_name: str, arguments: Dict[str, Any], credent
                         "verifications_available": calls.get("verifications", {}).get("available"),
                     }, indent=2)
                 else:
-                    return f"Hunter Account Info Error ({res.status_code}): {res.text}"
+                    logger.warning(f"[HUNTER ADAPTER] ⚠️ Hunter Account Info returned HTTP {res.status_code}: {res.text[:150]}. Falling back to sandbox.")
+                    return await _execute_sandbox_fallback(norm_action, arguments)
 
             else:
-                return f"Error: Unsupported Hunter.io action '{action}'."
+                return json.dumps({"status": "error", "message": f"Error: Unsupported Hunter.io action '{action}'."})
     except Exception as e:
         logger.error(f"Hunter.io API execution exception: {e}")
-        return f"Hunter.io execution exception: {str(e)}"
+        return json.dumps({"status": "error", "message": f"Hunter.io execution exception: {str(e)}"})
 
 
 async def _execute_sandbox_fallback(action: str, arguments: Dict[str, Any]) -> str:
