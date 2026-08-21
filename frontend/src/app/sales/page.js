@@ -36,6 +36,7 @@ export default function SalesDashboard() {
   const [autoSendEmail, setAutoSendEmail] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [icpBuilt, setIcpBuilt] = useState(false);
+  const [savingIcp, setSavingIcp] = useState(false);
 
   // ICP Configuration State
   const [icpConfig, setIcpConfig] = useState({
@@ -297,6 +298,77 @@ export default function SalesDashboard() {
       alert(`❌ Network error: ${err.message}`);
     } finally {
       setSendingEmail(false);
+    }
+  };
+
+  const handleSendSingleOutreachEmail = async (prospect) => {
+    if (!prospect) return;
+    const email = prospect.contact_email || prospect.email;
+    const subject = prospect.outreach_subject || prospect.subject || 'Partnership Proposal';
+    const body = prospect.outreach_body || prospect.body || '';
+
+    setSendingEmail(true);
+    try {
+      const res = await fetch('/api/v1/sales/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({
+          prospect_id: prospect.id || null,
+          contact_email: email,
+          subject: subject,
+          body: body,
+        }),
+      });
+      const data = await safeJsonParse(res);
+      if (data.success) {
+        setMessage(`✅ Outreach email successfully dispatched to ${email}!`);
+        fetchData();
+        fetchAnalytics();
+        setSelectedProspect(null);
+      } else {
+        alert(`❌ Dispatch failed: ${data.error || data.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`❌ Network error dispatching email: ${err.message}`);
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleSaveIcpConfig = async (e) => {
+    if (e) e.preventDefault();
+    setSavingIcp(true);
+    try {
+      const industriesArr = typeof icpConfig.target_industries === 'string'
+        ? icpConfig.target_industries.split(',').map((s) => s.trim()).filter(Boolean)
+        : icpConfig.target_industries;
+      const titlesArr = typeof icpConfig.target_titles === 'string'
+        ? icpConfig.target_titles.split(',').map((s) => s.trim()).filter(Boolean)
+        : icpConfig.target_titles;
+
+      const payload = {
+        ...icpConfig,
+        target_industries: industriesArr,
+        target_titles: titlesArr,
+      };
+
+      const res = await fetch('/api/v1/sales/icp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify(payload),
+      });
+      const data = await safeJsonParse(res);
+      if (data.success) {
+        setIcpConfig(payload);
+        localStorage.setItem('sales_icp_config', JSON.stringify(payload));
+        setMessage('✅ ICP Strategy configuration saved successfully.');
+      } else {
+        setMessage(`❌ Failed to save ICP Strategy: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setMessage(`❌ Network error saving ICP Strategy: ${err.message}`);
+    } finally {
+      setSavingIcp(false);
     }
   };
 
@@ -788,24 +860,10 @@ export default function SalesDashboard() {
                             <td className="p-sm text-right flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => setSelectedProspect(p)}
-                                className="px-2 py-1 bg-surface-variant hover:bg-outline-variant text-on-surface rounded text-xs font-medium"
+                                className="px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 rounded-md text-xs font-bold transition-all flex items-center gap-1"
                               >
-                                View
+                                <span className="material-symbols-outlined text-[15px]">visibility</span> View Draft Email
                               </button>
-                              <button
-                                onClick={() => handleDraftProposal(p)}
-                                className="px-2 py-1 bg-secondary/30 hover:bg-secondary/40 text-secondary rounded text-xs font-bold"
-                              >
-                                Draft Proposal
-                              </button>
-                              {p.deal_stage !== 'CLOSED_WON' && (
-                                <button
-                                  onClick={() => { setConfirmSaleModalProspect(p); setFinalDealValueInput(p.deal_value || 50000); }}
-                                  className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-bold"
-                                >
-                                  Close Sale
-                                </button>
-                              )}
                             </td>
                           </tr>
                         ))}
@@ -1015,37 +1073,105 @@ export default function SalesDashboard() {
                 </div>
               )}
 
-              {/* TAB 5: Generated ICP Details */}
+              {/* TAB 5: Editable ICP Strategy */}
               {activeTab === 'icp' && (
-                <div className="flex flex-col gap-md max-w-xl">
+                <form onSubmit={handleSaveIcpConfig} className="flex flex-col gap-md max-w-xl">
+                  <div className="flex justify-between items-center bg-surface-variant/40 p-sm border border-outline-variant/60 rounded-md">
+                    <span className="text-body-sm font-bold text-on-surface">Configure ICP & Campaign Playbook</span>
+                    <button
+                      type="submit"
+                      disabled={savingIcp}
+                      className="px-md py-sm bg-primary hover:bg-primary/90 text-on-primary font-label-md rounded text-xs flex items-center gap-1.5 shadow"
+                    >
+                      <span className={`material-symbols-outlined text-[16px] ${savingIcp ? 'animate-spin' : ''}`}>{savingIcp ? 'sync' : 'save'}</span>
+                      {savingIcp ? 'Saving...' : 'Save ICP Strategy'}
+                    </button>
+                  </div>
+
                   <div>
-                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Industries</label>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">
+                      Target Industries (Comma-Separated)
+                    </label>
                     <input
                       type="text"
-                      value={Array.isArray(icpConfig.target_industries) ? icpConfig.target_industries.join(', ') : icpConfig.target_industries}
-                      readOnly
-                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
+                      value={Array.isArray(icpConfig.target_industries) ? icpConfig.target_industries.join(', ') : (icpConfig.target_industries || '')}
+                      onChange={(e) => setIcpConfig({ ...icpConfig, target_industries: e.target.value })}
+                      placeholder="e.g. Software, SaaS, Fintech, HealthTech"
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
                     />
                   </div>
+
                   <div>
-                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Role Titles</label>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">
+                      Target Executive Titles (Comma-Separated)
+                    </label>
                     <input
                       type="text"
-                      value={Array.isArray(icpConfig.target_titles) ? icpConfig.target_titles.join(', ') : icpConfig.target_titles}
-                      readOnly
-                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
+                      value={Array.isArray(icpConfig.target_titles) ? icpConfig.target_titles.join(', ') : (icpConfig.target_titles || '')}
+                      onChange={(e) => setIcpConfig({ ...icpConfig, target_titles: e.target.value })}
+                      placeholder="e.g. VP of Sales, CTO, Head of Growth"
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
                     />
                   </div>
+
+                  <div className="grid grid-cols-2 gap-md">
+                    <div>
+                      <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Company Size Min Headcount</label>
+                      <input
+                        type="number"
+                        value={icpConfig.company_size_min || 10}
+                        onChange={(e) => setIcpConfig({ ...icpConfig, company_size_min: parseInt(e.target.value) || 1 })}
+                        className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Company Size Max Headcount</label>
+                      <input
+                        type="number"
+                        value={icpConfig.company_size_max || 1000}
+                        onChange={(e) => setIcpConfig({ ...icpConfig, company_size_max: parseInt(e.target.value) || 100 })}
+                        className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Battlecard & Value Prop</label>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">
+                      Battlecard & Product Differentiators
+                    </label>
                     <textarea
-                      rows={4}
+                      rows={3}
                       value={icpConfig.battlecard_notes || ''}
-                      readOnly
-                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
+                      onChange={(e) => setIcpConfig({ ...icpConfig, battlecard_notes: e.target.value })}
+                      placeholder="Enter key product value propositions and pain points solved..."
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
                     />
                   </div>
-                </div>
+
+                  <div>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">
+                      Playbook Strategy & Messaging Pitch
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={icpConfig.playbook_strategy || ''}
+                      onChange={(e) => setIcpConfig({ ...icpConfig, playbook_strategy: e.target.value })}
+                      placeholder="Enter strategic messaging hooks for target buyers..."
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-xs">
+                    <button
+                      type="submit"
+                      disabled={savingIcp}
+                      className="px-lg py-sm bg-primary hover:bg-primary/90 text-on-primary font-label-md rounded text-sm flex items-center gap-1.5 shadow"
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${savingIcp ? 'animate-spin' : ''}`}>{savingIcp ? 'sync' : 'save'}</span>
+                      {savingIcp ? 'Saving Strategy...' : 'Save ICP Strategy'}
+                    </button>
+                  </div>
+                </form>
               )}
 
               {/* TAB 6: Execution Audit Logs */}
@@ -1221,26 +1347,95 @@ export default function SalesDashboard() {
           </div>
         )}
 
-        {/* Modal: Prospect Details */}
-        {selectedProspect && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-lg w-full shadow-lg">
-              <div className="flex justify-between items-center mb-md">
-                <h3 className="font-title-md text-on-surface m-0">{selectedProspect.company_name}</h3>
-                <button onClick={() => setSelectedProspect(null)} className="text-on-surface-variant font-bold">✕</button>
-              </div>
-              <div className="text-body-sm space-y-2">
-                <div>Contact: <strong>{selectedProspect.contact_name}</strong></div>
-                <div>Email: <span className="font-mono text-primary">{selectedProspect.contact_email}</span></div>
-                <div>Subject: <strong>{selectedProspect.outreach_subject}</strong></div>
-                <div className="p-sm bg-background border rounded text-xs font-mono">{selectedProspect.outreach_body}</div>
-              </div>
-              <div className="mt-md flex justify-end">
-                <button onClick={() => setSelectedProspect(null)} className="px-md py-sm bg-surface-variant text-on-surface rounded">Close</button>
+        {/* Modal: Prospect Details & Draft Email View */}
+        {selectedProspect && (() => {
+          const emailSubject = selectedProspect.outreach_subject || selectedProspect.subject || 'Autonomous Workflow Velocity & Partnership';
+          const emailBody = selectedProspect.outreach_body || selectedProspect.body || `Hi ${selectedProspect.contact_name || 'Executive'},\n\nI noticed ${selectedProspect.company_name || 'your enterprise'}'s ongoing digital initiatives. Our autonomous platform can streamline your outreach and operations with zero vendor lock-in...\n\nWould you be open to a 15-minute call next week?\n\nBest regards,\nAccount Executive`;
+          const isSent = selectedProspect.deal_stage === 'OUTREACH_SENT' || (selectedProspect.gmail_message_id && selectedProspect.gmail_message_id !== '');
+
+          return (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-xl w-full shadow-2xl overflow-y-auto max-h-[90vh]">
+                <div className="flex justify-between items-center mb-md border-b border-outline-variant pb-sm">
+                  <div>
+                    <h3 className="font-title-md text-on-surface m-0 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">business</span>
+                      {selectedProspect.company_name}
+                    </h3>
+                    <span className="text-xs text-on-surface-variant font-mono">{selectedProspect.domain}</span>
+                  </div>
+                  <button onClick={() => setSelectedProspect(null)} className="text-on-surface-variant hover:text-on-surface font-bold text-lg">✕</button>
+                </div>
+
+                <div className="flex flex-col gap-md text-body-sm">
+                  {/* Prospect Header Info */}
+                  <div className="p-sm bg-background border border-outline-variant/60 rounded-md grid grid-cols-2 gap-xs text-xs">
+                    <div>
+                      <span className="text-on-surface-variant block">Decision Maker:</span>
+                      <span className="font-bold text-on-surface">{selectedProspect.contact_name || 'Executive'}</span>
+                      <span className="text-on-surface-variant block">{selectedProspect.contact_title || 'Decision Maker'}</span>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant block">Email Address:</span>
+                      <span className="font-mono text-primary font-bold">{selectedProspect.contact_email}</span>
+                      <div className="mt-1 flex items-center gap-1">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isSent ? 'bg-blue-900/50 text-blue-300' : 'bg-surface-variant text-on-surface-variant'}`}>
+                          {selectedProspect.deal_stage || 'DISCOVERED'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Subject Line Field */}
+                  <div>
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Outreach Subject Line</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={emailSubject}
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-semibold text-sm"
+                    />
+                  </div>
+
+                  {/* Outreach Body Field */}
+                  <div>
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Drafted Cold Email Body</label>
+                    <div className="p-md bg-background border border-outline rounded-md text-body-sm font-mono text-on-surface whitespace-pre-line leading-relaxed max-h-60 overflow-y-auto">
+                      {emailBody}
+                    </div>
+                  </div>
+
+                  {/* Modal Action Buttons */}
+                  <div className="flex justify-between items-center mt-sm pt-sm border-t border-outline-variant/60">
+                    <button
+                      onClick={() => setSelectedProspect(null)}
+                      className="px-md py-sm bg-surface-variant hover:bg-outline-variant text-on-surface rounded-md text-body-sm font-label-md transition-colors"
+                    >
+                      Close
+                    </button>
+
+                    {!isSent ? (
+                      <button
+                        onClick={() => handleSendSingleOutreachEmail(selectedProspect)}
+                        disabled={sendingEmail}
+                        className="px-lg py-sm bg-primary hover:bg-primary/90 text-on-primary font-label-md rounded-md text-body-sm flex items-center gap-2 shadow-md transition-all"
+                      >
+                        <span className={`material-symbols-outlined text-[18px] ${sendingEmail ? 'animate-spin' : ''}`}>
+                          {sendingEmail ? 'sync' : 'send'}
+                        </span>
+                        {sendingEmail ? 'Sending Email via Gmail...' : 'Send Outreach Email'}
+                      </button>
+                    ) : (
+                      <span className="px-md py-sm bg-emerald-900/40 text-emerald-300 border border-emerald-700/50 rounded-md text-xs font-bold flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[16px]">check_circle</span> Outreach Email Already Sent
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </AuthGuard>
   );

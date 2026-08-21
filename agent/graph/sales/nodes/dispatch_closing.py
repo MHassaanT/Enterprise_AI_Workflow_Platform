@@ -188,6 +188,8 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
 
         item["gmail_message_id"] = gmail_message_id
         item["deal_stage"] = deal_stage
+        item["outreach_subject"] = subject
+        item["outreach_body"] = body
         processed_prospects.append(item)
 
     if sent_count > 0:
