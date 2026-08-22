@@ -26,53 +26,8 @@ export default function SalesDashboard() {
     reply_rate: 0.0,
   });
 
-  // Hunter.io Key Modal & Status
-  const [hunterKeyModalOpen, setHunterKeyModalOpen] = useState(false);
-  const [hunterKeyInput, setHunterKeyInput] = useState('');
-  const [hunterStatus, setHunterStatus] = useState({ configured: false, is_valid: false });
-
-  // SDR Execution Settings
-  const [prospectLimit, setProspectLimit] = useState(10);
-  const [autoSendEmail, setAutoSendEmail] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [icpBuilt, setIcpBuilt] = useState(false);
-  const [savingIcp, setSavingIcp] = useState(false);
-
-  // ICP Configuration State
-  const [icpConfig, setIcpConfig] = useState({
-    target_industries: ['Software', 'SaaS', 'Fintech'],
-    target_titles: ['VP of Sales', 'CTO', 'Head of Growth'],
-    company_size_min: 10,
-    company_size_max: 1000,
-    region: '',
-    battlecard_notes: 'Key Differentiators: Autonomous multi-agent workflow engine, zero vendor lock-in, 99.9% uptime SLA.',
-    playbook_strategy: 'Position rapid operational cost savings and 10x workflow speedup for Q3/Q4 budgeting cycles.',
-  });
-
-  // Modals and Active Inspections
-  const [selectedProspect, setSelectedProspect] = useState(null);
-  const [proposalModalProspect, setProposalModalProspect] = useState(null);
-  const [draftingProposal, setDraftingProposal] = useState(false);
-  const [sendingProposal, setSendingProposal] = useState(false);
-  
-  const [checkingReplies, setCheckingReplies] = useState(false);
-  const [simulateReplyModalOpen, setSimulateReplyModalOpen] = useState(false);
-  const [simulatedReplyText, setSimulatedReplyText] = useState('');
-  const [simulateTargetProspectId, setSimulateTargetProspectId] = useState('');
-
-  const [confirmSaleModalProspect, setConfirmSaleModalProspect] = useState(null);
-  const [confirmingSale, setConfirmingSale] = useState(false);
-  const [finalDealValueInput, setFinalDealValueInput] = useState(50000);
-
-  const [reportModalDetails, setReportModalDetails] = useState(null);
-
-  const [prospectSubTab, setProspectSubTab] = useState('current');
-  const [latestRunProspects, setLatestRunProspects] = useState([]);
-
   useEffect(() => {
     try {
-      const cachedHunter = localStorage.getItem('sales_hunter_status');
-      if (cachedHunter) setHunterStatus(JSON.parse(cachedHunter));
       const cachedIcp = localStorage.getItem('sales_icp_config');
       if (cachedIcp) {
         const parsed = JSON.parse(cachedIcp);
@@ -84,7 +39,6 @@ export default function SalesDashboard() {
     fetchData();
     fetchAnalytics();
     fetchIcpConfig();
-    checkHunterKeyStatus();
   }, []);
 
   const formatList = (val, maxCount) => {
@@ -152,18 +106,6 @@ export default function SalesDashboard() {
       }
     } catch (err) {
       console.error('Failed to fetch ICP config:', err);
-    }
-  };
-
-  const checkHunterKeyStatus = async () => {
-    try {
-      const res = await fetch('/api/v1/sales/hunter-key', {
-        headers: { ...getAuthHeader() },
-      });
-      const data = await safeJsonParse(res);
-      setHunterStatus(data);
-    } catch (err) {
-      console.error('Failed to check Hunter key:', err);
     }
   };
 
@@ -473,29 +415,6 @@ export default function SalesDashboard() {
     }
   };
 
-  const handleSaveHunterKey = async (e) => {
-    e.preventDefault();
-    if (!hunterKeyInput.trim()) return;
-    try {
-      const res = await fetch('/api/v1/sales/hunter-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ hunter_api_key: hunterKeyInput.trim() }),
-      });
-      const data = await safeJsonParse(res);
-      if (data.success) {
-        setMessage('✅ Hunter.io API Key validated and saved successfully.');
-        setHunterStatus({ configured: true, is_valid: true });
-        setHunterKeyModalOpen(false);
-        setHunterKeyInput('');
-      } else {
-        setMessage(`❌ Key Validation Error: ${data.error || 'Invalid API Key'}`);
-      }
-    } catch (err) {
-      setMessage(`❌ Error saving key: ${err.message}`);
-    }
-  };
-
   const hasValidJsonData = (val) => {
     if (!val) return false;
     if (typeof val === 'string') {
@@ -566,18 +485,6 @@ export default function SalesDashboard() {
             >
               <span className="material-symbols-outlined text-[18px]">mark_email_unread</span>
               Simulate Prospect Reply
-            </button>
-
-            <button
-              onClick={() => setHunterKeyModalOpen(true)}
-              className={`px-md py-sm rounded-md text-body-sm font-label-md transition-colors flex items-center gap-2 border ${
-                hunterStatus.configured && hunterStatus.is_valid !== false
-                  ? 'bg-surface-variant text-primary border-outline-variant'
-                  : 'bg-primary text-on-primary border-primary'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">key</span>
-              {hunterStatus.configured ? 'Hunter.io Configured' : 'Set Hunter.io Key'}
             </button>
 
             <button

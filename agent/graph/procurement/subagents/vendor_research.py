@@ -10,7 +10,7 @@ class VendorResearchSubAgent:
     """
     Sub-Agent 2: Vendor Research & Market Analysis Sub-Agent
     Researches vendor candidates for the procurement requirements.
-    Uses Hunter.io discovery or candidate database, enriches deliverability, and builds a Vendor Research Report.
+    Uses web search or candidate database, enriches deliverability, and builds a Vendor Research Report.
     """
 
     DEFAULT_VENDOR_CANDIDATES = [

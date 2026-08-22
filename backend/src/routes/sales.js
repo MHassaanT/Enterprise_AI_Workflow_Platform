@@ -197,37 +197,9 @@ router.post('/icp', async (req, res) => {
   }
 });
 
-// POST /api/v1/sales/hunter-key & /api/v1/sales/apollo-key — Save Hunter.io API Key
-router.post(['/hunter-key', '/apollo-key'], async (req, res) => {
-  try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
-    const { hunter_api_key, apollo_api_key } = req.body;
-    const apiKey = hunter_api_key || apollo_api_key;
-    const response = await axios.post(
-      `${AGENT_URL}/agent/sales/hunter-key`,
-      { tenant_id: tenantId, hunter_api_key: apiKey },
-      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
-    );
-    return res.json(response.data);
-  } catch (err) {
-    console.error('Error saving Hunter.io API key:', err.message);
-    return res.status(500).json({ error: 'Failed to save Hunter.io API key.' });
-  }
-});
-
-// GET /api/v1/sales/hunter-key & /api/v1/sales/apollo-key — Check Key Status
+// GET /api/v1/sales/hunter-key & /api/v1/sales/apollo-key — Check Key Status (Deprecated stub)
 router.get(['/hunter-key', '/apollo-key'], async (req, res) => {
-  try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
-    const response = await axios.get(
-      `${AGENT_URL}/agent/sales/hunter-key/${tenantId}`,
-      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
-    );
-    return res.json(response.data);
-  } catch (err) {
-    console.error('Error checking Hunter.io key status:', err.message);
-    return res.json({ configured: false, is_valid: false });
-  }
+  return res.json({ configured: true, is_valid: true });
 });
 
 // POST /api/v1/sales/check-replies

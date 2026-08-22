@@ -13,9 +13,8 @@ from tool_gateway.tools.escalate_to_human import escalate_to_human_impl
 
 from tool_gateway.finance_mcp import execute_payment_impl, fetch_po_details_impl, update_general_ledger_impl, query_department_budget_impl
 from tool_gateway.apollo_mcp import search_apollo_accounts_impl
-from tool_gateway.hunter_mcp import search_hunter_accounts_impl
 from tool_gateway.search_discovery import search_contact_person
-from services.email_verifier import verify_email, verify_email_with_hunter
+from services.email_verifier import verify_email
 
 mcp = FastMCP("Enterprise Workflow Tools")
 
@@ -43,30 +42,6 @@ async def escalate_to_human(reason: str, action_payload: str = "") -> str:
 async def execute_payment(invoice_number: str, po_number: str, amount: float, vendor_email: str, tenant_id: str) -> str:
     """Executes vendor payment via ERP system and updates general ledger."""
     res = await execute_payment_impl(invoice_number, po_number, amount, vendor_email, tenant_id)
-    return str(res)
-
-
-
-@mcp.tool()
-async def hunter_search_accounts(tenant_id: str, target_industries: str = "", limit: int = 5) -> str:
-    """Queries candidate target accounts using Hunter.io Discover and Domain Search."""
-    industries = [i.strip() for i in target_industries.split(",") if i.strip()]
-    res = await search_hunter_accounts_impl(tenant_id, industries, limit=limit)
-    return str(res)
-
-
-@mcp.tool()
-async def hunter_find_contacts(tenant_id: str, domain: str, target_titles: str = "") -> str:
-    """Finds decision-maker contacts for a target domain using Serper search + pattern inference."""
-    titles = [t.strip() for t in target_titles.split(",") if t.strip()]
-    res = await search_contact_person(tenant_id, domain.split(".")[0].title(), domain, titles)
-    return str(res)
-
-
-@mcp.tool()
-async def hunter_verify_email_tool(email: str, tenant_id: str = "00000000-0000-0000-0000-000000000000") -> str:
-    """Verifies email deliverability using Hunter.io Email Verifier API."""
-    res = await verify_email_with_hunter(email, tenant_id=tenant_id)
     return str(res)
 
 

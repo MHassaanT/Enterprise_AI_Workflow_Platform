@@ -145,20 +145,6 @@ const SEEDED_INTEGRATIONS = [
     category: 'Productivity',
     icon: '📊',
     gradient: 'linear-gradient(135deg, #34a853 0%, #1e8e3e 100%)',
-  },
-  {
-    id: 'hunter-card',
-    canonical_name: 'Hunter.io',
-    display_name: 'Hunter.io Email Intelligence',
-    provider_type: 'hunter',
-    auth_mode: 'api_key',
-    description: 'Perform B2B domain email search, contact finding, and deliverability verification with encrypted API keys.',
-    category: 'Sales & Lead Gen',
-    icon: '🎯',
-    gradient: 'linear-gradient(135deg, #ff6b4a 0%, #d9381e 100%)',
-    fields: [
-      { name: 'api_key', label: 'Hunter.io API Key', type: 'password', placeholder: 'v2_live_...' }
-    ]
   }
 ];
 
@@ -588,7 +574,6 @@ export default function IntegrationHubPage() {
                     <option value="gmail">Gmail</option>
                     <option value="google_docs">Google Docs</option>
                     <option value="google_sheets">Google Sheets</option>
-                    <option value="hunter">Hunter.io</option>
                   </select>
                 </div>
 
@@ -822,48 +807,6 @@ export default function IntegrationHubPage() {
           </div>
         )}
 
-        {/* HUNTER.IO MODAL */}
-        {activeModal === 'Hunter' && (
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={closeModal}>
-            <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🎯</span>
-                  <div>
-                    <h2 className="font-headline-md text-headline-md text-on-surface">Connect Hunter.io Email Intelligence</h2>
-                    <span className="font-label-md text-label-md text-on-surface-variant">B2B Lead Discovery & Verification API Key</span>
-                  </div>
-                </div>
-                <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface text-xl">×</button>
-              </div>
-
-              <form onSubmit={handleHunterSubmit} className="p-xl space-y-md">
-                <div className="flex flex-col gap-2">
-                  <label className="font-label-md text-label-md text-on-surface-variant">Hunter.io API Key</label>
-                  <input
-                    type="password"
-                    placeholder="v2_live_xxxxxxxxxxxxxxxx"
-                    value={hunterApiKey}
-                    onChange={(e) => setHunterApiKey(e.target.value)}
-                    required
-                    autoFocus
-                    className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary"
-                  />
-                  <small className="font-label-md text-label-md text-on-surface-variant">Payload encrypted using zero-trust AES-256-GCM and scoped to active tenant.</small>
-                </div>
-
-                <div className="flex justify-end gap-md pt-md">
-                  <button type="button" onClick={closeModal} className="px-lg py-md bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container transition-colors">
-                    Cancel
-                  </button>
-                  <button type="submit" className="py-md px-lg bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50" disabled={submitting}>
-                    {submitting ? 'Encrypting & Saving...' : '🔒 Save Credentials'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </AuthGuard>
   );

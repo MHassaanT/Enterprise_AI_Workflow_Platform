@@ -299,16 +299,7 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     # 4. Free Provider Check
     is_free = domain in FREE_PROVIDERS
 
-    # 5. Hunter.io Email Verifier check via API
-    try:
-        hunter_res = await verify_email_with_hunter(email_clean, tenant_id=tenant_id)
-        logger.info(f"[EMAIL VERIFIER] Hunter verifier res for '{email_clean}': {hunter_res}")
-        if hunter_res and hunter_res.get("source") == "hunter_io_api":
-            return hunter_res
-    except Exception as e:
-        logger.warning(f"[EMAIL VERIFIER] Hunter verification exception: {e}")
-
-    # 6. MX Record DNS Validation
+    # 5. MX Record DNS Validation
     has_mx = await check_mx_records(domain)
     logger.info(f"[EMAIL VERIFIER] MX record check for domain '{domain}': has_mx={has_mx}")
     if not has_mx:
@@ -325,7 +316,7 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
             "reason": f"Domain '{domain}' has no active Mail Exchange (MX) DNS records.",
         }
 
-    # 7. Direct SMTP Mailbox Existence Verification
+    # 6. Direct SMTP Mailbox Existence Verification
     smtp_res = await check_smtp_mailbox(email_clean, domain)
     logger.info(f"[EMAIL VERIFIER] SMTP mailbox check for '{email_clean}': {smtp_res}")
     
@@ -369,7 +360,7 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
             "reason": smtp_res.get("reason", "Mailbox rejected by target SMTP server."),
         }
 
-    # 8. ZeroBounce API Fallback (Triggered when Port 25 Direct SMTP Handshake fails or is restricted)
+    # 7. ZeroBounce API Fallback (Triggered when Port 25 Direct SMTP Handshake fails or is restricted)
     logger.info(f"[EMAIL VERIFIER] Port 25 SMTP handshake unavailable/untested for '{email_clean}'. Invoking ZeroBounce API fallback...")
     zb_res = await verify_email_with_zerobounce(email_clean)
     if zb_res and zb_res.get("source") == "zerobounce_api":
@@ -388,52 +379,4 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
         "is_free_provider": is_free,
         "reason": "Outbound SMTP port 25 unavailable and ZeroBounce API failed to confirm mailbox validity.",
     }
-
-
-async def verify_email_with_hunter(email: str, tenant_id: str = "00000000-0000-0000-0000-000000000000") -> Dict[str, Any]:
-    """
-    Performs Hunter.io Email Verifier check via the Centralized MCP Gateway adapter.
-    """
-    logger.info(f"[VERIFY WITH HUNTER] Starting Hunter verify for email='{email}', tenant_id='{tenant_id}'")
-    try:
-        from tool_gateway.adapters.hunter_adapter import execute_hunter_tool
-        from tool_gateway.credentials_manager import fetch_tool_credentials
-        
-        creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Hunter.io")
-        logger.info(f"[VERIFY WITH HUNTER] fetch_tool_credentials output: {bool(creds and creds.get('api_key'))}")
-        if not creds or not creds.get("api_key"):
-            from tool_gateway.hunter_mcp import get_tenant_hunter_credentials
-            creds = await get_tenant_hunter_credentials(tenant_id)
-            logger.info(f"[VERIFY WITH HUNTER] get_tenant_hunter_credentials output: {bool(creds and creds.get('api_key'))}")
-
-        logger.info(f"[VERIFY WITH HUNTER] Executing hunter_verify_email tool with creds length: {len(creds.get('api_key', '')) if creds else 0}")
-        res_str = await execute_hunter_tool("hunter_verify_email", {"email": email}, creds)
-        logger.info(f"[VERIFY WITH HUNTER] Raw execute_hunter_tool response: {res_str[:300] if res_str else 'EMPTY'}")
-        if res_str and res_str.strip().startswith("{"):
-            try:
-                res_data = json.loads(res_str)
-                if res_data.get("status") == "success":
-                    result_status = str(res_data.get("result") or "valid").lower()
-                    score = res_data.get("score")
-                    is_valid = (result_status in ("valid", "accept_all", "webmail")) and (score is None or score >= 40)
-                    logger.info(f"[VERIFY WITH HUNTER] Result parsed: result_status='{result_status}', score={score}, is_valid={is_valid}, source='{res_data.get('source')}'")
-                    return {
-                        "email": email,
-                        "is_valid": is_valid,
-                        "deliverability": "HIGH" if is_valid else "LOW",
-                        "status": "VALID" if is_valid else "INVALID",
-                        "score": score if score is not None else 90,
-                        "reason": f"Hunter.io verification status: {result_status} (Score: {score}/100)",
-                        "source": res_data.get("source", "hunter_io_api")
-                    }
-                else:
-                    logger.warning(f"[VERIFY WITH HUNTER] Hunter response status: {res_data.get('status')}, message: {res_data.get('message')}")
-            except Exception as parse_err:
-                logger.warning(f"[VERIFY WITH HUNTER] JSON parse error: {parse_err}")
-        else:
-            logger.warning(f"[VERIFY WITH HUNTER] Non-JSON response received: {res_str[:200] if res_str else 'EMPTY'}")
-    except Exception as e:
-        logger.warning(f"[VERIFY WITH HUNTER] Hunter.io email verifier check exception: {e}")
-        
-    return {"email": email, "is_valid": False, "source": "fallback"}
 
