@@ -1299,32 +1299,6 @@ export default function SalesDashboard() {
           </div>
         )}
 
-        {/* Modal: Hunter Key */}
-        {hunterKeyModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-md w-full shadow-lg">
-              <div className="flex justify-between items-center mb-md">
-                <h3 className="font-title-md text-on-surface m-0">Set Hunter.io API Key</h3>
-                <button onClick={() => setHunterKeyModalOpen(false)} className="text-on-surface-variant font-bold">✕</button>
-              </div>
-              <form onSubmit={handleSaveHunterKey} className="flex flex-col gap-md">
-                <input
-                  type="password"
-                  placeholder="Enter Hunter.io API Key..."
-                  value={hunterKeyInput}
-                  onChange={(e) => setHunterKeyInput(e.target.value)}
-                  className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
-                  required
-                />
-                <div className="flex justify-end gap-sm">
-                  <button type="button" onClick={() => setHunterKeyModalOpen(false)} className="px-md py-sm bg-surface-variant text-on-surface rounded-md">Cancel</button>
-                  <button type="submit" className="px-md py-sm bg-primary text-on-primary rounded-md font-label-md">Save Key</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
         {/* Modal: Prospect Details & Draft Email View */}
         {selectedProspect && (() => {
           const emailSubject = selectedProspect.outreach_subject || selectedProspect.subject || 'Autonomous Workflow Velocity & Partnership';
