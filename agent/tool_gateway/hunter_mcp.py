@@ -230,127 +230,19 @@ async def search_hunter_accounts_impl(
     except Exception as e:
         logger.error(f"Hunter account search exception: {e}")
 
-    # Free-Tier Hunter compatibility: Hunter's /v2/discover endpoint is restricted on Free plan API keys (HTTP 400 pagination_error).
-    # Sourcing real candidate company domains matching target_industries to query via live Hunter GET /v2/domain-search (supported on Free tier).
-    logger.info(f"[HUNTER SOURCING] Hunter Discover endpoint returned 0 accounts or is restricted on Free plan. Sourcing real candidate domains for industry criteria '{target_industries}'.")
-    free_tier_catalog = {
-        "software": ["stripe.com", "reddit.com", "datadoghq.com", "hashicorp.com", "pagerduty.com", "asana.com", "gitlab.com", "postman.com", "elastic.co", "fastly.com", "atlassian.com", "figma.com", "airtable.com", "notion.so"],
-        "saas": ["stripe.com", "datadoghq.com", "asana.com", "gitlab.com", "postman.com", "airtable.com", "notion.so", "hubspot.com", "zendesk.com", "freshworks.com", "intercom.com"],
-        "fintech": ["plaid.com", "klarna.com", "wise.com", "chime.com", "brex.com", "ramp.com", "affirm.com", "marqeta.com", "monzo.com", "stripe.com"],
-        "healthtech": ["veeva.com", "oscarhealth.com", "ro.co", "onemedical.com", "doximity.com", "tempus.com", "modernhealth.com", "headspace.com"],
-        "healthcare": ["veeva.com", "oscarhealth.com", "onemedical.com", "doximity.com", "tempus.com"],
-        "e-commerce": ["shopify.com", "instacart.com", "wayfair.com", "etsy.com", "chewy.com", "warbyparker.com", "allbirds.com"],
-        "ecommerce": ["shopify.com", "instacart.com", "wayfair.com", "etsy.com", "chewy.com"],
-        "agriculture": ["farmersbusinessnetwork.com", "indigoag.com", "climate.com", "boweryfarming.com"],
-        "manufacturing": ["flexport.com", "samsara.com", "procore.com", "gopuff.com"]
-    }
-    
-    industry_str = (target_industries[0] if target_industries else "software").lower().strip()
-    candidate_domains = []
-    for k, doms in free_tier_catalog.items():
-        if k in industry_str or industry_str in k:
-            candidate_domains = doms
-            break
-    if not candidate_domains:
-        candidate_domains = free_tier_catalog["software"]
-
-    free_tier_accounts = []
-    for dom in candidate_domains:
-        if dom.lower() not in excluded_set:
-            free_tier_accounts.append({
-                "company_name": dom.split(".")[0].title(),
-                "domain": dom,
-                "industry": target_industries[0] if target_industries else "Software",
-                "estimated_num_employees": f"{company_size_min}-{company_size_max}",
-                "source": "hunter_domain_search_free_tier"
-            })
-            if len(free_tier_accounts) >= limit:
-                break
-
-    if free_tier_accounts:
-        return {"status": "success", "source": "hunter_domain_search_free_tier", "accounts": free_tier_accounts}
+    # No fallback domain list — if Hunter Discover returns nothing, return empty honestly
+    logger.info(f"[HUNTER SOURCING] Hunter Discover API returned 0 accounts for industries={target_industries}, size={company_size_min}-{company_size_max}. No fallback domain list used.")
 
     return {
         "status": "empty",
         "source": "hunter_io_api",
         "accounts": [],
-        "message": f"No candidate target accounts found on Hunter.io matching ICP criteria (Industries: {target_industries}, Size: {company_size_min}-{company_size_max})."
+        "message": f"Hunter.io Discover API returned 0 accounts for industries={target_industries}, size={company_size_min}-{company_size_max}. No fallback domain list used."
     }
 
+# NOTE: search_hunter_contacts_impl was removed in Phase 3 of the pipeline rebuild.
+# Stage 3 contact discovery now uses Serper search + email pattern inference
+# (see graph/sales/nodes/contact_discovery.py and tool_gateway/search_discovery.py).
+# The credential helpers above are preserved for Stage 4 email verification via Hunter.io.
 
-async def search_hunter_contacts_impl(
-    tenant_id: str,
-    domain: str,
-    target_titles: List[str],
-) -> Dict[str, Any]:
-    """
-    Finds real decision-maker contacts for a domain using Hunter.io Domain Search API.
-    Returns contact: None if no real personal work email is found (zero fake persona fallbacks).
-    """
-    creds = await get_tenant_hunter_credentials(tenant_id)
-    clean_domain = domain.replace("http://", "").replace("https://", "").strip("/")
-
-    try:
-        # Execute Hunter Domain Search for personal executive emails
-        ds_res_str = await execute_hunter_tool(
-            "hunter_domain_search",
-            {"domain": clean_domain, "limit": 15, "type": "personal"},
-            creds
-        )
-        if ds_res_str and ds_res_str.startswith("{"):
-            ds_data = json.loads(ds_res_str)
-            if ds_data.get("status") == "success":
-                emails = ds_data.get("emails", [])
-                
-                # First pass: try matching preferred executive target titles
-                target_titles_lower = [t.lower() for t in target_titles] if target_titles else []
-                matched_contact = None
-                
-                for e_item in emails:
-                    email_val = (e_item.get("email") or e_item.get("value") or "").strip()
-                    fn = (e_item.get("first_name") or "").strip()
-                    ln = (e_item.get("last_name") or "").strip()
-                    pos = (e_item.get("position") or "").strip()
-                    
-                    if email_val and "@" in email_val and e_item.get("type") != "generic":
-                        contact_name = f"{fn} {ln}".strip() if (fn or ln) else ""
-                        hunter_id = f"HUNTER-{clean_domain.split('.')[0].upper()}"
-                        
-                        candidate = {
-                            "hunter_person_id": hunter_id,
-                            "apollo_person_id": hunter_id,
-                            "contact_name": contact_name or f"{pos or 'Executive'} Leader",
-                            "contact_email": email_val,
-                            "contact_title": pos or (target_titles[0] if target_titles else "Executive"),
-                            "company_name": ds_data.get("organization") or clean_domain.split(".")[0].title(),
-                            "domain": clean_domain,
-                            "confidence": e_item.get("confidence"),
-                            "source": ds_data.get("source", "hunter_io_api"),
-                        }
-                        
-                        # Check title alignment
-                        if pos and any(t_title in pos.lower() for t_title in target_titles_lower):
-                            matched_contact = candidate
-                            break
-                        elif not matched_contact:
-                            matched_contact = candidate
-
-                if matched_contact:
-                    return {
-                        "status": "found",
-                        "source": ds_data.get("source", "hunter_io_api"),
-                        "contact": matched_contact
-                    }
-
-    except Exception as e:
-        logger.error(f"Hunter contact search exception for domain {domain}: {e}")
-
-    # Honest result: DO NOT generate fake personas (Alex Vance, Sarah Chen, Marcus Thorne) or guessed emails
-    logger.info(f"[HUNTER CONTACT SEARCH] No real personal work email found on Hunter.io for domain '{clean_domain}'. Dropping domain.")
-    return {
-        "status": "not_found",
-        "source": "hunter_io_api",
-        "contact": None,
-        "message": f"No real executive contact with a verified personal email found for domain '{clean_domain}' on Hunter.io."
-    }
 

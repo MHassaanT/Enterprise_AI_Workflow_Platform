@@ -44,6 +44,7 @@ export default function SalesDashboard() {
     target_titles: ['VP of Sales', 'CTO', 'Head of Growth'],
     company_size_min: 10,
     company_size_max: 1000,
+    region: '',
     battlecard_notes: 'Key Differentiators: Autonomous multi-agent workflow engine, zero vendor lock-in, 99.9% uptime SLA.',
     playbook_strategy: 'Position rapid operational cost savings and 10x workflow speedup for Q3/Q4 budgeting cycles.',
   });
@@ -228,7 +229,7 @@ export default function SalesDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          prospect_limit: prospectLimit,
+          prospect_limit: Math.max(1, parseInt(prospectLimit) || 1),
           auto_send_email: autoSendEmail,
           icp_config: icpConfig,
         }),
@@ -696,17 +697,22 @@ export default function SalesDashboard() {
 
             <form onSubmit={handleRunPipeline} className="flex flex-col gap-md">
               <div>
-                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Profiles Stop Limit</label>
-                <select
+                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Profiles Stop Limit (Target Prospects)</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
                   value={prospectLimit}
-                  onChange={(e) => setProspectLimit(parseInt(e.target.value))}
-                  className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm"
-                >
-                  <option value={5}>Stop at 5 Prospect Profiles</option>
-                  <option value={10}>Stop at 10 Prospect Profiles</option>
-                  <option value={25}>Stop at 25 Prospect Profiles</option>
-                  <option value={50}>Stop at 50 Prospect Profiles</option>
-                </select>
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setProspectLimit(isNaN(val) ? '' : Math.max(1, val));
+                  }}
+                  onBlur={() => {
+                    if (!prospectLimit || prospectLimit < 1) setProspectLimit(1);
+                  }}
+                  placeholder="Enter target prospect count (e.g. 10)"
+                  className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:outline-none focus:border-primary"
+                />
               </div>
 
               <div className="flex items-center justify-between p-sm bg-background border border-outline-variant rounded-md">
@@ -1147,6 +1153,19 @@ export default function SalesDashboard() {
                         className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">
+                      Target Region / Geography
+                    </label>
+                    <input
+                      type="text"
+                      value={icpConfig?.region || ''}
+                      onChange={(e) => setIcpConfig({ ...icpConfig, region: e.target.value })}
+                      placeholder="e.g. United States, Europe, APAC (leave empty for global)"
+                      className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-body-sm focus:border-primary focus:outline-none"
+                    />
                   </div>
 
                   <div>

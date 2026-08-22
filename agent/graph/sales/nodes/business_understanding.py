@@ -1,10 +1,10 @@
 """
 Stage 1: Business Understanding & Lead Sourcing Node.
-Ingests ICP parameters, competitor battlecards, and queries candidate accounts via Hunter.io API.
+Ingests ICP parameters, competitor battlecards, and queries candidate accounts via Serper.dev Search API.
 """
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
-from tool_gateway.hunter_mcp import search_hunter_accounts_impl
+from tool_gateway.search_discovery import search_company_accounts
 from services.db_client import execute_db_query
 
 
@@ -47,6 +47,18 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
         except Exception:
             target_industries = [target_industries]
 
+    # Normalize industry typos
+    industry_corrections = {
+        "restruants": "Restaurant",
+        "resturant": "Restaurant",
+        "resturants": "Restaurant",
+    }
+    normalized_industries = []
+    for ind in target_industries:
+        clean_ind = str(ind).strip()
+        normalized_industries.append(industry_corrections.get(clean_ind.lower(), clean_ind))
+    target_industries = normalized_industries
+
     # 2. Fetch Existing Prospects for Tenant to Enforce Cross-Campaign Uniqueness (only sent emails/outreach)
     existing_domains = set(state.get("existing_domains") or [])
     existing_emails = set(state.get("existing_emails") or [])
@@ -62,23 +74,24 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     except Exception as e:
         pass
 
-    # 3. Query Candidate Target Accounts (Hunter.io API Sourcing with Domain Exclusion)
-    fetch_limit = max(prospect_limit * 4, 40)
-    sourcing_res = await search_hunter_accounts_impl(
-        tenant_id=tenant_id,
-        target_industries=target_industries,
-        company_size_min=icp.get("company_size_min", 10),
-        company_size_max=icp.get("company_size_max", 500),
-        limit=fetch_limit,
-        exclude_domains=list(existing_domains)
-    )
-
-    raw_accounts: List[Dict[str, Any]] = sourcing_res.get("accounts", [])
+    provided_raw = state.get("raw_accounts") or []
+    if provided_raw:
+        raw_accounts = provided_raw
+    else:
+        fetch_limit = max(prospect_limit * 4, 40)
+        sourcing_res = await search_company_accounts(
+            tenant_id=tenant_id,
+            target_industries=target_industries,
+            company_size_min=icp.get("company_size_min", 10),
+            company_size_max=icp.get("company_size_max", 500),
+            limit=fetch_limit,
+            exclude_domains=list(existing_domains),
+            region=icp.get("region"),
+        )
+        raw_accounts = sourcing_res.get("accounts", [])
     
     # Filter out any accounts matching existing domains where outreach was already sent
     accounts = [acc for acc in raw_accounts if acc.get("domain", "").lower() not in existing_domains]
-    if not accounts:
-        accounts = raw_accounts
     
     # Prioritize specific target domain if provided
     if state.get("target_domain"):

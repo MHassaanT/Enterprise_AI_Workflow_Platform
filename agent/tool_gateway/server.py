@@ -12,8 +12,9 @@ from tool_gateway.tools.check_order_status import check_order_status_impl
 from tool_gateway.tools.escalate_to_human import escalate_to_human_impl
 
 from tool_gateway.finance_mcp import execute_payment_impl, fetch_po_details_impl, update_general_ledger_impl, query_department_budget_impl
-from tool_gateway.apollo_mcp import search_apollo_accounts_impl, search_apollo_contacts_impl
-from tool_gateway.hunter_mcp import search_hunter_accounts_impl, search_hunter_contacts_impl
+from tool_gateway.apollo_mcp import search_apollo_accounts_impl
+from tool_gateway.hunter_mcp import search_hunter_accounts_impl
+from tool_gateway.search_discovery import search_contact_person
 from services.email_verifier import verify_email, verify_email_with_hunter
 
 mcp = FastMCP("Enterprise Workflow Tools")
@@ -56,9 +57,9 @@ async def hunter_search_accounts(tenant_id: str, target_industries: str = "", li
 
 @mcp.tool()
 async def hunter_find_contacts(tenant_id: str, domain: str, target_titles: str = "") -> str:
-    """Finds decision-maker contacts for a target domain using Hunter.io Domain Search & Email Finder."""
+    """Finds decision-maker contacts for a target domain using Serper search + pattern inference."""
     titles = [t.strip() for t in target_titles.split(",") if t.strip()]
-    res = await search_hunter_contacts_impl(tenant_id, domain, titles)
+    res = await search_contact_person(tenant_id, domain.split(".")[0].title(), domain, titles)
     return str(res)
 
 
@@ -79,9 +80,9 @@ async def apollo_search_accounts(tenant_id: str, target_industries: str = "", li
 
 @mcp.tool()
 async def apollo_find_contacts(tenant_id: str, domain: str, target_titles: str = "") -> str:
-    """Finds decision-maker contacts for a target domain using Apollo contact discovery."""
+    """Finds decision-maker contacts for a target domain using Serper search + pattern inference."""
     titles = [t.strip() for t in target_titles.split(",") if t.strip()]
-    res = await search_apollo_contacts_impl(tenant_id, domain, titles)
+    res = await search_contact_person(tenant_id, domain.split(".")[0].title(), domain, titles)
     return str(res)
 
 

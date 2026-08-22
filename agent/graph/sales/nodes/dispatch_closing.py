@@ -35,7 +35,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         outreach = state.get("generated_outreach") or {}
         logger.info(f"[STAGE 6 DISPATCH] outreach_batch is empty. Checking single contact: email='{contact.get('contact_email')}', deliverability.is_valid={deliverability.get('is_valid')}")
         
-        # Only fallback if the single contact has a valid deliverability check or real Apollo API source
+        # Only fallback if the single contact has a valid deliverability check
         if contact and deliverability.get("is_valid", False):
             outreach_batch = [{
                 "company_name": contact.get("company_name", "Enterprise Client"),
@@ -43,7 +43,8 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "contact_name": contact.get("contact_name", "Executive"),
                 "contact_title": contact.get("contact_title", "Decision Maker"),
                 "contact_email": contact.get("contact_email", "prospect@enterprise.com"),
-                "apollo_person_id": contact.get("apollo_person_id", "APOLLO-1"),
+                "apollo_person_id": contact.get("serper_contact_id") or contact.get("apollo_person_id", "SERPER-1"),
+                "hunter_person_id": contact.get("serper_contact_id") or contact.get("hunter_person_id", "SERPER-1"),
                 "deliverability_status": deliverability.get("status", "VALID"),
                 "icp_score": state.get("icp_score", 90.0),
                 "subject": outreach.get("subject", "AI Workflow Platform Partnership"),
@@ -52,7 +53,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
         else:
-            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified synthetic pattern emails were discarded. Set a Hunter.io API key to discover real decision-maker emails."
+            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified pattern emails were discarded. Ensure company websites contain active pattern emails or Hunter.io API key is configured."
             logger.warning(f"[STAGE 6 DISPATCH] ❌ Ending stage with processed_count=0. Detail: {log_detail}")
             logs.append({
                 "stage": "Stage 6: Dispatch & Closing",
@@ -121,7 +122,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
 
         # Persist Prospect & Deal into PostgreSQL Database with accurate deal stage and deduplication
         try:
-            hunter_id = item.get("hunter_person_id") or item.get("apollo_person_id", "HUNTER-1")
+            hunter_id = item.get("hunter_person_id") or item.get("apollo_person_id") or item.get("serper_contact_id") or f"SERPER-INFERRED-{idx+1}"
             check_query = "SELECT id FROM sales_prospects WHERE tenant_id = $1 AND LOWER(contact_email) = LOWER($2);"
             check_res = await execute_db_query(check_query, [tenant_id, contact_email])
 

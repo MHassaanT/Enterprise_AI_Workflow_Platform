@@ -22,7 +22,7 @@ class SalesAgentState(TypedDict):
     scraped_context: Dict[str, Any]
     account_fit_passed: bool
     
-    # Stage 3: Contact Discovery (Apollo API)
+    # Stage 3: Contact Discovery (Search + Pattern Inference)
     discovered_contacts: List[Dict[str, Any]]
     discovered_contact: Optional[Dict[str, Any]]
     

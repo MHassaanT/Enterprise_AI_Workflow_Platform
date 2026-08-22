@@ -2,12 +2,12 @@
 AI Sales Agent (AI SDR/BDR) Multi-Agent Orchestrator Graph.
 
 6-Stage Pipeline:
-1. Business Understanding & Sourcing (Apollo API Account Query)
-2. Account Fit Check (Crawl4AI Web Scraping)
-3. Contact Discovery (Apollo Contact Search / Enrichment)
-4. Deliverability Guard (Email Verifier Engine)
-5. Scoring & Copy Generation (OpenRouter LLM)
-6. Dispatch & CRM Logging (Gmail API & PostgreSQL)
+1. Business Understanding & Sourcing (Serper.dev Search API Company Discovery)
+2. Account Fit Check (Crawl4AI Scraping & LLM ICP Qualification + Email Extraction)
+3. Contact Discovery (Serper Person Search & Email Pattern Engine Inference)
+4. Deliverability Guard (SMTP Catch-All Probing & RFC 5322 Verification)
+5. Scoring & Copy Generation (OpenRouter LLM & Dynamic ICP Fit Scoring)
+6. Dispatch & CRM Logging (Gmail API & PostgreSQL Persistence)
 """
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver

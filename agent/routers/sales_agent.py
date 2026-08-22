@@ -2,7 +2,7 @@
 Sales Agent Router — FastAPI.
 
 Exposes endpoints for running the autonomous 6-stage AI SDR pipeline,
-building ICPs from the Knowledge Base, and setting Apollo API Keys.
+building ICPs from the Knowledge Base, and setting Hunter.io API Keys.
 """
 import json
 import uuid
@@ -47,6 +47,7 @@ class ICPConfigRequest(BaseModel):
     target_titles: List[str] = Field(default_factory=list)
     company_size_min: int = 10
     company_size_max: int = 1000
+    region: str = ""
     battlecard_notes: str = ""
     playbook_strategy: str = ""
 
@@ -271,14 +272,15 @@ Respond ONLY with valid JSON.
     query = """
     INSERT INTO sales_icp_configs (
       tenant_id, target_industries, target_titles, company_size_min, company_size_max,
-      battlecard_notes, playbook_strategy, updated_at
-    ) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, NOW())
+      region, battlecard_notes, playbook_strategy, updated_at
+    ) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, $8, NOW())
     ON CONFLICT (tenant_id)
     DO UPDATE SET
       target_industries = EXCLUDED.target_industries,
       target_titles = EXCLUDED.target_titles,
       company_size_min = EXCLUDED.company_size_min,
       company_size_max = EXCLUDED.company_size_max,
+      region = EXCLUDED.region,
       battlecard_notes = EXCLUDED.battlecard_notes,
       playbook_strategy = EXCLUDED.playbook_strategy,
       updated_at = NOW();
@@ -289,6 +291,7 @@ Respond ONLY with valid JSON.
         json.dumps(parsed_icp.get("target_titles", [])),
         parsed_icp.get("company_size_min", 10),
         parsed_icp.get("company_size_max", 1000),
+        parsed_icp.get("region", ""),
         parsed_icp.get("battlecard_notes", ""),
         parsed_icp.get("playbook_strategy", ""),
     ])
@@ -468,6 +471,7 @@ async def save_icp_config(
       target_titles JSONB DEFAULT '["VP of Sales", "CTO"]'::jsonb,
       company_size_min INT DEFAULT 10,
       company_size_max INT DEFAULT 1000,
+      region TEXT DEFAULT '',
       battlecard_notes TEXT DEFAULT '',
       playbook_strategy TEXT DEFAULT '',
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -478,14 +482,15 @@ async def save_icp_config(
     query = """
     INSERT INTO sales_icp_configs (
       tenant_id, target_industries, target_titles, company_size_min, company_size_max,
-      battlecard_notes, playbook_strategy, updated_at
-    ) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, NOW())
+      region, battlecard_notes, playbook_strategy, updated_at
+    ) VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, $7, $8, NOW())
     ON CONFLICT (tenant_id)
     DO UPDATE SET
       target_industries = EXCLUDED.target_industries,
       target_titles = EXCLUDED.target_titles,
       company_size_min = EXCLUDED.company_size_min,
       company_size_max = EXCLUDED.company_size_max,
+      region = EXCLUDED.region,
       battlecard_notes = EXCLUDED.battlecard_notes,
       playbook_strategy = EXCLUDED.playbook_strategy,
       updated_at = NOW();
@@ -496,6 +501,7 @@ async def save_icp_config(
         json.dumps(request.target_titles),
         request.company_size_min,
         request.company_size_max,
+        request.region,
         request.battlecard_notes,
         request.playbook_strategy,
     ])
@@ -520,6 +526,7 @@ async def get_icp_config(
       target_titles JSONB DEFAULT '["VP of Sales", "CTO"]'::jsonb,
       company_size_min INT DEFAULT 10,
       company_size_max INT DEFAULT 1000,
+      region TEXT DEFAULT '',
       battlecard_notes TEXT DEFAULT '',
       playbook_strategy TEXT DEFAULT '',
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -538,6 +545,7 @@ async def get_icp_config(
             "target_titles": ["VP of Sales", "CTO", "Head of Growth"],
             "company_size_min": 10,
             "company_size_max": 1000,
+            "region": "",
             "battlecard_notes": "Key Differentiator: Zero vendor lock-in with 99.9% uptime SLA.",
             "playbook_strategy": "Focus on operational efficiency & rapid ROI.",
         }

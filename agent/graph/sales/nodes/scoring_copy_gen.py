@@ -23,10 +23,9 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
 
     logger.info(f"[STAGE 5 SCORING & COPY GEN] Starting. verified_contacts count: {len(verified_contacts) if verified_contacts is not None else 'None'}")
 
-    # Only use discovered_contact if verified_contacts is None (Stage 4 was skipped). If Stage 4 ran and verified_contacts is empty [], respect deliverability guard.
-    if verified_contacts is None and state.get("discovered_contact"):
-        verified_contacts = [state["discovered_contact"]]
-    elif verified_contacts is None:
+    # Stage 4 MUST run before Stage 5. If verified_contacts is None or empty,
+    # that means Stage 4 found 0 deliverable contacts. Do NOT bypass with discovered_contact.
+    if verified_contacts is None:
         verified_contacts = []
 
     logger.info(f"[STAGE 5] Verified contacts to process into outreach_batch: {len(verified_contacts)}")
@@ -41,12 +40,24 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
     outreach_batch: List[Dict[str, Any]] = []
 
     for idx, contact in enumerate(verified_contacts):
+        # HARD GUARD: Reject any contact that did not pass Stage 4 verification.
+        # This is a structural safety net — if a contact somehow reaches Stage 5
+        # without a deliverability result showing is_valid: True, drop it and log an error.
+        deliverability = contact.get("deliverability")
+        if not deliverability or not deliverability.get("is_valid", False):
+            logger.error(
+                f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_email')}' — "
+                f"missing or invalid deliverability result. "
+                f"deliverability={deliverability}, email_status={contact.get('email_status', 'unknown')}. "
+                f"This contact should never have reached Stage 5 without passing Stage 4."
+            )
+            continue
+
         company_name = contact.get("company_name") or "Enterprise Client"
         domain = contact.get("domain") or "enterprise.com"
         contact_name = contact.get("contact_name", "Executive")
         contact_title = contact.get("contact_title", "Decision Maker")
         contact_email = contact.get("contact_email", f"contact@{domain}")
-        deliverability = contact.get("deliverability") or {"is_valid": True, "status": "VALID"}
 
         # Match scraped text if available
         scraped_text = ""
@@ -164,7 +175,7 @@ Respond ONLY with valid JSON.
 
     return {
         "outreach_batch": outreach_batch,
-        "icp_score": outreach_batch[0]["icp_score"] if outreach_batch else 90.0,
+        "icp_score": outreach_batch[0]["icp_score"] if outreach_batch else 0.0,
         "generated_outreach": {"subject": outreach_batch[0]["subject"], "body": outreach_batch[0]["body"]} if outreach_batch else None,
         "logs": logs,
     }

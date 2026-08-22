@@ -1,4 +1,7 @@
+import os
 from pydantic_settings import BaseSettings
+
+env_path = os.path.join(os.path.dirname(__file__), ".env")
 
 
 class Settings(BaseSettings):
@@ -23,7 +26,14 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
 
-    model_config = {"env_file": ".env"}
+    # Search API (Serper.dev) — used for B2B company discovery in Sales Agent
+    SERPER_API_KEY: str = ""
+
+    # ZeroBounce API — used for email verifier fallback when Port 25 fails
+    ZEROBOUNCE_API_KEY: str = ""
+
+    model_config = {"env_file": env_path, "extra": "ignore"}
 
 
 settings = Settings()
+

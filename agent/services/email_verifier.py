@@ -74,8 +74,10 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
     """
     Performs real-time SMTP RCPT TO handshake against target domain MX servers.
     Detects 550 Mailbox Not Found / Non-existent user errors before sending.
+    Probes for catch-all (accept-all) behavior using a random probe address.
     """
     import smtplib
+    import uuid
     try:
         def _get_mx_hosts():
             try:
@@ -92,43 +94,154 @@ async def check_smtp_mailbox(email: str, domain: str) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
         mx_hosts = await loop.run_in_executor(None, _get_mx_hosts)
         if not mx_hosts:
-            return {"tested": False, "exists": True, "reason": "No MX hosts resolved for SMTP check."}
+            return {"tested": False, "exists": True, "is_catch_all": False, "reason": "No MX hosts resolved for SMTP check."}
 
         for mx_host in mx_hosts[:1]:
             def _rcpt_handshake():
                 try:
-                    server = smtplib.SMTP(timeout=1.5)
+                    server = smtplib.SMTP(timeout=2.0)
                     server.connect(mx_host, 25)
                     server.helo("verify.ai-platform.com")
                     server.mail("verifier@ai-platform.com")
                     code, resp = server.rcpt(email)
-                    server.quit()
-                    return code, resp.decode('utf-8', errors='ignore')
-                except Exception as ex:
-                    return None, str(ex)
 
-            code, resp_text = await loop.run_in_executor(None, _rcpt_handshake)
+                    is_catch_all = False
+                    if code == 250:
+                        # Probe a random non-existent address to detect catch-all / accept-all servers
+                        probe_email = f"probe_{uuid.uuid4().hex[:8]}@{domain}"
+                        probe_code, _ = server.rcpt(probe_email)
+                        if probe_code == 250:
+                            is_catch_all = True
+
+                    server.quit()
+                    return code, resp.decode('utf-8', errors='ignore'), is_catch_all
+                except Exception as ex:
+                    return None, str(ex), False
+
+            code, resp_text, is_catch_all = await loop.run_in_executor(None, _rcpt_handshake)
             if code == 250:
-                return {"tested": True, "exists": True, "code": code, "reason": "SMTP Mailbox verified (250 OK)."}
+                if is_catch_all:
+                    return {
+                        "tested": True,
+                        "exists": True,
+                        "is_catch_all": True,
+                        "code": code,
+                        "reason": "SMTP server is catch-all / accept-all (accepts any address during handshake)."
+                    }
+                return {
+                    "tested": True,
+                    "exists": True,
+                    "is_catch_all": False,
+                    "code": code,
+                    "reason": "SMTP Mailbox verified (250 OK)."
+                }
             elif code in (550, 551, 552, 553, 501, 504):
                 lower_resp = resp_text.lower()
                 if any(term in lower_resp for term in ["5.1.1", "5.1.0", "does not exist", "user unknown", "no such user", "address rejected", "recipient rejected", "unknown user", "nosuchuser"]):
-                    return {"tested": True, "exists": False, "code": code, "reason": f"Mailbox does not exist on target SMTP server ({code}: {resp_text})."}
+                    return {"tested": True, "exists": False, "is_catch_all": False, "code": code, "reason": f"Mailbox does not exist on target SMTP server ({code}: {resp_text})."}
                 elif any(term in lower_resp for term in ["spamhaus", "blocked", "5.7.1", "denied", "blacklist", "refused", "service unavailable"]):
-                    return {"tested": False, "exists": True, "code": code, "reason": f"SMTP host IP block ({resp_text}). Fallback to MX record check."}
+                    return {"tested": False, "exists": True, "is_catch_all": False, "code": code, "reason": f"SMTP host IP block ({resp_text}). Fallback to MX record check."}
                 else:
-                    return {"tested": True, "exists": False, "code": code, "reason": f"SMTP server rejected recipient address ({code}: {resp_text})."}
+                    return {"tested": True, "exists": False, "is_catch_all": False, "code": code, "reason": f"SMTP server rejected recipient address ({code}: {resp_text})."}
 
-        return {"tested": False, "exists": False, "reason": "SMTP port 25 unreachable or blocked by cloud provider."}
+        return {"tested": False, "exists": False, "is_catch_all": False, "reason": "SMTP port 25 unreachable or blocked by cloud provider."}
     except Exception as e:
         logger.warning(f"SMTP check error for {email}: {e}")
-        return {"tested": False, "exists": False, "reason": f"SMTP check port 25 unreachable: {e}"}
+        return {"tested": False, "exists": False, "is_catch_all": False, "reason": f"SMTP check port 25 unreachable: {e}"}
+
+
+async def verify_email_with_zerobounce(email: str) -> Dict[str, Any]:
+    """
+    Performs real-time email verification via ZeroBounce API v2.
+    Endpoint: https://api.zerobounce.net/v2/validate
+    """
+    import os
+    import httpx
+
+    api_key = os.getenv("ZEROBOUNCE_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("[ZEROBOUNCE] ZEROBOUNCE_API_KEY not found in environment.")
+        return {"email": email, "is_valid": False, "source": "no_api_key"}
+
+    url = "https://api.zerobounce.net/v2/validate"
+    params = {
+        "api_key": api_key,
+        "email": email,
+        "ip_address": ""
+    }
+
+    try:
+        logger.info(f"[ZEROBOUNCE] Calling ZeroBounce API for email '{email}'...")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                zb_status = str(data.get("status") or "").lower()
+                sub_status = str(data.get("sub_status") or "").lower()
+                domain = data.get("domain", "")
+
+                logger.info(f"[ZEROBOUNCE] Response for '{email}': status='{zb_status}', sub_status='{sub_status}'")
+
+                if zb_status == "valid":
+                    return {
+                        "email": email,
+                        "is_valid": True,
+                        "deliverability": "HIGH",
+                        "status": "VALID",
+                        "syntax_valid": True,
+                        "domain": domain,
+                        "has_mx_records": True,
+                        "is_disposable": False,
+                        "is_free_provider": False,
+                        "reason": f"Verified via ZeroBounce API (status: valid, sub_status: {sub_status or 'ok'}).",
+                        "source": "zerobounce_api"
+                    }
+                elif zb_status in ("catch-all", "catch_all"):
+                    return {
+                        "email": email,
+                        "is_valid": False,
+                        "deliverability": "RISKY",
+                        "status": "CATCH_ALL",
+                        "syntax_valid": True,
+                        "domain": domain,
+                        "has_mx_records": True,
+                        "is_disposable": False,
+                        "is_free_provider": False,
+                        "reason": f"ZeroBounce API flagged catch-all server (sub_status: {sub_status}).",
+                        "source": "zerobounce_api"
+                    }
+                else:
+                    return {
+                        "email": email,
+                        "is_valid": False,
+                        "deliverability": "INVALID",
+                        "status": "INVALID",
+                        "syntax_valid": True,
+                        "domain": domain,
+                        "has_mx_records": True,
+                        "is_disposable": False,
+                        "is_free_provider": False,
+                        "reason": f"ZeroBounce API reported status: {zb_status} (sub_status: {sub_status}).",
+                        "source": "zerobounce_api"
+                    }
+            else:
+                logger.warning(f"[ZEROBOUNCE] API HTTP Error {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        logger.warning(f"[ZEROBOUNCE] API Exception for '{email}': {e}")
+
+    return {"email": email, "is_valid": False, "source": "zerobounce_error"}
 
 
 async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00000000-0000-0000-0000-000000000000") -> Dict[str, Any]:
     """
     Performs full deliverability verification on an email address.
-    Leverages Hunter.io Email Verifier check when available, with fallback to local RFC-5322, MX DNS, and SMTP checks.
+    Strict Verification Protocol:
+    1. Syntax & Role/Disposable filters.
+    2. Hunter.io API (if tenant key configured).
+    3. MX DNS record resolution.
+    4. Live Direct SMTP Port 25 RCPT TO handshake & probe check.
+    5. ZeroBounce API verification fallback if Port 25 is blocked/untested.
+    No passive MX-only domain bypass is permitted.
     """
     email_clean = email.strip().lower()
     
@@ -217,6 +330,19 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     logger.info(f"[EMAIL VERIFIER] SMTP mailbox check for '{email_clean}': {smtp_res}")
     
     if smtp_res.get("tested") and smtp_res.get("exists"):
+        if smtp_res.get("is_catch_all"):
+            return {
+                "email": email_clean,
+                "is_valid": False,
+                "deliverability": "RISKY",
+                "status": "CATCH_ALL",
+                "syntax_valid": True,
+                "domain": domain,
+                "has_mx_records": True,
+                "is_disposable": False,
+                "is_free_provider": is_free,
+                "reason": "Domain mail server is catch-all (accept-all); mailbox existence cannot be confirmed via direct SMTP.",
+            }
         return {
             "email": email_clean,
             "is_valid": True,
@@ -243,23 +369,13 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
             "reason": smtp_res.get("reason", "Mailbox rejected by target SMTP server."),
         }
 
-    # 8. Unverified / Inconclusive Fallback
-    # If source came directly from a live Hunter API domain search, we consider it valid based on Hunter's data
-    if source == "hunter_io_api":
-        return {
-            "email": email_clean,
-            "is_valid": True,
-            "deliverability": "HIGH",
-            "status": "VALID",
-            "syntax_valid": True,
-            "domain": domain,
-            "has_mx_records": True,
-            "is_disposable": False,
-            "is_free_provider": is_free,
-            "reason": f"Discovered via Hunter.io API with MX DNS records ({domain}).",
-        }
+    # 8. ZeroBounce API Fallback (Triggered when Port 25 Direct SMTP Handshake fails or is restricted)
+    logger.info(f"[EMAIL VERIFIER] Port 25 SMTP handshake unavailable/untested for '{email_clean}'. Invoking ZeroBounce API fallback...")
+    zb_res = await verify_email_with_zerobounce(email_clean)
+    if zb_res and zb_res.get("source") == "zerobounce_api":
+        return zb_res
 
-    # Untested SMTP check (port 25 blocked) without Hunter API confirmation must be rejected to prevent bounce risk
+    # Strict Final Enforcement: If ZeroBounce is unconfigured or fails and Port 25 failed, REJECT the email.
     return {
         "email": email_clean,
         "is_valid": False,
@@ -267,10 +383,10 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
         "status": "UNVERIFIED",
         "syntax_valid": True,
         "domain": domain,
-        "has_mx_records": True,
+        "has_mx_records": has_mx,
         "is_disposable": False,
         "is_free_provider": is_free,
-        "reason": "Outbound SMTP port 25 blocked/unreachable; mailbox existence could not be verified.",
+        "reason": "Outbound SMTP port 25 unavailable and ZeroBounce API failed to confirm mailbox validity.",
     }
 
 
