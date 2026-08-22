@@ -1,16 +1,13 @@
 """
 Apollo API Integration & MCP Tool Module (Backward Compatibility Wrapper).
 
-Delegates account discovery requests to the unified Hunter.io MCP module.
-Contact search is now handled by Serper search + pattern inference (Phase 3).
+Delegates account discovery requests to the Serper search discovery module.
+Contact search is handled by Serper search + pattern inference.
 """
 import logging
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from tool_gateway.hunter_mcp import (
-    search_hunter_accounts_impl,
-    get_tenant_hunter_key,
-)
+from tool_gateway.search_discovery import search_company_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +27,8 @@ class ApolloContactSearchInput(BaseModel):
 
 
 async def get_tenant_apollo_key(tenant_id: str) -> Optional[str]:
-    """Deprecated alias for get_tenant_hunter_key."""
-    return await get_tenant_hunter_key(tenant_id)
+    """Deprecated key resolver stub."""
+    return "DEPRECATED_SERPER_DISCOVERY"
 
 
 async def search_apollo_accounts_impl(
@@ -42,8 +39,8 @@ async def search_apollo_accounts_impl(
     limit: int = 5,
     exclude_domains: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Backward-compatible wrapper for search_hunter_accounts_impl."""
-    return await search_hunter_accounts_impl(
+    """Backward-compatible wrapper for search_company_accounts."""
+    return await search_company_accounts(
         tenant_id=tenant_id,
         target_industries=target_industries,
         company_size_min=company_size_min,
