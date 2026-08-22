@@ -26,6 +26,44 @@ export default function SalesDashboard() {
     reply_rate: 0.0,
   });
 
+  // SDR Execution Settings
+  const [prospectLimit, setProspectLimit] = useState(10);
+  const [autoSendEmail, setAutoSendEmail] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [icpBuilt, setIcpBuilt] = useState(false);
+  const [savingIcp, setSavingIcp] = useState(false);
+
+  // ICP Configuration State
+  const [icpConfig, setIcpConfig] = useState({
+    target_industries: ['Software', 'SaaS', 'Fintech'],
+    target_titles: ['VP of Sales', 'CTO', 'Head of Growth'],
+    company_size_min: 10,
+    company_size_max: 1000,
+    region: '',
+    battlecard_notes: 'Key Differentiators: Autonomous multi-agent workflow engine, zero vendor lock-in, 99.9% uptime SLA.',
+    playbook_strategy: 'Position rapid operational cost savings and 10x workflow speedup for Q3/Q4 budgeting cycles.',
+  });
+
+  // Modals and Active Inspections
+  const [selectedProspect, setSelectedProspect] = useState(null);
+  const [proposalModalProspect, setProposalModalProspect] = useState(null);
+  const [draftingProposal, setDraftingProposal] = useState(false);
+  const [sendingProposal, setSendingProposal] = useState(false);
+  
+  const [checkingReplies, setCheckingReplies] = useState(false);
+  const [simulateReplyModalOpen, setSimulateReplyModalOpen] = useState(false);
+  const [simulatedReplyText, setSimulatedReplyText] = useState('');
+  const [simulateTargetProspectId, setSimulateTargetProspectId] = useState('');
+
+  const [confirmSaleModalProspect, setConfirmSaleModalProspect] = useState(null);
+  const [confirmingSale, setConfirmingSale] = useState(false);
+  const [finalDealValueInput, setFinalDealValueInput] = useState(50000);
+
+  const [reportModalDetails, setReportModalDetails] = useState(null);
+
+  const [prospectSubTab, setProspectSubTab] = useState('current');
+  const [latestRunProspects, setLatestRunProspects] = useState([]);
+
   useEffect(() => {
     try {
       const cachedIcp = localStorage.getItem('sales_icp_config');
