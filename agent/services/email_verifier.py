@@ -160,7 +160,14 @@ async def verify_email_with_zerobounce(email: str) -> Dict[str, Any]:
 
     api_key = os.getenv("ZEROBOUNCE_API_KEY", "").strip()
     if not api_key:
-        logger.warning("[ZEROBOUNCE] ZEROBOUNCE_API_KEY not found in environment.")
+        try:
+            from config import settings
+            api_key = (settings.ZEROBOUNCE_API_KEY or "").strip()
+        except Exception:
+            pass
+
+    if not api_key:
+        logger.warning("[ZEROBOUNCE] ZEROBOUNCE_API_KEY not found in environment or config.")
         return {"email": email, "is_valid": False, "source": "no_api_key"}
 
     url = "https://api.zerobounce.net/v2/validate"

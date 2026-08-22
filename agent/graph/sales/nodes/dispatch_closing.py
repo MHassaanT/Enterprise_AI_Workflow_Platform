@@ -53,7 +53,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
         else:
-            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified pattern emails were discarded. Ensure company websites contain active pattern emails or Hunter.io API key is configured."
+            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified pattern emails were discarded by ZeroBounce/SMTP verification guard."
             logger.warning(f"[STAGE 6 DISPATCH] ❌ Ending stage with processed_count=0. Detail: {log_detail}")
             logs.append({
                 "stage": "Stage 6: Dispatch & Closing",
@@ -67,7 +67,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "discovered_contact": None,
                 "icp_score": 0,
                 "deal_stage": "NO_VERIFIED_CONTACTS",
-                "answer": "AI Sales SDR Agent complete: 0 unverified synthetic contacts saved. Please configure a Hunter.io API Key to source 100% deliverable decision-maker emails.",
+                "answer": "AI Sales SDR Agent complete: 0 unverified contacts passed deliverability check.",
                 "logs": logs,
             }
 
