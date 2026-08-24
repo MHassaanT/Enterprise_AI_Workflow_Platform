@@ -8,7 +8,7 @@ import json
 import uuid
 import logging
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from pydantic import BaseModel, Field
 from config import settings
 from graph.sales.graph import sales_head_graph
@@ -118,15 +118,8 @@ async def send_single_email(
         return {"success": False, "error": f"Failed to send email: {str(e)}"}
 
 
-@router.post("/run")
-async def run_sales_agent(
-    request: SalesPipelineRunRequest,
-    x_internal_token: str = Header(alias="X-Internal-Token"),
-):
+async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
     import time
-    run_id = f"sdr-run-{uuid.uuid4().hex[:8]}"
-    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
-
     start_time = time.time()
     MAX_DURATION = 420  # 7 minutes
     prospect_limit = request.prospect_limit or 10
@@ -209,29 +202,33 @@ async def run_sales_agent(
         # Final logs logging
         for idx, log in enumerate(overall_logs):
             logger.info(f"[SALES AGENT LOG #{idx+1}] {log.get('stage')}: {log.get('status')} - {log.get('details')}")
-
-        first_contact = overall_outreach_batch[0] if overall_outreach_batch else None
         
-        return {
-            "success": True,
-            "run_id": run_id,
-            "answer": f"Sales SDR execution complete. Total processed: {total_processed_count}.",
-            "icp_score": first_contact.get("icp_score") if first_contact else final_state.get("icp_score"),
-            "discovered_contact": first_contact or final_state.get("discovered_contact"),
-            "outreach_batch": overall_outreach_batch,
-            "prospects": overall_outreach_batch,
-            "processed_count": total_processed_count,
-            "deliverability_result": final_state.get("deliverability_result"),
-            "generated_outreach": final_state.get("generated_outreach"),
-            "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage"),
-            "gmail_message_id": first_contact.get("gmail_message_id") if first_contact else final_state.get("gmail_message_id"),
-            "logs": overall_logs,
-        }
+        logger.info(f"[SALES AGENT ROUTER] Background loop complete for {run_id}. Total processed: {total_processed_count}")
+
     except Exception as e:
-        logger.error(f"[SALES AGENT ROUTER ERROR] sales_head_graph invocation failed: {e}")
+        logger.error(f"[SALES AGENT ROUTER ERROR] sales_head_graph invocation failed in background: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Sales agent execution failed: {str(e)}")
+
+
+@router.post("/run", status_code=202)
+async def run_sales_agent(
+    request: SalesPipelineRunRequest,
+    background_tasks: BackgroundTasks,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    run_id = f"sdr-run-{uuid.uuid4().hex[:8]}"
+    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint in background. run_id='{run_id}', limit={request.prospect_limit}")
+
+    background_tasks.add_task(_run_sales_loop, request, run_id)
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "answer": "Sales SDR execution started in the background.",
+        "processed_count": None,
+        "message": "Campaign started in background"
+    }
 
 
 @router.post("/icp/build")

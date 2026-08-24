@@ -115,7 +115,7 @@ router.post('/pipeline/run', async (req, res) => {
       }
     );
 
-    console.log(`[BACKEND RUN PIPELINE] Agent response received! Success=${response.data?.success}, processed_count=${response.data?.processed_count}`);
+    console.log(`[BACKEND RUN PIPELINE] Agent response received! Success=${response.data?.success}, Background=${response.status === 202}`);
     return res.json({ success: true, result: response.data });
   } catch (err) {
     console.error('[BACKEND RUN PIPELINE ERROR] Error executing Sales SDR agent:', err.message, err.response?.data);

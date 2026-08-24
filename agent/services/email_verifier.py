@@ -176,64 +176,77 @@ async def verify_email_with_emailable(email: str) -> Dict[str, Any]:
         "email": email
     }
 
-    try:
-        logger.info(f"[EMAILABLE] Calling Emailable API for email '{email}'...")
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.get(url, params=params)
-            if resp.status_code == 200:
-                data = resp.json()
-                state = str(data.get("state") or "").lower()
-                reason = str(data.get("reason") or "").lower()
-                domain = data.get("domain", "")
+    import asyncio
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"[EMAILABLE] Calling Emailable API for email '{email}' (Attempt {attempt+1}/{max_retries})...")
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                resp = await client.get(url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    state = str(data.get("state") or "").lower()
+                    reason = str(data.get("reason") or "").lower()
+                    domain = data.get("domain", "")
 
-                logger.info(f"[EMAILABLE] Response for '{email}': state='{state}', reason='{reason}'")
+                    logger.info(f"[EMAILABLE] Response for '{email}': state='{state}', reason='{reason}'")
 
-                if state == "deliverable":
-                    return {
-                        "email": email,
-                        "is_valid": True,
-                        "deliverability": "HIGH",
-                        "status": "VALID",
-                        "syntax_valid": True,
-                        "domain": domain,
-                        "has_mx_records": True,
-                        "is_disposable": False,
-                        "is_free_provider": False,
-                        "reason": f"Verified via Emailable API (state: deliverable, reason: {reason or 'ok'}).",
-                        "source": "emailable_api"
-                    }
-                elif state == "risky" or reason == "catch_all":
-                    return {
-                        "email": email,
-                        "is_valid": False,
-                        "deliverability": "RISKY",
-                        "status": "CATCH_ALL",
-                        "syntax_valid": True,
-                        "domain": domain,
-                        "has_mx_records": True,
-                        "is_disposable": False,
-                        "is_free_provider": False,
-                        "reason": f"Emailable API flagged risky/catch-all server (reason: {reason}).",
-                        "source": "emailable_api"
-                    }
+                    if state == "deliverable":
+                        return {
+                            "email": email,
+                            "is_valid": True,
+                            "deliverability": "HIGH",
+                            "status": "VALID",
+                            "syntax_valid": True,
+                            "domain": domain,
+                            "has_mx_records": True,
+                            "is_disposable": False,
+                            "is_free_provider": False,
+                            "reason": f"Verified via Emailable API (state: deliverable, reason: {reason or 'ok'}).",
+                            "source": "emailable_api"
+                        }
+                    elif state == "risky" or reason == "catch_all":
+                        return {
+                            "email": email,
+                            "is_valid": False,
+                            "deliverability": "RISKY",
+                            "status": "CATCH_ALL",
+                            "syntax_valid": True,
+                            "domain": domain,
+                            "has_mx_records": True,
+                            "is_disposable": False,
+                            "is_free_provider": False,
+                            "reason": f"Emailable API flagged risky/catch-all server (reason: {reason}).",
+                            "source": "emailable_api"
+                        }
+                    else:
+                        return {
+                            "email": email,
+                            "is_valid": False,
+                            "deliverability": "INVALID",
+                            "status": "INVALID",
+                            "syntax_valid": True,
+                            "domain": domain,
+                            "has_mx_records": True,
+                            "is_disposable": False,
+                            "is_free_provider": False,
+                            "reason": f"Emailable API reported state: {state} (reason: {reason}).",
+                            "source": "emailable_api"
+                        }
+                elif resp.status_code == 249:
+                    logger.warning(f"[EMAILABLE] API HTTP Error 249 (tarpitted) on attempt {attempt+1}. Retrying in 5 seconds...")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(5)
+                        continue
+                    else:
+                        break
                 else:
-                    return {
-                        "email": email,
-                        "is_valid": False,
-                        "deliverability": "INVALID",
-                        "status": "INVALID",
-                        "syntax_valid": True,
-                        "domain": domain,
-                        "has_mx_records": True,
-                        "is_disposable": False,
-                        "is_free_provider": False,
-                        "reason": f"Emailable API reported state: {state} (reason: {reason}).",
-                        "source": "emailable_api"
-                    }
-            else:
-                logger.warning(f"[EMAILABLE] API HTTP Error {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.warning(f"[EMAILABLE] API Exception for '{email}': {type(e).__name__}: {e!r}")
+                    logger.warning(f"[EMAILABLE] API HTTP Error {resp.status_code}: {resp.text[:200]}")
+                    break
+        except Exception as e:
+            logger.warning(f"[EMAILABLE] API Exception for '{email}': {type(e).__name__}: {e!r}")
+            break
 
     return {"email": email, "is_valid": False, "source": "emailable_error"}
 
