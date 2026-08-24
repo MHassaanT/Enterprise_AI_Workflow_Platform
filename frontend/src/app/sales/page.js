@@ -218,9 +218,7 @@ export default function SalesDashboard() {
       if (data.success && data.result) {
         const result = data.result;
         setLogs(result.logs || []);
-        if (result.processed_count === null || result.processed_count === undefined) {
-          setMessage(`⏳ SDR Campaign started in the background. It may take a few minutes to complete. Please click Refresh to check for new prospects.`);
-        } else if ((result.processed_count || 0) > 0) {
+        if ((result.processed_count || 0) > 0) {
           setMessage(`✅ SDR Campaign completed! Discovered & verified ${result.processed_count} deliverable prospects.`);
         } else {
           setMessage(`⚠️ Campaign completed. Detail: ${result.answer || 'No prospects passed deliverability.'}`);
