@@ -26,9 +26,18 @@ class VendorCommsSubAgent:
             else:
                 other_vendors.append(v)
 
-        if not winning_vendor and vendors:
-            winning_vendor = vendors[0]
-            other_vendors = vendors[1:]
+        if not winning_vendor:
+            if vendors:
+                winning_vendor = vendors[0]
+                if winning_vendor in other_vendors:
+                    other_vendors.remove(winning_vendor)
+            else:
+                winning_vendor = {
+                    "id": selected_vendor_id,
+                    "vendor_name": "Selected Vendor",
+                    "vendor_email": "vendor@example.com",
+                    "quote_amount": 0.0
+                }
 
         llm = get_llm()
 
