@@ -556,8 +556,8 @@ Return ONLY a valid JSON object:
         last_name = parsed.get("last_name", "").strip()
         title = parsed.get("title", "").strip()
 
-        if not name or not first_name or not last_name:
-            logger.warning(f"[CONTACT SEARCH] LLM returned found=true but missing name fields: {parsed}")
+        if not name or not first_name:
+            logger.warning(f"[CONTACT SEARCH] LLM returned found=true but missing first name/name: {parsed}")
             return None
 
         return {
