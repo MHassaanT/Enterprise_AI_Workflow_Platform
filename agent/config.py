@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     # Search API (Serper.dev) — used for B2B company discovery in Sales Agent
     SERPER_API_KEY: str = ""
 
-    # ZeroBounce API — used for email verifier fallback when Port 25 fails
+    # Emailable API — primary verification fallback when Port 25 fails
+    EMAILABLE_API_KEY: str = ""
+
+    # ZeroBounce API — legacy fallback
     ZEROBOUNCE_API_KEY: str = ""
 
     model_config = {"env_file": env_path, "extra": "ignore"}

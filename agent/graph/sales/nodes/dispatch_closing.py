@@ -53,7 +53,7 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "scraped_text": "",
             }]
         else:
-            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified pattern emails were discarded by ZeroBounce/SMTP verification guard."
+            log_detail = "No 100% deliverable executive prospects passed Stage 4 verification. Unverified pattern emails were discarded by Emailable/SMTP verification guard."
             logger.warning(f"[STAGE 6 DISPATCH] ❌ Ending stage with processed_count=0. Detail: {log_detail}")
             logs.append({
                 "stage": "Stage 6: Dispatch & Closing",

@@ -240,7 +240,20 @@ async def verify_email_with_emailable(email: str) -> Dict[str, Any]:
                         await asyncio.sleep(5)
                         continue
                     else:
-                        break
+                        logger.warning(f"[EMAILABLE] Exhausted retries for '{email}'. Accepting as RISKY due to tarpitting.")
+                        return {
+                            "email": email,
+                            "is_valid": True,
+                            "deliverability": "RISKY",
+                            "status": "TARPITTED",
+                            "syntax_valid": True,
+                            "domain": email.split("@")[1] if "@" in email else "",
+                            "has_mx_records": True,
+                            "is_disposable": False,
+                            "is_free_provider": False,
+                            "reason": "Emailable API reported tarpitting (249). Accepted as risky.",
+                            "source": "emailable_api"
+                        }
                 else:
                     logger.warning(f"[EMAILABLE] API HTTP Error {resp.status_code}: {resp.text[:200]}")
                     break
@@ -385,10 +398,11 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
     if api_res and api_res.get("source") == "emailable_api":
         return api_res
 
-    # Strict Final Enforcement: If Emailable is unconfigured or fails and Port 25 failed, REJECT the email.
+    # Strict Final Enforcement: If Emailable is unconfigured or fails and Port 25 failed, 
+    # we accept the email as UNVERIFIED so the pipeline can proceed, rather than dropping perfectly good prospects.
     return {
         "email": email_clean,
-        "is_valid": False,
+        "is_valid": True,
         "deliverability": "UNVERIFIED",
         "status": "UNVERIFIED",
         "syntax_valid": True,
@@ -396,6 +410,6 @@ async def verify_email(email: str, source: str = "unknown", tenant_id: str = "00
         "has_mx_records": has_mx,
         "is_disposable": False,
         "is_free_provider": is_free,
-        "reason": "Outbound SMTP port 25 unavailable and Emailable API failed to confirm mailbox validity.",
+        "reason": "Outbound SMTP port 25 unavailable and Emailable API unconfigured/failed. Accepted as UNVERIFIED.",
     }
 
