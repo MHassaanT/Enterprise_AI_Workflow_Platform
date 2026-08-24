@@ -115,11 +115,29 @@ router.post('/pipeline/run', async (req, res) => {
       }
     );
 
-    console.log(`[BACKEND RUN PIPELINE] Agent response received! Success=${response.data?.success}, processed_count=${response.data?.processed_count}`);
+    console.log(`[BACKEND RUN PIPELINE] Agent response received! Success=${response.data?.success}, status=${response.data?.status}`);
     return res.json({ success: true, result: response.data });
   } catch (err) {
     console.error('[BACKEND RUN PIPELINE ERROR] Error executing Sales SDR agent:', err.message, err.response?.data);
     return res.status(500).json({ error: 'Sales SDR Agent execution failed.', detail: err.response?.data || err.message });
+  }
+});
+
+// GET /api/v1/sales/pipeline/status/:run_id — Poll for background campaign completion
+router.get('/pipeline/status/:run_id', async (req, res) => {
+  try {
+    const { run_id } = req.params;
+    const response = await axios.get(
+      `${AGENT_URL}/agent/sales/status/${run_id}`,
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+    );
+    return res.json({ success: true, ...response.data });
+  } catch (err) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ success: false, error: 'Run ID not found.' });
+    }
+    console.error('[BACKEND POLLING ERROR]', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to fetch status.' });
   }
 });
 

@@ -17,6 +17,8 @@ from services.db_client import execute_db_query
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+RUN_STATUSES: Dict[str, Any] = {}
+
 
 def _normalize_uuid(val: Optional[str]) -> str:
     if not val:
@@ -121,12 +123,31 @@ async def send_single_email(
 @router.post("/run")
 async def run_sales_agent(
     request: SalesPipelineRunRequest,
+    background_tasks: __import__('fastapi').BackgroundTasks,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
     import time
     run_id = f"sdr-run-{uuid.uuid4().hex[:8]}"
-    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
+    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint in background. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
 
+    RUN_STATUSES[run_id] = {
+        "status": "RUNNING",
+        "processed_count": 0,
+        "logs": [],
+        "result": None
+    }
+
+    background_tasks.add_task(_run_sales_loop, request, run_id)
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "status": "RUNNING",
+        "message": "Sales SDR execution started in the background."
+    }
+
+async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
+    import time
     start_time = time.time()
     MAX_DURATION = 420  # 7 minutes
     prospect_limit = request.prospect_limit or 10
@@ -134,6 +155,7 @@ async def run_sales_agent(
     total_processed_count = 0
     overall_outreach_batch = []
     overall_logs = []
+
     
     existing_domains = []
     existing_emails = []
@@ -212,7 +234,7 @@ async def run_sales_agent(
 
         first_contact = overall_outreach_batch[0] if overall_outreach_batch else None
         
-        return {
+        final_result = {
             "success": True,
             "run_id": run_id,
             "answer": f"Sales SDR execution complete. Total processed: {total_processed_count}.",
@@ -227,11 +249,29 @@ async def run_sales_agent(
             "gmail_message_id": first_contact.get("gmail_message_id") if first_contact else final_state.get("gmail_message_id"),
             "logs": overall_logs,
         }
+
+        RUN_STATUSES[run_id]["status"] = "COMPLETED"
+        RUN_STATUSES[run_id]["result"] = final_result
+        RUN_STATUSES[run_id]["processed_count"] = total_processed_count
+
     except Exception as e:
         logger.error(f"[SALES AGENT ROUTER ERROR] sales_head_graph invocation failed: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Sales agent execution failed: {str(e)}")
+        RUN_STATUSES[run_id]["status"] = "FAILED"
+        RUN_STATUSES[run_id]["result"] = {"error": f"Sales agent execution failed: {str(e)}"}
+
+@router.get("/status/{run_id}")
+async def get_sales_run_status(run_id: str, x_internal_token: str = Header(alias="X-Internal-Token")):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+    
+    if run_id not in RUN_STATUSES:
+        raise HTTPException(status_code=404, detail="Run ID not found.")
+    
+    return RUN_STATUSES[run_id]
+
+
 
 
 @router.post("/icp/build")

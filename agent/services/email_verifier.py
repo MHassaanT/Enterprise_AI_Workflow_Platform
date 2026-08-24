@@ -170,14 +170,8 @@ async def verify_email_with_emailable(email: str) -> Dict[str, Any]:
         logger.warning("[EMAILABLE] EMAILABLE_API_KEY not found in environment or config.")
         return {"email": email, "is_valid": False, "source": "no_api_key"}
 
-    url = "https://api.emailable.com/v1/verify"
-    params = {
-        "api_key": api_key,
-        "email": email
-    }
-
-    import asyncio
-    max_retries = 3
+    url = f"https://api.emailable.com/v1/verify?email={email}&api_key={api_key}"
+    max_retries = 12
     
     for attempt in range(max_retries):
         try:

@@ -200,10 +200,49 @@ export default function SalesDashboard() {
     }
   };
 
+  const pollCampaignStatus = async (runId) => {
+    try {
+      const res = await fetch(`/api/v1/sales/pipeline/status/${runId}`, {
+        headers: { ...getAuthHeader() }
+      });
+      const data = await safeJsonParse(res);
+      
+      if (data.success) {
+        if (data.status === 'RUNNING') {
+          // Keep polling every 5 seconds
+          setTimeout(() => pollCampaignStatus(runId), 5000);
+        } else if (data.status === 'COMPLETED') {
+          const result = data.result || {};
+          setLogs(result.logs || []);
+          if ((result.processed_count || 0) > 0) {
+            setMessage(`✅ SDR Campaign completed! Discovered & verified ${result.processed_count} deliverable prospects.`);
+          } else {
+            setMessage(`⚠️ Campaign completed. Detail: ${result.answer || 'No prospects passed deliverability.'}`);
+          }
+          const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
+          setLatestRunProspects(batch);
+          setProspectSubTab('current');
+          fetchData();
+          fetchAnalytics();
+          setRunningPipeline(false);
+        } else if (data.status === 'FAILED') {
+          setMessage(`❌ Campaign execution failed: ${data.result?.error || 'Unknown error'}`);
+          setRunningPipeline(false);
+        }
+      } else {
+        setMessage(`❌ Status check failed: ${data.error}`);
+        setRunningPipeline(false);
+      }
+    } catch (err) {
+      setMessage(`❌ Network error checking status: ${err.message}`);
+      setRunningPipeline(false);
+    }
+  };
+
   const handleRunPipeline = async (e) => {
     e.preventDefault();
     setRunningPipeline(true);
-    setMessage('');
+    setMessage('⏳ Starting campaign... Please wait while the AI Agent works in the background.');
     try {
       const res = await fetch('/api/v1/sales/pipeline/run', {
         method: 'POST',
@@ -216,24 +255,31 @@ export default function SalesDashboard() {
       });
       const data = await safeJsonParse(res);
       if (data.success && data.result) {
-        const result = data.result;
-        setLogs(result.logs || []);
-        if ((result.processed_count || 0) > 0) {
-          setMessage(`✅ SDR Campaign completed! Discovered & verified ${result.processed_count} deliverable prospects.`);
+        if (data.result.status === 'RUNNING' && data.result.run_id) {
+          // Enter polling mode
+          setTimeout(() => pollCampaignStatus(data.result.run_id), 5000);
         } else {
-          setMessage(`⚠️ Campaign completed. Detail: ${result.answer || 'No prospects passed deliverability.'}`);
+          // Synchronous fallback (just in case)
+          const result = data.result;
+          setLogs(result.logs || []);
+          if ((result.processed_count || 0) > 0) {
+            setMessage(`✅ SDR Campaign completed! Discovered & verified ${result.processed_count} deliverable prospects.`);
+          } else {
+            setMessage(`⚠️ Campaign completed. Detail: ${result.answer || 'No prospects passed deliverability.'}`);
+          }
+          const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
+          setLatestRunProspects(batch);
+          setProspectSubTab('current');
+          fetchData();
+          fetchAnalytics();
+          setRunningPipeline(false);
         }
-        const batch = (result.outreach_batch && result.outreach_batch.length > 0) ? result.outreach_batch : (result.prospects || []);
-        setLatestRunProspects(batch);
-        setProspectSubTab('current');
-        fetchData();
-        fetchAnalytics();
       } else {
         setMessage(`❌ Campaign execution failed: ${data.error || 'Unknown error'}`);
+        setRunningPipeline(false);
       }
     } catch (err) {
       setMessage(`❌ Network error: ${err.message}`);
-    } finally {
       setRunningPipeline(false);
     }
   };
