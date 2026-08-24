@@ -17,6 +17,7 @@ from tool_gateway.adapters.clickup_adapter import execute_clickup_tool
 from tool_gateway.adapters.stripe_adapter import execute_stripe_tool
 from tool_gateway.adapters.google_docs_adapter import execute_google_docs_tool
 from tool_gateway.adapters.google_sheets_adapter import execute_google_sheets_tool
+from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
 
 
 

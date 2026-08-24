@@ -123,57 +123,109 @@ async def run_sales_agent(
     request: SalesPipelineRunRequest,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
-    run_id = f"sdr-run-{Date_now_id()}"
+    import time
+    run_id = f"sdr-run-{uuid.uuid4().hex[:8]}"
     logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
 
-    initial_state = {
-        "tenant_id": request.tenant_id,
-        "run_id": run_id,
-        "user_id": request.user_id,
-        "prospect_limit": request.prospect_limit or 10,
-        "target_domain": request.target_domain,
-        "auto_send_email": request.auto_send_email or False,
-        "icp_config": request.icp_config or {},
-        "raw_accounts": [],
-        "scraped_context": {},
-        "account_fit_passed": True,
-        "discovered_contact": None,
-        "deliverability_result": None,
-        "icp_score": 0.0,
-        "generated_outreach": None,
-        "outreach_sent": False,
-        "gmail_message_id": None,
-        "deal_stage": "DISCOVERED",
-        "quote_details": None,
-        "logs": [],
-        "answer": "",
-    }
+    start_time = time.time()
+    MAX_DURATION = 420  # 7 minutes
+    prospect_limit = request.prospect_limit or 10
 
+    total_processed_count = 0
+    overall_outreach_batch = []
+    overall_logs = []
+    
+    existing_domains = []
+    existing_emails = []
+
+    final_state = {}
     config = {"configurable": {"thread_id": run_id}}
 
     try:
-        logger.info(f"[SALES AGENT ROUTER] Invoking sales_head_graph with initial_state: {initial_state}")
-        final_state = await sales_head_graph.ainvoke(initial_state, config=config)
-        outreach_batch = final_state.get("outreach_batch", [])
-        processed_count = final_state.get("processed_count", len(outreach_batch))
-        logger.info(f"[SALES AGENT ROUTER] sales_head_graph completed! processed_count={processed_count}, outreach_batch len={len(outreach_batch)}, verified_contacts len={len(final_state.get('verified_contacts', []))}")
-        for idx, log in enumerate(final_state.get("logs", [])):
+        while total_processed_count < prospect_limit and (time.time() - start_time) < MAX_DURATION:
+            loop_start = time.time()
+            logger.info(f"[SALES AGENT ROUTER] Loop iteration starting. total_processed={total_processed_count}/{prospect_limit}, time_elapsed={loop_start - start_time:.1f}s")
+            
+            # Re-initialize state for each graph run, but carry over accumulated state
+            initial_state = {
+                "tenant_id": request.tenant_id,
+                "run_id": run_id,
+                "user_id": request.user_id,
+                "prospect_limit": prospect_limit - total_processed_count,
+                "target_domain": request.target_domain,
+                "auto_send_email": request.auto_send_email or False,
+                "icp_config": request.icp_config or {},
+                "raw_accounts": [],
+                "scraped_context": {},
+                "account_fit_passed": True,
+                "discovered_contact": None,
+                "deliverability_result": None,
+                "icp_score": 0.0,
+                "generated_outreach": None,
+                "outreach_sent": False,
+                "gmail_message_id": None,
+                "deal_stage": "DISCOVERED",
+                "quote_details": None,
+                "logs": [],
+                "answer": "",
+                "existing_domains": existing_domains,
+                "existing_emails": existing_emails,
+            }
+
+            final_state = await sales_head_graph.ainvoke(initial_state, config=config)
+            
+            # Aggregate results
+            batch = final_state.get("outreach_batch", [])
+            overall_outreach_batch.extend(batch)
+            total_processed_count += len(batch)
+            
+            for log in final_state.get("logs", []):
+                overall_logs.append(log)
+
+            # Accumulate evaluated domains and emails to exclude them in the next iteration
+            evaluated_accounts = final_state.get("raw_accounts", [])
+            for acc in evaluated_accounts:
+                domain = acc.get("domain")
+                if domain:
+                    existing_domains.append(domain.lower().strip())
+                    
+            verified_contacts = final_state.get("verified_contacts", [])
+            for contact in verified_contacts:
+                email = contact.get("contact_email")
+                if email:
+                    existing_emails.append(email.lower().strip())
+
+            # Deduplicate
+            existing_domains = list(set(existing_domains))
+            existing_emails = list(set(existing_emails))
+
+            logger.info(f"[SALES AGENT ROUTER] Loop iteration complete. Processed in this run: {len(batch)}. Total: {total_processed_count}/{prospect_limit}.")
+            
+            # Optional: if no raw accounts were found, break early to avoid infinite fast loops
+            if not evaluated_accounts:
+                logger.warning(f"[SALES AGENT ROUTER] No raw accounts found in this iteration. Breaking early to prevent infinite loop.")
+                break
+
+        # Final logs logging
+        for idx, log in enumerate(overall_logs):
             logger.info(f"[SALES AGENT LOG #{idx+1}] {log.get('stage')}: {log.get('status')} - {log.get('details')}")
 
+        first_contact = overall_outreach_batch[0] if overall_outreach_batch else None
+        
         return {
             "success": True,
             "run_id": run_id,
-            "answer": final_state.get("answer", "Sales SDR execution complete."),
-            "icp_score": final_state.get("icp_score"),
-            "discovered_contact": final_state.get("discovered_contact"),
-            "outreach_batch": outreach_batch,
-            "prospects": outreach_batch,
-            "processed_count": processed_count,
+            "answer": f"Sales SDR execution complete. Total processed: {total_processed_count}.",
+            "icp_score": first_contact.get("icp_score") if first_contact else final_state.get("icp_score"),
+            "discovered_contact": first_contact or final_state.get("discovered_contact"),
+            "outreach_batch": overall_outreach_batch,
+            "prospects": overall_outreach_batch,
+            "processed_count": total_processed_count,
             "deliverability_result": final_state.get("deliverability_result"),
             "generated_outreach": final_state.get("generated_outreach"),
-            "deal_stage": final_state.get("deal_stage"),
-            "gmail_message_id": final_state.get("gmail_message_id"),
-            "logs": final_state.get("logs", []),
+            "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage"),
+            "gmail_message_id": first_contact.get("gmail_message_id") if first_contact else final_state.get("gmail_message_id"),
+            "logs": overall_logs,
         }
     except Exception as e:
         logger.error(f"[SALES AGENT ROUTER ERROR] sales_head_graph invocation failed: {e}")

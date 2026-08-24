@@ -13,6 +13,10 @@ class SalesAgentState(TypedDict):
     target_domain: Optional[str]
     auto_send_email: Optional[bool]
     
+    # State tracking for looping
+    existing_domains: List[str]
+    existing_emails: List[str]
+    
     # Stage 1: Sourcing & Business Understanding
     icp_config: Dict[str, Any]
     raw_accounts: List[Dict[str, Any]]
