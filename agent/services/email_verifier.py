@@ -179,7 +179,7 @@ async def verify_email_with_zerobounce(email: str) -> Dict[str, Any]:
 
     try:
         logger.info(f"[ZEROBOUNCE] Calling ZeroBounce API for email '{email}'...")
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.get(url, params=params)
             if resp.status_code == 200:
                 data = resp.json()
