@@ -177,7 +177,7 @@ async def verify_email_with_emailable(email: str) -> Dict[str, Any]:
         try:
             logger.info(f"[EMAILABLE] Calling Emailable API for email '{email}' (Attempt {attempt+1}/{max_retries})...")
             async with httpx.AsyncClient(timeout=45.0) as client:
-                resp = await client.get(url, params=params)
+                resp = await client.get(url)
                 if resp.status_code == 200:
                     data = resp.json()
                     state = str(data.get("state") or "").lower()
