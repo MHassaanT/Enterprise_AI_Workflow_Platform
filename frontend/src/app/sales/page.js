@@ -1305,7 +1305,7 @@ export default function SalesDashboard() {
         {selectedProspect && (() => {
           const emailSubject = selectedProspect.outreach_subject || selectedProspect.subject || 'Autonomous Workflow Velocity & Partnership';
           const emailBody = selectedProspect.outreach_body || selectedProspect.body || `Hi ${selectedProspect.contact_name || 'Executive'},\n\nI noticed ${selectedProspect.company_name || 'your enterprise'}'s ongoing digital initiatives. Our autonomous platform can streamline your outreach and operations with zero vendor lock-in...\n\nWould you be open to a 15-minute call next week?\n\nBest regards,\nAccount Executive`;
-          const isSent = selectedProspect.deal_stage === 'OUTREACH_SENT' || (selectedProspect.gmail_message_id && selectedProspect.gmail_message_id !== '');
+          const isSent = selectedProspect.deal_stage === 'OUTREACH_SENT' || (selectedProspect.gmail_message_id && selectedProspect.gmail_message_id !== '' && selectedProspect.gmail_message_id !== 'NOT_SENT');
 
           return (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
