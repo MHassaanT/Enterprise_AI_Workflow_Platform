@@ -234,7 +234,7 @@ async def verify_email_with_zerobounce(email: str) -> Dict[str, Any]:
             else:
                 logger.warning(f"[ZEROBOUNCE] API HTTP Error {resp.status_code}: {resp.text[:200]}")
     except Exception as e:
-        logger.warning(f"[ZEROBOUNCE] API Exception for '{email}': {e}")
+        logger.warning(f"[ZEROBOUNCE] API Exception for '{email}': {type(e).__name__}: {e!r}")
 
     return {"email": email, "is_valid": False, "source": "zerobounce_error"}
 
