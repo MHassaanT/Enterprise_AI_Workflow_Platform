@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
+import { getAuthHeader } from '../../lib/api';
 
 export default function CodingAgentPage() {
   // Repository & GitHub State
@@ -55,7 +56,9 @@ export default function CodingAgentPage() {
 
   const fetchRepositories = async () => {
     try {
-      const res = await fetch(`${API_BASE}/repos`);
+      const res = await fetch(`${API_BASE}/repos`, {
+        headers: { ...getAuthHeader() }
+      });
       const data = await res.json();
       if (data.status === 'success' && data.repositories?.length > 0) {
         setRepositories(data.repositories);
@@ -72,7 +75,9 @@ export default function CodingAgentPage() {
   const fetchTree = async (repo, branch) => {
     setTreeLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/tree?repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`);
+      const res = await fetch(`${API_BASE}/tree?repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`, {
+        headers: { ...getAuthHeader() }
+      });
       const data = await res.json();
       if (data.status === 'success' && data.data?.tree) {
         setTree(data.data.tree);
@@ -95,7 +100,9 @@ export default function CodingAgentPage() {
     setSelectedFile(path);
     setFileLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/file?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`);
+      const res = await fetch(`${API_BASE}/file?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`, {
+        headers: { ...getAuthHeader() }
+      });
       const data = await res.json();
       if (data.status === 'success' && data.data?.content !== undefined) {
         setFileContent(data.data.content);
@@ -116,7 +123,7 @@ export default function CodingAgentPage() {
     try {
       const res = await fetch(`${API_BASE}/create-branch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           repo: selectedRepo,
           base_branch: baseBranch,
@@ -148,7 +155,7 @@ export default function CodingAgentPage() {
     try {
       const res = await fetch(`${API_BASE}/create-pr`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           repo: selectedRepo,
           title,
@@ -191,7 +198,7 @@ export default function CodingAgentPage() {
 
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prompt: promptToSend,
           repo: selectedRepo,
@@ -283,6 +290,12 @@ export default function CodingAgentPage() {
 
           {/* Header Quick Status */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={fetchRepositories}
+              className="px-sm py-1 bg-surface border border-outline-variant hover:border-primary rounded-lg text-xs font-semibold text-on-surface flex items-center gap-1 transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">refresh</span> Refresh Repos
+            </button>
             {workingBranch && (
               <div className="flex items-center gap-2 px-md py-xs bg-emerald-950/30 border border-emerald-800/40 rounded-lg text-emerald-400 text-xs font-mono">
                 <span className="material-symbols-outlined text-[16px]">alt_route</span>
@@ -296,7 +309,7 @@ export default function CodingAgentPage() {
                 rel="noreferrer"
                 className="flex items-center gap-2 px-md py-xs bg-purple-950/40 border border-purple-800/50 text-purple-300 rounded-lg text-xs font-semibold hover:bg-purple-900/50 transition-colors"
               >
-                <span className="material-symbols-outlined text-[16px]">git_pull_request</span>
+                <span className="material-symbols-outlined text-[16px]">call_split</span>
                 PR #{prInfo.pr_number} Open
               </a>
             )}
@@ -515,7 +528,7 @@ export default function CodingAgentPage() {
                   onClick={handleManualCreatePR}
                   className="px-sm py-1.5 bg-purple-900/30 border border-purple-700/50 hover:bg-purple-800/40 rounded-lg text-xs font-semibold text-purple-300 flex items-center gap-1 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">git_pull_request</span> Create PR
+                  <span className="material-symbols-outlined text-sm">call_split</span> Create PR
                 </button>
               </div>
             </div>

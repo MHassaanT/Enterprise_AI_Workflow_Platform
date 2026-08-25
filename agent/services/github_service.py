@@ -24,7 +24,8 @@ def get_headers(token: Optional[str] = None) -> Dict[str, str]:
         "User-Agent": "Enterprise-AI-Coding-Agent",
     }
     if auth_token:
-        headers["Authorization"] = f"token {auth_token}"
+        clean_token = auth_token.replace("Bearer ", "").replace("token ", "").strip()
+        headers["Authorization"] = f"Bearer {clean_token}"
     return headers
 
 async def list_repositories(token: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -45,6 +46,8 @@ async def list_repositories(token: Optional[str] = None) -> List[Dict[str, Any]]
                     }
                     for repo in resp.json()
                 ]
+            else:
+                print(f"[GITHUB SERVICE WARNING] /user/repos status={resp.status_code}: {resp.text[:200]}")
         
         # Fallback to popular or configured repos if unauthenticated
         default_repo = os.getenv("GITHUB_DEFAULT_REPO", "octocat/Hello-World")
