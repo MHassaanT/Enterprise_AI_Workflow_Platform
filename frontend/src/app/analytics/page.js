@@ -33,7 +33,7 @@ export default function AnalyticsDashboard() {
         }
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.quickview) {
         setQuickview(data.quickview);
       }
     } catch (err) {
@@ -52,7 +52,7 @@ export default function AnalyticsDashboard() {
         }
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.alerts) {
         setAlerts(data.alerts);
       }
     } catch (err) {
@@ -81,7 +81,7 @@ export default function AnalyticsDashboard() {
         body: JSON.stringify({ user_query: q })
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.data) {
         setQueryResult(data.data);
       }
     } catch (err) {
@@ -104,7 +104,7 @@ export default function AnalyticsDashboard() {
         body: JSON.stringify({})
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.report) {
         setDigestContent(data.report.markdown);
       }
     } catch (err) {
