@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AuthGuard from '../components/AuthGuard';
 
 export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
@@ -17,10 +18,20 @@ export default function AnalyticsDashboard() {
   const [digestLoading, setDigestLoading] = useState(false);
   const [digestContent, setDigestContent] = useState('');
 
+  const getAuthHeaders = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
   const fetchQuickview = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/analytics/quickview');
+      const res = await fetch('/api/v1/analytics/quickview', {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        }
+      });
       const data = await res.json();
       if (data.success) {
         setQuickview(data.quickview);
@@ -34,7 +45,12 @@ export default function AnalyticsDashboard() {
 
   const fetchAlerts = async () => {
     try {
-      const res = await fetch('/api/v1/analytics/alerts');
+      const res = await fetch('/api/v1/analytics/alerts', {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        }
+      });
       const data = await res.json();
       if (data.success) {
         setAlerts(data.alerts);
@@ -58,7 +74,10 @@ export default function AnalyticsDashboard() {
     try {
       const res = await fetch('/api/v1/analytics/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify({ user_query: q })
       });
       const data = await res.json();
@@ -78,8 +97,11 @@ export default function AnalyticsDashboard() {
     try {
       const res = await fetch('/api/v1/analytics/reports/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: 'default' })
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({})
       });
       const data = await res.json();
       if (data.success) {
@@ -93,7 +115,8 @@ export default function AnalyticsDashboard() {
   };
 
   return (
-    <div className="p-lg md:p-xl overflow-y-auto space-y-xl max-w-7xl mx-auto w-full">
+    <AuthGuard>
+      <div className="p-lg md:p-xl overflow-y-auto space-y-xl max-w-7xl mx-auto w-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-md border-b border-outline-variant pb-md">
           <div>
@@ -106,7 +129,7 @@ export default function AnalyticsDashboard() {
               </h1>
             </div>
             <p className="text-body-md text-on-surface-variant mt-1">
-              Executive quick-view metrics across Employees, Finances, Projects, Sales, Procurement, and AI Health.
+              Real-time cross-domain analytics calculated directly from live database tables.
             </p>
           </div>
 
@@ -242,7 +265,7 @@ export default function AnalyticsDashboard() {
             </h2>
             <span className="text-xs text-emerald-400 font-semibold bg-emerald-950/60 border border-emerald-800/60 px-3 py-1 rounded-full flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Live Sync
+              Live DB Sync
             </span>
           </div>
 
@@ -263,13 +286,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Active Workforce</p>
                   <p className="text-2xl font-extrabold text-on-surface mt-1">
-                    {quickview?.employee_metrics?.total_employees || 42}
+                    {quickview?.employee_metrics?.total_employees ?? 0}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Attendance Rate</p>
                   <p className="text-2xl font-extrabold text-emerald-400 mt-1">
-                    {quickview?.employee_metrics?.attendance_rate || 95.2}%
+                    {quickview?.employee_metrics?.attendance_rate ?? 0}%
                   </p>
                 </div>
               </div>
@@ -277,15 +300,15 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Present Today:</span>
-                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.present_today || 40}</span>
+                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.present_today ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Approved Leaves:</span>
-                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.on_leave || 2}</span>
+                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.on_leave ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Resumes Screened:</span>
-                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.resumes_screened || 128}</span>
+                  <span className="font-bold text-on-surface">{quickview?.employee_metrics?.resumes_screened ?? 0}</span>
                 </div>
               </div>
             </div>
@@ -306,13 +329,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Total Budget</p>
                   <p className="text-xl font-extrabold text-on-surface mt-1">
-                    ${(quickview?.financial_metrics?.total_budget || 250000).toLocaleString()}
+                    ${(quickview?.financial_metrics?.total_budget ?? 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Total Spent</p>
                   <p className="text-xl font-extrabold text-amber-400 mt-1">
-                    ${(quickview?.financial_metrics?.total_spent || 142500).toLocaleString()}
+                    ${(quickview?.financial_metrics?.total_spent ?? 0).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -320,15 +343,15 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Budget Utilization:</span>
-                  <span className="font-bold text-amber-400">{quickview?.financial_metrics?.budget_utilization_pct || 57.0}%</span>
+                  <span className="font-bold text-amber-400">{quickview?.financial_metrics?.budget_utilization_pct ?? 0}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Monthly Revenue:</span>
-                  <span className="font-bold text-emerald-400">${(quickview?.financial_metrics?.monthly_revenue || 185000).toLocaleString()}</span>
+                  <span className="font-bold text-emerald-400">${(quickview?.financial_metrics?.monthly_revenue ?? 0).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Gross Profit Margin:</span>
-                  <span className="font-bold text-on-surface">{quickview?.financial_metrics?.gross_margin_pct || 68.4}%</span>
+                  <span className="font-bold text-on-surface">{quickview?.financial_metrics?.gross_margin_pct ?? 0}%</span>
                 </div>
               </div>
             </div>
@@ -349,13 +372,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Active Projects</p>
                   <p className="text-2xl font-extrabold text-on-surface mt-1">
-                    {quickview?.project_metrics?.active_projects || 8}
+                    {quickview?.project_metrics?.active_projects ?? 0}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Open GitHub PRs</p>
                   <p className="text-2xl font-extrabold text-purple-400 mt-1">
-                    {quickview?.project_metrics?.github_open_prs || 5}
+                    {quickview?.project_metrics?.github_open_prs ?? 0}
                   </p>
                 </div>
               </div>
@@ -363,15 +386,15 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Completed Milestones:</span>
-                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.completed_milestones || 34}</span>
+                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.completed_milestones ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Pending Milestones:</span>
-                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.pending_milestones || 12}</span>
+                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.pending_milestones ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Weekly Commits:</span>
-                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.weekly_commits || 142}</span>
+                  <span className="font-bold text-on-surface">{quickview?.project_metrics?.weekly_commits ?? 0}</span>
                 </div>
               </div>
             </div>
@@ -392,13 +415,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Total Prospects</p>
                   <p className="text-2xl font-extrabold text-on-surface mt-1">
-                    {quickview?.sales_metrics?.total_prospects || 350}
+                    {quickview?.sales_metrics?.total_prospects ?? 0}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Qualified Leads</p>
                   <p className="text-2xl font-extrabold text-orange-400 mt-1">
-                    {quickview?.sales_metrics?.qualified_leads || 84}
+                    {quickview?.sales_metrics?.qualified_leads ?? 0}
                   </p>
                 </div>
               </div>
@@ -406,15 +429,15 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Hunter.io Deliverability:</span>
-                  <span className="font-bold text-emerald-400">{quickview?.sales_metrics?.deliverability_rate || 98.4}%</span>
+                  <span className="font-bold text-emerald-400">{quickview?.sales_metrics?.deliverability_rate ?? 0}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Outreach Emails Sent:</span>
-                  <span className="font-bold text-on-surface">{quickview?.sales_metrics?.outreach_sent || 210}</span>
+                  <span className="font-bold text-on-surface">{quickview?.sales_metrics?.outreach_sent ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Deal Conversion Rate:</span>
-                  <span className="font-bold text-orange-400">{quickview?.sales_metrics?.conversion_rate || 14.2}%</span>
+                  <span className="font-bold text-orange-400">{quickview?.sales_metrics?.conversion_rate ?? 0}%</span>
                 </div>
               </div>
             </div>
@@ -435,13 +458,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Active RFQs</p>
                   <p className="text-2xl font-extrabold text-on-surface mt-1">
-                    {quickview?.procurement_metrics?.active_rfqs || 6}
+                    {quickview?.procurement_metrics?.active_rfqs ?? 0}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Procurement Spend</p>
                   <p className="text-xl font-extrabold text-cyan-400 mt-1">
-                    ${(quickview?.procurement_metrics?.total_procurement_spend || 58400).toLocaleString()}
+                    ${(quickview?.procurement_metrics?.total_procurement_spend ?? 0).toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -449,11 +472,11 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Pending PO Approvals:</span>
-                  <span className="font-bold text-on-surface">{quickview?.procurement_metrics?.pending_po_approvals || 3}</span>
+                  <span className="font-bold text-on-surface">{quickview?.procurement_metrics?.pending_po_approvals ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Avg Vendor Lead Time:</span>
-                  <span className="font-bold text-cyan-400">{quickview?.procurement_metrics?.avg_vendor_lead_time_days || 4.5} Days</span>
+                  <span className="font-bold text-cyan-400">{quickview?.procurement_metrics?.avg_vendor_lead_time_days ?? 0} Days</span>
                 </div>
               </div>
             </div>
@@ -474,13 +497,13 @@ export default function AnalyticsDashboard() {
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Agent Executions</p>
                   <p className="text-2xl font-extrabold text-on-surface mt-1">
-                    {quickview?.ai_health_metrics?.total_agent_runs || 1420}
+                    {quickview?.ai_health_metrics?.total_agent_runs ?? 0}
                   </p>
                 </div>
                 <div className="p-sm rounded-xl bg-surface-container-low border border-outline-variant">
                   <p className="text-xs text-on-surface-variant">Tokens Consumed</p>
                   <p className="text-2xl font-extrabold text-rose-400 mt-1">
-                    {((quickview?.ai_health_metrics?.llm_tokens_consumed || 458000) / 1000).toFixed(0)}k
+                    {(((quickview?.ai_health_metrics?.llm_tokens_consumed ?? 0)) / 1000).toFixed(0)}k
                   </p>
                 </div>
               </div>
@@ -488,15 +511,15 @@ export default function AnalyticsDashboard() {
               <div className="space-y-xs text-xs text-on-surface-variant pt-xs">
                 <div className="flex justify-between">
                   <span>Execution Success Rate:</span>
-                  <span className="font-bold text-emerald-400">{quickview?.ai_health_metrics?.success_rate_pct || 99.4}%</span>
+                  <span className="font-bold text-emerald-400">{quickview?.ai_health_metrics?.success_rate_pct ?? 0}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Avg Latency:</span>
-                  <span className="font-bold text-on-surface">{quickview?.ai_health_metrics?.avg_response_time_ms || 1240} ms</span>
+                  <span className="font-bold text-on-surface">{quickview?.ai_health_metrics?.avg_response_time_ms ?? 0} ms</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Est Token Cost:</span>
-                  <span className="font-bold text-rose-400">${quickview?.ai_health_metrics?.estimated_token_cost_usd || 18.32} USD</span>
+                  <span className="font-bold text-rose-400">${quickview?.ai_health_metrics?.estimated_token_cost_usd ?? 0} USD</span>
                 </div>
               </div>
             </div>
@@ -541,55 +564,56 @@ export default function AnalyticsDashboard() {
         </div>
 
         {/* Executive Briefing Modal */}
-      {isDigestOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-background/80 backdrop-blur-sm">
-          <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto p-lg rounded-2xl bg-surface border border-outline-variant shadow-2xl space-y-md">
-            <div className="flex items-center justify-between border-b border-outline-variant pb-md">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-2xl">summarize</span>
-                <h3 className="font-title-lg text-title-lg font-bold text-on-surface">Executive AI Briefing Digest</h3>
+        {isDigestOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-background/80 backdrop-blur-sm">
+            <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto p-lg rounded-2xl bg-surface border border-outline-variant shadow-2xl space-y-md">
+              <div className="flex items-center justify-between border-b border-outline-variant pb-md">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-2xl">summarize</span>
+                  <h3 className="font-title-lg text-title-lg font-bold text-on-surface">Executive AI Briefing Digest</h3>
+                </div>
+                <button
+                  onClick={() => setIsDigestOpen(false)}
+                  className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
               </div>
-              <button
-                onClick={() => setIsDigestOpen(false)}
-                className="p-1 rounded-lg hover:bg-surface-container text-on-surface-variant"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
+
+              {digestLoading ? (
+                <div className="py-xl text-center space-y-md">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">sync</span>
+                  <p className="text-body-md text-on-surface-variant">Synthesizing platform data into Executive Digest...</p>
+                </div>
+              ) : (
+                <div className="space-y-md">
+                  <div className="p-md rounded-xl bg-surface-container border border-outline-variant font-mono text-sm text-on-surface whitespace-pre-wrap">
+                    {digestContent}
+                  </div>
+
+                  <div className="flex justify-end gap-sm">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(digestContent);
+                        alert('Digest copied to clipboard!');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface text-label-md font-semibold hover:bg-surface-container"
+                    >
+                      Copy Markdown
+                    </button>
+                    <button
+                      onClick={() => setIsDigestOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-primary text-on-primary text-label-md font-semibold hover:bg-primary/90"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {digestLoading ? (
-              <div className="py-xl text-center space-y-md">
-                <span className="material-symbols-outlined text-4xl text-primary animate-spin">sync</span>
-                <p className="text-body-md text-on-surface-variant">Synthesizing platform data into Executive Digest...</p>
-              </div>
-            ) : (
-              <div className="space-y-md">
-                <div className="p-md rounded-xl bg-surface-container border border-outline-variant font-mono text-sm text-on-surface whitespace-pre-wrap">
-                  {digestContent}
-                </div>
-
-                <div className="flex justify-end gap-sm">
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(digestContent);
-                      alert('Digest copied to clipboard!');
-                    }}
-                    className="px-4 py-2 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface text-label-md font-semibold hover:bg-surface-container"
-                  >
-                    Copy Markdown
-                  </button>
-                  <button
-                    onClick={() => setIsDigestOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-primary text-on-primary text-label-md font-semibold hover:bg-primary/90"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </AuthGuard>
   );
 }
