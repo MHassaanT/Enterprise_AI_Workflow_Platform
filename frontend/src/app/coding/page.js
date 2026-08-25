@@ -10,7 +10,7 @@ export default function CodingAgentPage() {
   const [repositories, setRepositories] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState('octocat/Hello-World');
   const [baseBranch, setBaseBranch] = useState('main');
-  const [workingBranch, setWorkingBranch] = useState('');
+  const [workingBranch, setWorkingBranch] = useState('Branch-for-EAIWP-Coding-Agent');
   const [tree, setTree] = useState([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
