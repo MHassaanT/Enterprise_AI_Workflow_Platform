@@ -24,6 +24,7 @@ const salesRoutes = require('./routes/sales');
 const procurementRoutes = require('./routes/procurement');
 const financeRoutes = require('./routes/finance');
 const codingRoutes = require('./routes/coding');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/procurement', procurementRoutes);
 app.use('/api/v1/finance', financeRoutes);
 app.use('/api/v1/coding', codingRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded
 
 

@@ -24,6 +24,7 @@ from routers.procurement_agent import router as procurement_router
 from routers.company_crawler import router as company_crawler_router
 from routers.finance_agent import router as finance_router
 from routers.coding_agent import router as coding_router
+from routers.analytics_agent import router as analytics_router
 
 # Build MCP HTTP app (Streamable HTTP transport)
 mcp_http_app = mcp.http_app(path="/mcp")
@@ -53,7 +54,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Enterprise AI Agent Orchestration Service",
-    description="LangGraph-powered multi-agent enterprise platform (Sales, HR, Customer Support, Coding)",
+    description="LangGraph-powered multi-agent enterprise platform (Sales, HR, Customer Support, Coding, Analytics)",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -76,6 +77,7 @@ app.include_router(sales_router, prefix="/agent/sales", tags=["Sales Agent"])
 app.include_router(procurement_router, tags=["Procurement Agent"])
 app.include_router(finance_router, prefix="/agent/finance", tags=["Finance Agent"])
 app.include_router(coding_router, prefix="/agent/coding", tags=["Coding Agent"])
+app.include_router(analytics_router, prefix="/agent/analytics", tags=["Analytics Agent"])
 
 # Workflow Engine routes
 app.include_router(workflows_router, prefix="/api/v1/workflows", tags=["Workflows"])

@@ -29,6 +29,7 @@ export default function Sidebar() {
     { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart' },
     { label: 'HR Agent', href: '/hr', icon: 'groups' },
     { label: 'Finance Agent', href: '/finance', icon: 'account_balance' },
+    { label: 'Analytics Agent', href: '/analytics', icon: 'analytics' },
     { label: 'Coding Agent', href: '/coding', icon: 'code' },
     { label: 'PM Agent', href: '/pm', icon: 'account_tree' },
     { label: 'Approvals Hub', href: '/approvals', icon: 'gavel' },
