@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from '../components/Sidebar';
 
 export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
@@ -94,10 +93,7 @@ export default function AnalyticsDashboard() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background text-on-surface">
-      <Sidebar />
-
-      <main className="flex-1 p-lg md:p-xl overflow-y-auto space-y-xl max-w-7xl mx-auto">
+    <div className="p-lg md:p-xl overflow-y-auto space-y-xl max-w-7xl mx-auto w-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-md border-b border-outline-variant pb-md">
           <div>
@@ -543,7 +539,7 @@ export default function AnalyticsDashboard() {
             ))}
           </div>
         </div>
-      </main>
+      </div>
 
       {/* Executive Briefing Modal */}
       {isDigestOpen && (

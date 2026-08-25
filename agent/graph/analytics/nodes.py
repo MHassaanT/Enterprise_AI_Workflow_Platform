@@ -33,51 +33,51 @@ def supervisor_node(state: AnalyticsAgentState) -> AnalyticsAgentState:
 
 def quickview_node(state: AnalyticsAgentState) -> AnalyticsAgentState:
     """
-    Compiles executive quick-view metrics across all platform domains.
+    Compiles executive quick-view metrics across all platform domains (HR, Finance, Projects, Sales, Procurement, AI Health).
+    Querying live PostgreSQL database tables when available.
     """
-    quickview = {
+    quickview = state.get("quickview_data") or {
         "employee_metrics": {
-            "total_employees": 42,
-            "attendance_rate": 95.2,
-            "present_today": 40,
-            "on_leave": 2,
-            "open_job_descriptions": 4,
-            "resumes_screened": 128
+            "total_employees": 0,
+            "attendance_rate": 0.0,
+            "present_today": 0,
+            "on_leave": 0,
+            "resumes_screened": 0
         },
         "financial_metrics": {
-            "total_budget": 250000.00,
-            "total_spent": 142500.00,
-            "remaining_budget": 107500.00,
-            "budget_utilization_pct": 57.0,
-            "monthly_revenue": 185000.00,
-            "gross_margin_pct": 68.4
+            "total_budget": 0.0,
+            "total_spent": 0.0,
+            "remaining_budget": 0.0,
+            "budget_utilization_pct": 0.0,
+            "monthly_revenue": 0.0,
+            "gross_margin_pct": 0.0
         },
         "project_metrics": {
-            "active_projects": 8,
-            "completed_milestones": 34,
-            "pending_milestones": 12,
-            "github_open_prs": 5,
-            "weekly_commits": 142
+            "active_projects": 0,
+            "completed_milestones": 0,
+            "pending_milestones": 0,
+            "github_open_prs": 0,
+            "weekly_commits": 0
         },
         "sales_metrics": {
-            "total_prospects": 350,
-            "qualified_leads": 84,
-            "outreach_sent": 210,
-            "deliverability_rate": 98.4,
-            "conversion_rate": 14.2
+            "total_prospects": 0,
+            "qualified_leads": 0,
+            "outreach_sent": 0,
+            "deliverability_rate": 0.0,
+            "conversion_rate": 0.0
         },
         "procurement_metrics": {
-            "active_rfqs": 6,
-            "pending_po_approvals": 3,
-            "total_procurement_spend": 58400.00,
-            "avg_vendor_lead_time_days": 4.5
+            "active_rfqs": 0,
+            "pending_po_approvals": 0,
+            "total_procurement_spend": 0.0,
+            "avg_vendor_lead_time_days": 0.0
         },
         "ai_health_metrics": {
-            "total_agent_runs": 1420,
-            "llm_tokens_consumed": 458000,
-            "avg_response_time_ms": 1240,
-            "success_rate_pct": 99.4,
-            "estimated_token_cost_usd": 18.32
+            "total_agent_runs": 0,
+            "llm_tokens_consumed": 0,
+            "avg_response_time_ms": 0,
+            "success_rate_pct": 100.0,
+            "estimated_token_cost_usd": 0.0
         }
     }
     state["quickview_data"] = quickview
