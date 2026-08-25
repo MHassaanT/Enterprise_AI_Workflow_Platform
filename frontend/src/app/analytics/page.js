@@ -539,9 +539,8 @@ export default function AnalyticsDashboard() {
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Executive Briefing Modal */}
+        {/* Executive Briefing Modal */}
       {isDigestOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-background/80 backdrop-blur-sm">
           <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto p-lg rounded-2xl bg-surface border border-outline-variant shadow-2xl space-y-md">
