@@ -11,7 +11,6 @@ from fastmcp import FastMCP
 from tool_gateway.tools.check_order_status import check_order_status_impl
 from tool_gateway.tools.escalate_to_human import escalate_to_human_impl
 
-from tool_gateway.finance_mcp import execute_payment_impl, fetch_po_details_impl, update_general_ledger_impl, query_department_budget_impl
 from tool_gateway.apollo_mcp import search_apollo_accounts_impl
 from tool_gateway.search_discovery import search_contact_person
 from services.email_verifier import verify_email
@@ -36,13 +35,6 @@ async def escalate_to_human(reason: str, action_payload: str = "") -> str:
     """
     payload = {"details": action_payload} if action_payload else None
     return await escalate_to_human_impl(reason=reason, action_payload=payload)
-
-
-@mcp.tool()
-async def execute_payment(invoice_number: str, po_number: str, amount: float, vendor_email: str, tenant_id: str) -> str:
-    """Executes vendor payment via ERP system and updates general ledger."""
-    res = await execute_payment_impl(invoice_number, po_number, amount, vendor_email, tenant_id)
-    return str(res)
 
 
 @mcp.tool()

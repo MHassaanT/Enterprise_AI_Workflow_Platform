@@ -6,45 +6,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from graph.supervisor.state import SupervisorState
-from graph.finance.graph import finance_head_graph
 from graph.sales.graph import sales_head_graph
-
-
-async def route_finance_node(state: SupervisorState) -> Dict[str, Any]:
-    tenant_id = state.get("tenant_id", "default")
-    conv_id = state.get("conversation_id", "conv-sup")
-    payload = state.get("payload") or {}
-    
-    fin_input = {
-        "tenant_id": tenant_id,
-        "conversation_id": f"{conv_id}-fin",
-        "user_id": "supervisor_graph",
-        "subagent_target": payload.get("subagent_target", "invoice_ingestion"),
-        "invoice_data": payload.get("invoice_data"),
-        "po_number": payload.get("po_number"),
-        "department": payload.get("department"),
-        "clearance_amount": payload.get("clearance_amount"),
-        "approval_id": payload.get("approval_id"),
-        "approval_status": payload.get("approval_status"),
-        "rag_policy_context": [],
-        "po_record": None,
-        "match_status": None,
-        "anomalies": [],
-        "payment_draft": None,
-        "payment_result": None,
-        "budget_clearance_result": None,
-        "answer": "",
-        "citations": [],
-        "audit_logged": False,
-    }
-    
-    fin_res = await finance_head_graph.ainvoke(fin_input, config={"configurable": {"thread_id": f"{conv_id}-fin"}})
-    history = state.get("route_history", []) + ["Supervisor -> FinanceHead"]
-    return {
-        "result": fin_res,
-        "answer": fin_res.get("answer", "Finance operation completed."),
-        "route_history": history
-    }
 
 
 async def route_sales_node(state: SupervisorState) -> Dict[str, Any]:
@@ -83,33 +45,27 @@ async def route_sales_node(state: SupervisorState) -> Dict[str, Any]:
 
 
 def route_domain(state: SupervisorState) -> str:
-    domain = state.get("target_domain", "finance").lower()
-    if domain == "sales":
-        return "sales"
-    return "finance"
+    return "sales"
 
 
 def build_supervisor_graph():
     builder = StateGraph(SupervisorState)
 
-    builder.add_node("finance", route_finance_node)
     builder.add_node("sales", route_sales_node)
 
     builder.add_conditional_edges(
         START,
         route_domain,
         {
-            "finance": "finance",
             "sales": "sales",
         }
     )
 
-    builder.add_edge("finance", END)
     builder.add_edge("sales", END)
-
 
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)
 
 
 supervisor_graph = build_supervisor_graph()
+

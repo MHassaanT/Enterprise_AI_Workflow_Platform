@@ -162,20 +162,6 @@ export default function TenantControlPanelPage() {
             <aside className="lg:col-span-1 space-y-md">
               <h3 className="font-headline-md text-headline-md text-on-surface mb-lg">Quick Actions</h3>
 
-              {/* Finance Agent Card */}
-              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-primary">payments</span>
-                  <h4 className="font-body-md text-body-md font-medium text-on-surface">Finance Agent</h4>
-                </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  Invoice Ingestion, PO Reconciliation, General Ledger & Department Budgets.
-                </p>
-                <Link href="/finance" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
-                  Open Finance Hub ➔
-                </Link>
-              </div>
-
               {/* Sales Agent Card */}
               <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
                 <div className="flex items-center gap-3 mb-2">

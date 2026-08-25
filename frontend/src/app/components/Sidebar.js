@@ -25,7 +25,6 @@ export default function Sidebar() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
     { label: 'Support Chat', href: '/chat', icon: 'forum' },
-    { label: 'Finance Agent', href: '/finance', icon: 'payments' },
     { label: 'Sales Agent', href: '/sales', icon: 'trending_up' },
     { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart' },
     { label: 'HR Agent', href: '/hr', icon: 'groups' },

@@ -398,6 +398,28 @@ router.post('/requests/:id/select-vendor', async (req, res) => {
           tenantId
         );
       }
+
+      if (finData.finance_sync_payload && finData.finance_sync_payload.gl_ledger_entry) {
+        const gl = finData.finance_sync_payload.gl_ledger_entry;
+        await query(
+          `CREATE TABLE IF NOT EXISTS general_ledger (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL,
+            agent_name VARCHAR(100) NOT NULL,
+            transaction_type VARCHAR(100) NOT NULL,
+            amount NUMERIC(15, 2) DEFAULT 0.00,
+            reference_id VARCHAR(100),
+            description TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );`
+        );
+        await query(
+          `INSERT INTO general_ledger (tenant_id, agent_name, transaction_type, amount, reference_id, description)
+           VALUES ($1, 'ProcurementAgent', 'EXPENSE_RESERVE', $2, $3, $4);`,
+          [tenantId, gl.amount, gl.reference_id || finData.po_number, gl.description || 'Expense reserve for PO'],
+          tenantId
+        );
+      }
     } catch (e) {}
 
     return res.json({
