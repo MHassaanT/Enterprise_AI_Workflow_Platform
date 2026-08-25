@@ -11,13 +11,13 @@ const optionalAuth = (req, res, next) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_super_secret_jwt_key_change_this_in_production');
       req.user = {
-        id: decoded.userId,
-        tenantId: decoded.tenantId,
+        id: decoded.userId || decoded.id,
+        tenantId: decoded.tenantId || decoded.tenant_id,
         role: decoded.role,
         email: decoded.email
       };
     } catch (err) {
-      // Token invalid or expired, continue without blocking
+      // Continue with default tenant or x-tenant-id header
     }
   }
   next();
@@ -68,13 +68,13 @@ const initAnalyticsTables = async () => {
   }
 };
 
-// GET /api/v1/analytics/quickview - Real Cross-Domain Database Analytics
+// GET /api/v1/analytics/quickview - Real Cross-Domain Database Analytics (Strict Tenant Scoping)
 router.get('/quickview', optionalAuth, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     await initAnalyticsTables();
 
-    // Metrics structure initialized
+    // Metrics structure initialized for target tenant
     let employeeStats = { total_employees: 0, attendance_rate: 0.0, present_today: 0, on_leave: 0, resumes_screened: 0 };
     let financeStats = { total_budget: 0.0, total_spent: 0.0, remaining_budget: 0.0, monthly_revenue: 0.0, budget_utilization_pct: 0.0, gross_margin_pct: 0.0 };
     let projectStats = { active_projects: 0, completed_milestones: 0, pending_milestones: 0, github_open_prs: 0, weekly_commits: 0 };
@@ -82,31 +82,18 @@ router.get('/quickview', optionalAuth, async (req, res) => {
     let procurementStats = { active_rfqs: 0, total_procurement_spend: 0.0, pending_po_approvals: 0, avg_vendor_lead_time_days: 0.0 };
     let aiHealthStats = { total_agent_runs: 0, llm_tokens_consumed: 0, success_rate_pct: 0.0, avg_response_time_ms: 0, estimated_token_cost_usd: 0.0 };
 
-    // 1. HR Real Database Queries (hr_employees, hr_attendance_records, hr_resumes)
+    // 1. HR Database Queries (Strict tenant_id filter)
     try {
-      let empRes = tenantId ? await query(`SELECT COUNT(*) as cnt FROM hr_employees WHERE tenant_id = $1;`, [tenantId], tenantId) : null;
-      if (!empRes || parseInt(empRes.rows[0]?.cnt || 0) === 0) {
-        empRes = await query(`SELECT COUNT(*) as cnt FROM hr_employees;`);
-      }
+      const empRes = await query(`SELECT COUNT(*) as cnt FROM hr_employees WHERE tenant_id = $1;`, [tenantId], tenantId);
       employeeStats.total_employees = parseInt(empRes.rows[0]?.cnt || 0);
 
-      let attRes = tenantId ? await query(`
+      const attRes = await query(`
         SELECT 
           COUNT(*) as total_logs,
           COUNT(CASE WHEN status = 'PRESENT' THEN 1 END) as present_cnt,
           COUNT(CASE WHEN status = 'LEAVE' THEN 1 END) as leave_cnt
         FROM hr_attendance_records WHERE tenant_id = $1;
-      `, [tenantId], tenantId) : null;
-
-      if (!attRes || parseInt(attRes.rows[0]?.total_logs || 0) === 0) {
-        attRes = await query(`
-          SELECT 
-            COUNT(*) as total_logs,
-            COUNT(CASE WHEN status = 'PRESENT' THEN 1 END) as present_cnt,
-            COUNT(CASE WHEN status = 'LEAVE' THEN 1 END) as leave_cnt
-          FROM hr_attendance_records;
-        `);
-      }
+      `, [tenantId], tenantId);
 
       const totalLogs = parseInt(attRes.rows[0]?.total_logs || 0);
       const presentCnt = parseInt(attRes.rows[0]?.present_cnt || 0);
@@ -114,38 +101,23 @@ router.get('/quickview', optionalAuth, async (req, res) => {
       employeeStats.on_leave = parseInt(attRes.rows[0]?.leave_cnt || 0);
       employeeStats.attendance_rate = totalLogs > 0 ? parseFloat(((presentCnt / totalLogs) * 100).toFixed(1)) : (employeeStats.total_employees > 0 ? 100.0 : 0.0);
 
-      let resRes = tenantId ? await query(`SELECT COUNT(*) as cnt FROM hr_resumes WHERE tenant_id = $1;`, [tenantId], tenantId) : null;
-      if (!resRes || parseInt(resRes.rows[0]?.cnt || 0) === 0) {
-        resRes = await query(`SELECT COUNT(*) as cnt FROM hr_resumes;`);
-      }
+      const resRes = await query(`SELECT COUNT(*) as cnt FROM hr_resumes WHERE tenant_id = $1;`, [tenantId], tenantId);
       employeeStats.resumes_screened = parseInt(resRes.rows[0]?.cnt || 0);
     } catch (err) {
       console.warn('HR DB metrics error:', err.message);
     }
 
-    // 2. Finance Real Database Queries (finance_budgets, general_ledger)
+    // 2. Finance Database Queries (Strict tenant_id filter)
     try {
-      let finRes = tenantId ? await query(`SELECT COALESCE(SUM(budget_amount), 0) as total_budget FROM finance_budgets WHERE tenant_id = $1;`, [tenantId], tenantId) : null;
-      if (!finRes || parseFloat(finRes.rows[0]?.total_budget || 0) === 0) {
-        finRes = await query(`SELECT COALESCE(SUM(budget_amount), 0) as total_budget FROM finance_budgets;`);
-      }
+      const finRes = await query(`SELECT COALESCE(SUM(budget_amount), 0) as total_budget FROM finance_budgets WHERE tenant_id = $1;`, [tenantId], tenantId);
       financeStats.total_budget = parseFloat(finRes.rows[0]?.total_budget || 0);
 
-      let ledgerRes = tenantId ? await query(`
+      const ledgerRes = await query(`
         SELECT 
           COALESCE(SUM(CASE WHEN amount > 0 AND (transaction_type IS NULL OR transaction_type != 'COMPLETED_SALE') THEN amount ELSE 0 END), 0) as spent,
           COALESCE(SUM(CASE WHEN transaction_type = 'COMPLETED_SALE' THEN amount ELSE 0 END), 0) as revenue
         FROM general_ledger WHERE tenant_id = $1;
-      `, [tenantId], tenantId) : null;
-
-      if (!ledgerRes || (parseFloat(ledgerRes.rows[0]?.spent || 0) === 0 && parseFloat(ledgerRes.rows[0]?.revenue || 0) === 0)) {
-        ledgerRes = await query(`
-          SELECT 
-            COALESCE(SUM(CASE WHEN amount > 0 AND (transaction_type IS NULL OR transaction_type != 'COMPLETED_SALE') THEN amount ELSE 0 END), 0) as spent,
-            COALESCE(SUM(CASE WHEN transaction_type = 'COMPLETED_SALE' THEN amount ELSE 0 END), 0) as revenue
-          FROM general_ledger;
-        `);
-      }
+      `, [tenantId], tenantId);
 
       financeStats.total_spent = parseFloat(ledgerRes.rows[0]?.spent || 0);
       financeStats.monthly_revenue = parseFloat(ledgerRes.rows[0]?.revenue || 0);
@@ -160,24 +132,14 @@ router.get('/quickview', optionalAuth, async (req, res) => {
       console.warn('Finance DB metrics error:', err.message);
     }
 
-    // 3. PM & Projects Real Database Queries (hr_projects, hr_project_members, hr_project_updates)
+    // 3. PM & Projects Database Queries (Strict tenant_id filter)
     try {
-      let projRes = tenantId ? await query(`SELECT COUNT(*) as cnt FROM hr_projects WHERE tenant_id = $1;`, [tenantId], tenantId) : null;
-      if (!projRes || parseInt(projRes.rows[0]?.cnt || 0) === 0) {
-        projRes = await query(`SELECT COUNT(*) as cnt FROM hr_projects;`);
-      }
+      const projRes = await query(`SELECT COUNT(*) as cnt FROM hr_projects WHERE tenant_id = $1;`, [tenantId], tenantId);
       const projectCount = parseInt(projRes.rows[0]?.cnt || 0);
       projectStats.active_projects = projectCount;
 
-      let memberRes = tenantId ? await query(`SELECT COUNT(*) as cnt FROM hr_project_members WHERE project_id IN (SELECT id FROM hr_projects WHERE tenant_id = $1);`, [tenantId], tenantId) : null;
-      if (!memberRes || parseInt(memberRes.rows[0]?.cnt || 0) === 0) {
-        memberRes = await query(`SELECT COUNT(*) as cnt FROM hr_project_members;`);
-      }
-
-      let updateRes = tenantId ? await query(`SELECT COUNT(*) as cnt FROM hr_project_updates WHERE project_id IN (SELECT id FROM hr_projects WHERE tenant_id = $1);`, [tenantId], tenantId) : null;
-      if (!updateRes || parseInt(updateRes.rows[0]?.cnt || 0) === 0) {
-        updateRes = await query(`SELECT COUNT(*) as cnt FROM hr_project_updates;`);
-      }
+      const memberRes = await query(`SELECT COUNT(*) as cnt FROM hr_project_members WHERE project_id IN (SELECT id FROM hr_projects WHERE tenant_id = $1);`, [tenantId], tenantId);
+      const updateRes = await query(`SELECT COUNT(*) as cnt FROM hr_project_updates WHERE project_id IN (SELECT id FROM hr_projects WHERE tenant_id = $1);`, [tenantId], tenantId);
 
       projectStats.completed_milestones = parseInt(updateRes.rows[0]?.cnt || 0);
       projectStats.github_open_prs = projectCount;
@@ -186,9 +148,9 @@ router.get('/quickview', optionalAuth, async (req, res) => {
       console.warn('PM & Projects DB metrics error:', err.message);
     }
 
-    // 4. Sales Real Database Queries (sales_prospects)
+    // 4. Sales Database Queries (Strict tenant_id filter)
     try {
-      let salesRes = tenantId ? await query(`
+      const salesRes = await query(`
         SELECT 
           COUNT(*) as total,
           COUNT(CASE WHEN deal_stage = 'QUALIFIED' THEN 1 END) as qualified,
@@ -196,19 +158,7 @@ router.get('/quickview', optionalAuth, async (req, res) => {
           COUNT(CASE WHEN deliverability_status = 'VALID' THEN 1 END) as valid_del,
           COUNT(CASE WHEN deal_stage = 'CLOSED_WON' THEN 1 END) as closed_won
         FROM sales_prospects WHERE tenant_id = $1;
-      `, [tenantId], tenantId) : null;
-
-      if (!salesRes || parseInt(salesRes.rows[0]?.total || 0) === 0) {
-        salesRes = await query(`
-          SELECT 
-            COUNT(*) as total,
-            COUNT(CASE WHEN deal_stage = 'QUALIFIED' THEN 1 END) as qualified,
-            COUNT(CASE WHEN outreach_subject IS NOT NULL THEN 1 END) as outreach,
-            COUNT(CASE WHEN deliverability_status = 'VALID' THEN 1 END) as valid_del,
-            COUNT(CASE WHEN deal_stage = 'CLOSED_WON' THEN 1 END) as closed_won
-          FROM sales_prospects;
-        `);
-      }
+      `, [tenantId], tenantId);
 
       const row = salesRes.rows[0] || {};
       salesStats.total_prospects = parseInt(row.total || 0);
@@ -226,25 +176,15 @@ router.get('/quickview', optionalAuth, async (req, res) => {
       console.warn('Sales DB metrics error:', err.message);
     }
 
-    // 5. Procurement Real Database Queries (procurement_requests)
+    // 5. Procurement Database Queries (Strict tenant_id filter)
     try {
-      let procRes = tenantId ? await query(`
+      const procRes = await query(`
         SELECT 
           COUNT(*) as active_rfqs,
           COALESCE(SUM(estimated_cost), 0) as spend,
           COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_po
         FROM procurement_requests WHERE tenant_id = $1;
-      `, [tenantId], tenantId) : null;
-
-      if (!procRes || parseInt(procRes.rows[0]?.active_rfqs || 0) === 0) {
-        procRes = await query(`
-          SELECT 
-            COUNT(*) as active_rfqs,
-            COALESCE(SUM(estimated_cost), 0) as spend,
-            COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_po
-          FROM procurement_requests;
-        `);
-      }
+      `, [tenantId], tenantId);
 
       const row = procRes.rows[0] || {};
       procurementStats.active_rfqs = parseInt(row.active_rfqs || 0);
@@ -255,13 +195,9 @@ router.get('/quickview', optionalAuth, async (req, res) => {
       console.warn('Procurement DB metrics error:', err.message);
     }
 
-    // 6. AI Health Real Database Queries (audit_logs)
+    // 6. AI Health Database Queries (Strict tenant_id filter on audit_logs)
     try {
-      let auditRes = tenantId ? await query(`SELECT COUNT(*) as total_runs FROM audit_logs WHERE tenant_id = $1;`, [tenantId], tenantId) : null;
-      if (!auditRes || parseInt(auditRes.rows[0]?.total_runs || 0) === 0) {
-        auditRes = await query(`SELECT COUNT(*) as total_runs FROM audit_logs;`);
-      }
-
+      const auditRes = await query(`SELECT COUNT(*) as total_runs FROM audit_logs WHERE tenant_id = $1;`, [tenantId], tenantId);
       aiHealthStats.total_agent_runs = parseInt(auditRes.rows[0]?.total_runs || 0);
       aiHealthStats.llm_tokens_consumed = aiHealthStats.total_agent_runs * 320;
       aiHealthStats.estimated_token_cost_usd = parseFloat(((aiHealthStats.llm_tokens_consumed / 1000000) * 2.5).toFixed(2));
@@ -273,7 +209,7 @@ router.get('/quickview', optionalAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      tenantId: tenantId || 'global',
+      tenantId,
       quickview: {
         employee_metrics: employeeStats,
         financial_metrics: financeStats,
@@ -289,10 +225,10 @@ router.get('/quickview', optionalAuth, async (req, res) => {
   }
 });
 
-// POST /api/v1/analytics/query - Real Database Natural Language & Text-to-SQL Interpreter
+// POST /api/v1/analytics/query - Real Database Natural Language & Text-to-SQL Interpreter (Strict Tenant Scoping)
 router.post('/query', optionalAuth, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     const { user_query, intent } = req.body;
 
     if (!user_query && !intent) {
@@ -306,79 +242,79 @@ router.post('/query', optionalAuth, async (req, res) => {
     let summary = '';
 
     if (queryLower.includes('budget') || queryLower.includes('spend') || queryLower.includes('finance')) {
-      generatedSql = 'SELECT department, budget_amount FROM finance_budgets;';
+      generatedSql = 'SELECT department, budget_amount FROM finance_budgets WHERE tenant_id = $1;';
       try {
-        const dbRes = await query(generatedSql);
+        const dbRes = await query(generatedSql, [tenantId], tenantId);
         if (dbRes.rows.length > 0) {
           results = dbRes.rows.map(r => ({ department: r.department, budget: parseFloat(r.budget_amount) }));
-          summary = `Real database query returned ${results.length} departmental budget records.`;
+          summary = `Real tenant database query returned ${results.length} departmental budget records.`;
         } else {
-          results = [{ status: 'No Finance Budgets Found in DB', count: 0 }];
-          summary = 'The finance_budgets table in PostgreSQL currently has 0 rows.';
+          results = [{ status: 'No Finance Budgets Found for Tenant', count: 0 }];
+          summary = 'The finance_budgets table currently has 0 rows for this tenant.';
         }
       } catch (dbErr) {
         results = [{ status: 'Query Error', count: 0 }];
-        summary = `Error executing real query: ${dbErr.message}`;
+        summary = `Error executing tenant query: ${dbErr.message}`;
       }
     } else if (queryLower.includes('employee') || queryLower.includes('attendance') || queryLower.includes('hr')) {
-      generatedSql = 'SELECT name, department, email FROM hr_employees LIMIT 10;';
+      generatedSql = 'SELECT name, department, email FROM hr_employees WHERE tenant_id = $1 LIMIT 10;';
       try {
-        const dbRes = await query(generatedSql);
+        const dbRes = await query(generatedSql, [tenantId], tenantId);
         if (dbRes.rows.length > 0) {
           results = dbRes.rows.map(r => ({ name: r.name, department: r.department, email: r.email }));
-          summary = `Real database query returned ${results.length} employee records from hr_employees.`;
+          summary = `Real tenant database query returned ${results.length} employee records from hr_employees.`;
         } else {
-          results = [{ status: 'No HR Employees Found in DB', count: 0 }];
-          summary = 'The hr_employees table in PostgreSQL currently has 0 rows.';
+          results = [{ status: 'No HR Employees Found for Tenant', count: 0 }];
+          summary = 'The hr_employees table currently has 0 rows for this tenant.';
         }
       } catch (dbErr) {
         results = [{ status: 'Query Error', count: 0 }];
-        summary = `Error executing real query: ${dbErr.message}`;
+        summary = `Error executing tenant query: ${dbErr.message}`;
       }
     } else if (queryLower.includes('project') || queryLower.includes('pm') || queryLower.includes('deliverable')) {
-      generatedSql = 'SELECT name, description, current_progress, status FROM hr_projects LIMIT 10;';
+      generatedSql = 'SELECT name, description, current_progress, status FROM hr_projects WHERE tenant_id = $1 LIMIT 10;';
       try {
-        const dbRes = await query(generatedSql);
+        const dbRes = await query(generatedSql, [tenantId], tenantId);
         if (dbRes.rows.length > 0) {
           results = dbRes.rows.map(r => ({ project: r.name, progress: `${r.current_progress}%`, status: r.status }));
-          summary = `Real database query returned ${results.length} projects from hr_projects.`;
+          summary = `Real tenant database query returned ${results.length} projects from hr_projects.`;
         } else {
-          results = [{ status: 'No Projects Found in DB', count: 0 }];
-          summary = 'The hr_projects table in PostgreSQL currently has 0 rows.';
+          results = [{ status: 'No Projects Found for Tenant', count: 0 }];
+          summary = 'The hr_projects table currently has 0 rows for this tenant.';
         }
       } catch (dbErr) {
         results = [{ status: 'Query Error', count: 0 }];
-        summary = `Error executing real query: ${dbErr.message}`;
+        summary = `Error executing tenant query: ${dbErr.message}`;
       }
     } else if (queryLower.includes('sales') || queryLower.includes('lead') || queryLower.includes('prospect')) {
-      generatedSql = 'SELECT company_name, domain, deal_stage FROM sales_prospects LIMIT 10;';
+      generatedSql = 'SELECT company_name, domain, deal_stage FROM sales_prospects WHERE tenant_id = $1 LIMIT 10;';
       try {
-        const dbRes = await query(generatedSql);
+        const dbRes = await query(generatedSql, [tenantId], tenantId);
         if (dbRes.rows.length > 0) {
           results = dbRes.rows.map(r => ({ company: r.company_name, domain: r.domain, stage: r.deal_stage }));
-          summary = `Real database query returned ${results.length} prospects from sales_prospects table.`;
+          summary = `Real tenant database query returned ${results.length} prospects from sales_prospects table.`;
         } else {
-          results = [{ status: 'No Sales Prospects Found in DB', count: 0 }];
-          summary = 'The sales_prospects table in PostgreSQL currently has 0 rows.';
+          results = [{ status: 'No Sales Prospects Found for Tenant', count: 0 }];
+          summary = 'The sales_prospects table currently has 0 rows for this tenant.';
         }
       } catch (dbErr) {
         results = [{ status: 'Query Error', count: 0 }];
-        summary = `Error executing real query: ${dbErr.message}`;
+        summary = `Error executing tenant query: ${dbErr.message}`;
       }
     } else {
-      generatedSql = 'SELECT agent_name, COUNT(*) as runs FROM audit_logs GROUP BY agent_name;';
+      generatedSql = 'SELECT agent_name, COUNT(*) as runs FROM audit_logs WHERE tenant_id = $1 GROUP BY agent_name;';
       try {
-        const dbRes = await query(generatedSql);
+        const dbRes = await query(generatedSql, [tenantId], tenantId);
         if (dbRes.rows.length > 0) {
           results = dbRes.rows.map(r => ({ agent: r.agent_name, runs: parseInt(r.runs) }));
-          summary = `Real database query returned agent execution logs across ${results.length} agents.`;
+          summary = `Real tenant database query returned agent execution logs across ${results.length} agents.`;
         } else {
-          results = [{ status: 'No Audit Executions Logged', count: 0 }];
-          summary = 'The audit_logs table currently has 0 recorded agent executions.';
+          results = [{ status: 'No Audit Executions Logged for Tenant', count: 0 }];
+          summary = 'The audit_logs table currently has 0 recorded agent executions for this tenant.';
         }
       } catch (dbErr) {
         results = [{ status: 'Query Error', count: 0 }];
-        summary = `Error executing real query: ${dbErr.message}`;
+        summary = `Error executing tenant query: ${dbErr.message}`;
       }
     }
 
@@ -402,17 +338,15 @@ router.post('/query', optionalAuth, async (req, res) => {
   }
 });
 
-// GET /api/v1/analytics/alerts - Anomaly & Risk Alerts
+// GET /api/v1/analytics/alerts - Anomaly & Risk Alerts (Strict Tenant Scoping)
 router.get('/alerts', optionalAuth, async (req, res) => {
   try {
-    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'];
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     await initAnalyticsTables();
 
     let alerts = [];
     try {
-      const dbAlerts = tenantId
-        ? await query(`SELECT * FROM analytics_alerts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 10;`, [tenantId], tenantId)
-        : await query(`SELECT * FROM analytics_alerts ORDER BY created_at DESC LIMIT 10;`);
+      const dbAlerts = await query(`SELECT * FROM analytics_alerts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 10;`, [tenantId], tenantId);
       if (dbAlerts.rows.length > 0) {
         alerts = dbAlerts.rows;
       }
@@ -426,8 +360,8 @@ router.get('/alerts', optionalAuth, async (req, res) => {
           id: '1',
           alert_type: 'SYSTEM_STATUS',
           severity: 'INFO',
-          title: 'Database Sync Active',
-          description: 'AI Analytics Agent is connected to real PostgreSQL database tables (hr_employees, finance_budgets, hr_projects, sales_prospects, audit_logs).',
+          title: 'Tenant Isolation Active',
+          description: 'AI Analytics Agent is connected to real PostgreSQL database tables with strict tenant-level row isolation.',
           metric_name: 'db_connection',
           current_value: 100.0,
           threshold_value: 100.0,
@@ -446,9 +380,11 @@ router.get('/alerts', optionalAuth, async (req, res) => {
   }
 });
 
-// POST /api/v1/analytics/reports/generate - Executive Report Digest
+// POST /api/v1/analytics/reports/generate - Executive Report Digest (Strict Tenant Scoping)
 router.post('/reports/generate', optionalAuth, async (req, res) => {
   try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
+
     let empCount = 0;
     let budgetTotal = 0;
     let projectCount = 0;
@@ -456,44 +392,44 @@ router.post('/reports/generate', optionalAuth, async (req, res) => {
     let auditCount = 0;
 
     try {
-      const e = await query(`SELECT COUNT(*) as cnt FROM hr_employees;`);
+      const e = await query(`SELECT COUNT(*) as cnt FROM hr_employees WHERE tenant_id = $1;`, [tenantId], tenantId);
       empCount = parseInt(e.rows[0]?.cnt || 0);
 
-      const f = await query(`SELECT COALESCE(SUM(budget_amount), 0) as total FROM finance_budgets;`);
+      const f = await query(`SELECT COALESCE(SUM(budget_amount), 0) as total FROM finance_budgets WHERE tenant_id = $1;`, [tenantId], tenantId);
       budgetTotal = parseFloat(f.rows[0]?.total || 0);
 
-      const p = await query(`SELECT COUNT(*) as cnt FROM hr_projects;`);
+      const p = await query(`SELECT COUNT(*) as cnt FROM hr_projects WHERE tenant_id = $1;`, [tenantId], tenantId);
       projectCount = parseInt(p.rows[0]?.cnt || 0);
 
-      const s = await query(`SELECT COUNT(*) as cnt FROM sales_prospects;`);
+      const s = await query(`SELECT COUNT(*) as cnt FROM sales_prospects WHERE tenant_id = $1;`, [tenantId], tenantId);
       prospectCount = parseInt(s.rows[0]?.cnt || 0);
 
-      const a = await query(`SELECT COUNT(*) as cnt FROM audit_logs;`);
+      const a = await query(`SELECT COUNT(*) as cnt FROM audit_logs WHERE tenant_id = $1;`, [tenantId], tenantId);
       auditCount = parseInt(a.rows[0]?.cnt || 0);
     } catch (err) {
       console.warn('Report generation DB query warning:', err.message);
     }
 
-    const digestMarkdown = `# 📊 Executive AI Analytics Digest (Live PostgreSQL Database)
+    const digestMarkdown = `# 📊 Tenant Executive AI Analytics Digest
 
 ## Executive Overview
-The platform tracks real operational activity across all agent workflows directly from live PostgreSQL database records.
+Operational activity and real database metrics isolated for tenant **${tenantId}**.
 
-### Live Database Metrics
-- **Human Resources:** Workforce headcount stands at **${empCount} active employees** recorded in \`hr_employees\`.
-- **Financial Operations:** Net budget allocation is **$${budgetTotal.toLocaleString()}** recorded in \`finance_budgets\`.
-- **Project Management:** Project engine tracks **${projectCount} active projects** recorded in \`hr_projects\`.
-- **Sales & Outreach:** SDR pipeline tracks **${prospectCount} prospects** recorded in \`sales_prospects\`.
-- **AI Token Cost & Efficiency:** Platform audit log tracks **${auditCount} total agent executions** recorded in \`audit_logs\`.
+### Live Tenant Database Metrics
+- **Human Resources:** Workforce headcount stands at **${empCount} active employees** in \`hr_employees\`.
+- **Financial Operations:** Net budget allocation is **$${budgetTotal.toLocaleString()}** in \`finance_budgets\`.
+- **Project Management:** Project engine tracks **${projectCount} active projects** in \`hr_projects\`.
+- **Sales & Outreach:** SDR pipeline tracks **${prospectCount} prospects** in \`sales_prospects\`.
+- **AI Token Cost & Efficiency:** Platform audit log tracks **${auditCount} total agent executions** in \`audit_logs\`.
 
 ---
-*Report synthesized directly from real enterprise PostgreSQL database tables by AI Analytics Agent.*
+*Report synthesized directly from PostgreSQL database tables with strict tenant-level isolation.*
 `;
 
     return res.json({
       success: true,
       report: {
-        title: 'Executive AI Analytics Digest',
+        title: 'Tenant Executive AI Analytics Digest',
         markdown: digestMarkdown,
         generated_at: new Date().toISOString()
       }
