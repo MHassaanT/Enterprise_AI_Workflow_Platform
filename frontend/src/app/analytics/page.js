@@ -19,8 +19,19 @@ export default function AnalyticsDashboard() {
   const [digestContent, setDigestContent] = useState('');
 
   const getAuthHeaders = () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('ai_platform_token') || localStorage.getItem('token')) : null;
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('ai_platform_user') : null;
+    let tenantId = null;
+    if (userStr) {
+      try {
+        const userObj = JSON.parse(userStr);
+        tenantId = userObj.tenantId || userObj.tenant_id;
+      } catch (e) {}
+    }
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['X-Tenant-Id'] = tenantId;
+    return headers;
   };
 
   const fetchQuickview = async () => {
