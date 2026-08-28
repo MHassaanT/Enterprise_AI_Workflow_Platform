@@ -31,6 +31,32 @@
   box-shadow: var(--shadow-sm);
 }
 
+.glass-dark {
+  background: rgba(18, 20, 26, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(27, 28, 34, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.border-glow-primary {
+  box-shadow: 0 0 20px -5px rgba(59, 130, 246, 0.3);
+}
+
+.border-glow-cyan {
+  box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.3);
+}
+
+.border-glow-violet {
+  box-shadow: 0 0 20px -5px rgba(139, 92, 246, 0.3);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -42,10 +68,20 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 6s ease-in-out infinite;
+}
+
 /* Global element styles */
 body {
   font-family: var(--font-family);
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: #0b0f17;
+  color: #e3e2e2;
   line-height: 1.5;
 }
+
