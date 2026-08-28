@@ -286,10 +286,10 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
   const currentAgent = agentData[activeAgent];
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-[#E3E2E2] font-body-md antialiased selection:bg-blue-600/40 selection:text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#0B0F17] text-[#E3E2E2] font-body-md antialiased selection:bg-blue-600/40 selection:text-white">
       
       {/* ── TOP GLASS NAVBAR ── */}
-      <header className="sticky top-0 z-50 bg-[#0B0F17]/80 backdrop-blur-xl border-b border-white/10 transition-all">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0B0F17]/70 backdrop-blur-md border-b border-white/10 transition-all shadow-2xl">
         <div className="max-w-[1440px] mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="h-11 w-11 rounded-xl bg-blue-600/15 border border-blue-500/40 flex items-center justify-center text-blue-400 group-hover:border-blue-400 transition-all group-hover:scale-105 shadow-lg shadow-blue-500/10">
