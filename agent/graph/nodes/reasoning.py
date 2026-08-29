@@ -12,7 +12,11 @@ from services.llm_gateway import get_llm
 from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 
 # Actions that default to high risk requiring human approval before execution if not configured in UI
-HIGH_RISK_TOOLS = {"issue_refund", "process_payment", "submit_refund_request"}
+HIGH_RISK_TOOLS = {
+    "issue_refund", "process_payment", "submit_refund_request",
+    "escalate_to_human", "human_escalation", "escalate",
+    "Gmail", "gmail_send_email"
+}
 
 
 def _build_system_prompt(context: list[dict], has_recent_tool_call: bool = False) -> str:
@@ -46,7 +50,7 @@ CRITICAL RULES (in priority order):
    that are NOT about specific customer data, use ONLY the provided document excerpts to answer.
    If the answer is not in the document excerpts, state that the query is out of context.
 
-4. ESCALATION RULE: For high-risk or irreversible actions (refunds, payments), call the escalate_to_human tool. DO NOT escalate when asked for order details — you MUST always call the data lookup tools (like Airtable or check_order_status) first!
+4. ESCALATION & REFUND RULE: For refunds, once order details are verified via `check_order_status`, you MUST call `submit_refund_request` to file a formal approval request for human review. Do NOT call `Gmail` or send emails directly to confirm a refund before `submit_refund_request` has been submitted and approved. For unresolvable manual issues, call `escalate_to_human`. DO NOT escalate when asked for simple order data lookups.
 
 5. SYSTEM RESUMPTION RULE (Critical for graph resumes):
    - When you receive a SYSTEM NOTIFICATION about an approved or rejected refund action, you MUST call the Gmail tool immediately.
@@ -57,12 +61,12 @@ CRITICAL RULES (in priority order):
 
 6. REFUND FLOW RULE: When the user asks for a refund, strictly follow this flow:
    a. Ask for order ID or email if not provided.
-   b. Use `check_order_status` (or similar lookup tool) to fetch order details dynamically.
-   c. Inspect the returned data to determine if the order is delivered or shipped.
-   d. If not delivered, politely refuse the refund. If delivered, ask for the reason for the refund.
-   e. Before submitting, you MUST explicitly ask the user to confirm their name, email, and refund reason.
-   f. Upon confirmation, call the `submit_refund_request` tool with all collected data.
-   g. If a previous action was a refund decision, use the `Gmail` tool (with action `gmail_send_email`) to notify the user.
+   b. Use `check_order_status` (or Airtable lookup) to fetch order details dynamically.
+   c. Inspect the returned data to determine if the order is delivered.
+   d. If delivered, ask/confirm the customer's name, email, and refund reason.
+   e. Upon confirmation (or when user asks to file/submit refund), call the `submit_refund_request` tool with order_id, customer_name, customer_email, order_details, and refund_reason.
+   f. `submit_refund_request` will automatically trigger human approval.
+   g. ONLY call `Gmail` (with action `gmail_send_email`) when executing a resumption after human approval or system notification.
 
 Response format:
 - Keep answers concise, direct, and focused (1-2 sentences).

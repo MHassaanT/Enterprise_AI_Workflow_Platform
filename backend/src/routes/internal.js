@@ -309,6 +309,30 @@ router.post('/credentials', async (req, res) => {
   }
 
   try {
+    // 1. Resolve tool metadata from tool_bindings if bindingId is provided
+    let resolvedToolName = null;
+    let resolvedConnectorType = null;
+    let resolvedToolId = toolId || null;
+
+    if (bindingId) {
+      try {
+        const bindingQuery = await query(
+          `SELECT tool_id, tool_name, connector_type FROM tool_bindings WHERE id = $1`,
+          [bindingId]
+        );
+        if (bindingQuery.rows.length > 0) {
+          const row = bindingQuery.rows[0];
+          if (row.tool_id) resolvedToolId = row.tool_id;
+          if (row.tool_name) resolvedToolName = row.tool_name;
+          if (row.connector_type) resolvedConnectorType = row.connector_type;
+        }
+      } catch (err) {
+        console.warn(`[CREDENTIALS] Binding resolution warning for ${bindingId}:`, err.message);
+      }
+    }
+
+    const searchTerm = resolvedToolId || resolvedToolName || resolvedConnectorType || toolId || null;
+
     let result = await query(
       `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
        FROM tool_credentials tc
@@ -320,18 +344,38 @@ router.post('/credentials', async (req, res) => {
            tc.tool_id::text = $3 OR 
            LOWER(tr.canonical_name) = LOWER($3) OR 
            LOWER(tr.provider_type) = LOWER($3) OR
+           LOWER(tb.tool_name) = LOWER($3) OR
+           LOWER(tb.connector_type) = LOWER($3) OR
            LOWER(tb.tool_name) LIKE '%' || LOWER($3) || '%'
          )) OR
          ($2 IS NULL AND $3 IS NULL)
        )
        ORDER BY tc.updated_at DESC
        LIMIT 1`,
-      [tenantId, bindingId || null, toolId || null],
+      [tenantId, bindingId || null, searchTerm],
       tenantId,
     );
 
-    // Fallback: If no credential found for specific tenantId, search globally for tool/provider matching (e.g. Gmail)
-    if (result.rows.length === 0 && toolId) {
+    // Fallback 1: Search tenant credentials broadly by provider/canonical name if no result yet
+    if (result.rows.length === 0 && searchTerm) {
+      result = await query(
+        `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
+         FROM tool_credentials tc
+         LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+         WHERE tc.tenant_id = $1 AND (
+           tc.tool_id::text = $2 OR
+           LOWER(tr.canonical_name) = LOWER($2) OR
+           LOWER(tr.provider_type) = LOWER($2)
+         )
+         ORDER BY tc.updated_at DESC
+         LIMIT 1`,
+        [tenantId, searchTerm],
+        tenantId
+      );
+    }
+
+    // Fallback 2: Global/default tool matching fallback if tool matches
+    if (result.rows.length === 0 && searchTerm) {
       result = await query(
         `SELECT tc.id as credential_id, tc.encrypted_payload, tc.auth_type, tc.updated_at
          FROM tool_credentials tc
@@ -345,7 +389,7 @@ router.post('/credentials', async (req, res) => {
          )
          ORDER BY tc.updated_at DESC
          LIMIT 1`,
-        [toolId]
+        [searchTerm]
       );
     }
 
