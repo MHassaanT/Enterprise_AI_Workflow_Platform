@@ -279,4 +279,10 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
         )
         tools.append(mcp_tool)
 
+    # Always ensure core platform built-in tools (submit_refund_request, escalate_to_human, check_order_status) are bound
+    bound_names = {t.name.lower().replace("-", "_").replace(" ", "_") for t in tools}
+    for builtin_name in ["submit_refund_request", "escalate_to_human", "check_order_status"]:
+        if builtin_name not in bound_names and builtin_name in BUILTIN_LANGCHAIN_TOOLS:
+            tools.append(BUILTIN_LANGCHAIN_TOOLS[builtin_name])
+
     return tools
