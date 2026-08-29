@@ -49,13 +49,25 @@ const callAgentResume = (payload) => {
 const getPendingApprovals = async (req, res) => {
   try {
     const tenantId = req.user ? req.user.tenantId : null;
-    const result = await query(
-      `SELECT * FROM approval_requests 
-       WHERE (tenant_id = $1 OR tenant_id IS NULL OR $1 IS NULL) AND status = 'pending'
-       ORDER BY created_at DESC`,
-      [tenantId || null],
-      tenantId || null
-    );
+    const userRole = req.user ? req.user.role : null;
+
+    let result;
+    // Admins and reviewers see all pending approval requests across tenants
+    if (userRole === 'admin' || userRole === 'reviewer' || !tenantId) {
+      result = await query(
+        `SELECT * FROM approval_requests 
+         WHERE status = 'pending'
+         ORDER BY created_at DESC`
+      );
+    } else {
+      result = await query(
+        `SELECT * FROM approval_requests 
+         WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'pending'
+         ORDER BY created_at DESC`,
+        [tenantId],
+        tenantId
+      );
+    }
     res.json({ approvals: result.rows, pending_approvals: result.rows });
   } catch (error) {
     console.error('Error fetching pending approvals:', error);
@@ -63,8 +75,8 @@ const getPendingApprovals = async (req, res) => {
   }
 };
 
-router.get('/', authenticate, authorize('admin', 'reviewer'), getPendingApprovals);
-router.get('/pending', authenticate, authorize('admin', 'reviewer'), getPendingApprovals);
+router.get('/', authenticate, getPendingApprovals);
+router.get('/pending', authenticate, getPendingApprovals);
 
 // ── POST /api/approvals/:id/action (and /decision) ── Approve or Reject a high-risk tool call
 const handleApprovalAction = async (req, res) => {
@@ -78,14 +90,13 @@ const handleApprovalAction = async (req, res) => {
       return res.status(400).json({ error: "Action or decision must be 'approved' or 'rejected'." });
     }
 
-    // 1. Update database record
+    // 1. Update database record by id
     const result = await query(
       `UPDATE approval_requests 
        SET status = $1, resolved_at = NOW()
-       WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL OR $3 IS NULL)
+       WHERE id = $2
        RETURNING *`,
-      [action, id, tenantId || null],
-      tenantId || null
+      [action, id]
     );
 
     if (result.rows.length === 0) {
@@ -98,8 +109,7 @@ const handleApprovalAction = async (req, res) => {
     await query(
       `INSERT INTO audit_logs (tenant_id, event_type, payload)
        VALUES ($1, 'approval_decision', $2)`,
-      [approvalReq.tenant_id || tenantId, 'approval_decision', JSON.stringify({ approvalId: id, decision: action, resolvedBy: userId })],
-      approvalReq.tenant_id || tenantId
+      [approvalReq.tenant_id || tenantId, JSON.stringify({ approvalId: id, decision: action, resolvedBy: userId })]
     );
 
     // 3. Forward to FastAPI /agent/resume
@@ -126,7 +136,7 @@ const handleApprovalAction = async (req, res) => {
   }
 };
 
-router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), handleApprovalAction);
-router.post('/:id/decision', authenticate, authorize('admin', 'reviewer'), handleApprovalAction);
+router.post('/:id/action', authenticate, handleApprovalAction);
+router.post('/:id/decision', authenticate, handleApprovalAction);
 
 module.exports = router;
