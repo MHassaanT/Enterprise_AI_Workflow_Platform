@@ -27,9 +27,9 @@ async def approval_checkpoint_node(state: AgentState) -> dict:
 
     # Write ApprovalRequest to Postgres via Node.js internal route
     approval_id = await create_approval_request({
-        "tenantId": state["tenant_id"],
-        "agentInstanceId": state["agent_instance_id"],
-        "conversationId": state["conversation_id"],
+        "tenantId": state.get("tenant_id") or "",
+        "agentInstanceId": state.get("agent_instance_id") or "default",
+        "conversationId": state.get("conversation_id") or "",
         "actionType": tool_call["name"],
         "actionPayload": action_payload,
     })

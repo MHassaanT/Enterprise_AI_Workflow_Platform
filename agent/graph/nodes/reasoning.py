@@ -89,7 +89,7 @@ MAX_TOOL_RETRIES = 3  # Circuit breaker: max consecutive tool call attempts
 
 async def reasoning_node(state: AgentState) -> dict:
     llm = get_llm()
-    agent_id = state["agent_instance_id"]
+    agent_id = state.get("agent_instance_id") or "default"
     tools = await get_tools_for_agent(agent_id)
     bindings = await get_allowed_tool_bindings(agent_id)
 

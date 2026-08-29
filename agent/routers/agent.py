@@ -188,10 +188,14 @@ async def resume_agent(
             
         customer_email = _extract_customer_email(prior_messages)
 
+        existing_values = existing_state.values if existing_state else {}
         resume_update = {
             "approval_status": request.decision,
             "approval_id": request.approval_id,
             "question": "SYSTEM NOTIFICATION",
+            "agent_instance_id": existing_values.get("agent_instance_id") or "default",
+            "tenant_id": request.tenant_id or existing_values.get("tenant_id") or "",
+            "conversation_id": request.conversation_id,
         }
         if request.decision == "rejected":
             notification = f"SYSTEM NOTIFICATION: Refund request (Reference ID: {request.approval_id}) was REJECTED by human reviewer. YOU MUST immediately use the Gmail tool with action='gmail_send_email' to send a rejection notice to: {customer_email}. Include the reference ID and reason in the email."

@@ -15,8 +15,8 @@ async def tool_executor_node(state: AgentState) -> dict:
     tool_name = tool_call["name"]
     arguments = tool_call.get("arguments", {})
     tool_call_id = tool_call.get("id", tool_name)
-    tenant_id = state["tenant_id"]
-    agent_instance_id = state["agent_instance_id"]
+    tenant_id = state.get("tenant_id") or ""
+    agent_instance_id = state.get("agent_instance_id") or "default"
 
     # ── Stage 1: Optional Pydantic parameter validation ──
     InputModel = TOOL_INPUT_MODELS.get(tool_name)
