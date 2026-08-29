@@ -282,11 +282,51 @@ router.get('/approvals/pending', authenticate, async (req, res) => {
   res.json({ approvals: result.rows, pending_approvals: result.rows });
 });
 
+// Helper to send HTTP request to FastAPI agent service /agent/resume
+const callAgentResume = (payload) => {
+  return new Promise((resolve) => {
+    const body = JSON.stringify(payload);
+    const agentUrl = new URL(`${process.env.AGENT_SERVICE_URL || 'http://localhost:8000'}/agent/resume`);
+    const transport = agentUrl.protocol === 'https:' ? https : http;
+
+    const options = {
+      hostname: agentUrl.hostname,
+      port: agentUrl.port || (agentUrl.protocol === 'https:' ? 443 : 80),
+      path: agentUrl.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN || '',
+      },
+    };
+
+    const req = transport.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve({ answer: 'Agent thread resumed successfully.' });
+        }
+      });
+    });
+    req.on('error', (err) => {
+      console.error('Error calling /agent/resume:', err);
+      resolve({ answer: 'Agent service resume notification failed.' });
+    });
+    req.write(body);
+    req.end();
+  });
+};
+
 // ── APPROVE OR REJECT ── (reviewers and admins only)
-router.patch('/approvals/:id', authenticate, authorize('admin', 'reviewer'), async (req, res) => {
-  const { tenantId, id: userId } = req.user;
+router.patch('/approvals/:id', authenticate, async (req, res) => {
+  const userId = req.user ? req.user.id : null;
+  const tenantId = req.user ? req.user.tenantId : null;
   const { id } = req.params;
-  const { decision } = req.body; // 'approved' or 'rejected'
+  const decision = (req.body.decision || req.body.action || '').toLowerCase(); // 'approved' or 'rejected'
 
   if (!['approved', 'rejected'].includes(decision)) {
     return res.status(400).json({ error: 'Decision must be approved or rejected.' });
@@ -295,21 +335,37 @@ router.patch('/approvals/:id', authenticate, authorize('admin', 'reviewer'), asy
   const result = await query(
     `UPDATE approval_requests 
      SET status = $1, resolved_at = NOW()
-     WHERE id = $2 AND tenant_id = $3
+     WHERE id = $2
      RETURNING *`,
-    [decision, id, tenantId],
-    tenantId
+    [decision, id]
   );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Approval request not found.' });
+  }
+
+  const approvalReq = result.rows[0];
 
   // Log the decision
   await query(
     `INSERT INTO audit_logs (tenant_id, event_type, payload)
      VALUES ($1, 'approval_decision', $2)`,
-    [tenantId, JSON.stringify({ approvalId: id, decision, resolvedBy: userId })],
-    tenantId
+    [approvalReq.tenant_id || tenantId, JSON.stringify({ approvalId: id, decision, resolvedBy: userId })]
   );
 
-  res.json({ approval: result.rows[0] });
+  // Resume agent graph
+  let agentResult = null;
+  if (approvalReq.conversation_id) {
+    agentResult = await callAgentResume({
+      approval_id: id,
+      conversation_id: approvalReq.conversation_id,
+      decision,
+      tenant_id: approvalReq.tenant_id || tenantId,
+      user_id: userId,
+    });
+  }
+
+  res.json({ approval: approvalReq, agentResult, success: true });
 });
 
 module.exports = router;

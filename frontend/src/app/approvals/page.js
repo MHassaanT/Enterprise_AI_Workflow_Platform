@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
+import { getAuthHeader } from '@/lib/api';
 
 export default function UniversalApprovalsDashboard() {
   const [approvals, setApprovals] = useState([]);
@@ -17,7 +18,9 @@ export default function UniversalApprovalsDashboard() {
   const fetchApprovals = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/approvals');
+      const res = await fetch('/api/v1/approvals', {
+        headers: { ...getAuthHeader() }
+      });
       const data = await res.json();
       setApprovals(data.approvals || data.pending_approvals || []);
     } catch (err) {
@@ -33,7 +36,7 @@ export default function UniversalApprovalsDashboard() {
     try {
       const res = await fetch(`/api/v1/approvals/${id}/decision`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({ decision }),
       });
       const data = await res.json();
