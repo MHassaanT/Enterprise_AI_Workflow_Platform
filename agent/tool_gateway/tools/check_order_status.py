@@ -40,8 +40,10 @@ async def check_order_status_impl(
         from tool_gateway.adapters.airtable_adapter import execute_airtable_tool
         from tool_gateway.credentials_manager import fetch_tool_credentials
 
-        if tenant_id and not (creds.get("access_token") or creds.get("api_key") or creds.get("bearer_token")):
-            fetched = await fetch_tool_credentials(tenant_id, binding_id=binding_id)
+        if tenant_id and not (creds.get("access_token") or creds.get("api_key") or creds.get("bearer_token") or creds.get("token")):
+            fetched = await fetch_tool_credentials(tenant_id, tool_id="airtable")
+            if not fetched and binding_id:
+                fetched = await fetch_tool_credentials(tenant_id, binding_id=binding_id)
             if fetched:
                 creds.update(fetched)
 

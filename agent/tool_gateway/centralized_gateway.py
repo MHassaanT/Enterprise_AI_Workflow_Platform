@@ -122,6 +122,10 @@ async def execute_mcp_tool(
                 tool_fn = TOOL_REGISTRY.get("submit_refund_request")
 
             if tool_fn:
+                if ("order" in norm_name or tool_name == "check_order_details") and not (credentials.get("access_token") or credentials.get("api_key") or credentials.get("bearer_token") or credentials.get("token")):
+                    airtable_creds = await fetch_tool_credentials(tenant_id, tool_id="airtable")
+                    if airtable_creds:
+                        credentials.update(airtable_creds)
                 res = await tool_fn(**arguments, tenant_id=tenant_id, binding_id=binding_id, credentials=credentials)
                 return str(res)
             else:

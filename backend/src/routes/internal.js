@@ -396,6 +396,42 @@ router.post('/credentials', async (req, res) => {
               } else {
                 console.warn(`[CREDENTIALS] Failed to refresh Google token: ${tokenRes.status} ${await tokenRes.text()}`);
               }
+            } else if (provider === 'airtable') {
+              console.log(`[CREDENTIALS] Token age ${Math.round(ageSeconds)}s > 3000s. Refreshing Airtable OAuth token...`);
+              const clientId = process.env.AIRTABLE_CLIENT_ID || 'dummy_airtable_client_id';
+              const clientSecret = process.env.AIRTABLE_CLIENT_SECRET || 'dummy_airtable_client_secret';
+              const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+              const params = new URLSearchParams({
+                grant_type: 'refresh_token',
+                refresh_token: payload.refresh_token,
+              });
+
+              const tokenRes = await fetch('https://airtable.com/oauth2/v1/token', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Basic ${basicAuth}`,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Accept': 'application/json',
+                },
+                body: params.toString(),
+              });
+
+              if (tokenRes.ok) {
+                const tokenData = await tokenRes.json();
+                payload.access_token = tokenData.access_token;
+                if (tokenData.refresh_token) payload.refresh_token = tokenData.refresh_token; // Airtable rotates refresh tokens
+
+                encrypted_payload = encryptPayload(payload);
+                await query(
+                  `UPDATE tool_credentials SET encrypted_payload = $1, updated_at = NOW() WHERE id = $2`,
+                  [encrypted_payload, credential_id],
+                  tenantId
+                );
+                console.log(`[CREDENTIALS] Airtable token refreshed successfully.`);
+              } else {
+                console.warn(`[CREDENTIALS] Failed to refresh Airtable token: ${tokenRes.status} ${await tokenRes.text()}`);
+              }
             } else if (provider === 'hubspot') {
                // Extend for hubspot etc if needed
             }

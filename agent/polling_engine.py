@@ -86,8 +86,8 @@ async def _poll_app_integration(workflow_id: str, node: Dict[str, Any], tenant_i
                 try:
                     pool = await get_db_pool()
                     async with pool.acquire() as conn:
-                        await conn.execute("UPDATE workflows SET status = 'inactive' WHERE workflow_id = $1", workflow_id)
-                    print(f"[POLLING] System Health: Workflow {workflow_id[:8]} disabled due to invalid credentials.")
+                        await conn.execute("UPDATE workflows SET status = 'draft' WHERE workflow_id = $1", workflow_id)
+                    print(f"[POLLING] System Health: Workflow {workflow_id[:8]} disabled (set to draft) due to invalid credentials.")
                 except Exception as e:
                     print(f"[POLLING] Failed to disable workflow {workflow_id[:8]}: {e}")
             return
