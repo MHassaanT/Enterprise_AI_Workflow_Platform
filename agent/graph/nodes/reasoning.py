@@ -14,8 +14,7 @@ from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 # Actions that default to high risk requiring human approval before execution if not configured in UI
 HIGH_RISK_TOOLS = {
     "issue_refund", "process_payment", "submit_refund_request",
-    "escalate_to_human", "human_escalation", "escalate",
-    "Gmail", "gmail_send_email"
+    "escalate_to_human", "human_escalation", "escalate"
 }
 
 
@@ -189,7 +188,14 @@ async def reasoning_node(state: AgentState) -> dict:
         call = response.tool_calls[0]
         tool_name = call["name"]
 
-        is_high_risk = tool_name in HIGH_RISK_TOOLS or high_risk_map.get(tool_name, False)
+        is_resuming_or_approved = (
+            state.get("approval_status") in ["approved", "rejected"]
+            or is_system
+        )
+        if is_resuming_or_approved:
+            is_high_risk = False
+        else:
+            is_high_risk = tool_name in HIGH_RISK_TOOLS or high_risk_map.get(tool_name, False)
 
         return {
             "messages": [response],
