@@ -100,7 +100,8 @@ export default function UniversalApprovalsDashboard() {
             ) : (
               <div className="grid grid-cols-1 gap-md">
                 {approvals.map((item) => {
-                  const details = typeof item.details === 'string' ? JSON.parse(item.details) : item.details || {};
+                  const payload = item.action_payload || item.details || {};
+                  const details = typeof payload === 'string' ? JSON.parse(payload) : payload;
                   return (
                     <div key={item.id} className="p-md bg-surface-variant/40 border border-outline-variant rounded-lg flex flex-col gap-sm">
                       <div className="flex items-center justify-between">
@@ -120,17 +121,17 @@ export default function UniversalApprovalsDashboard() {
                       <div className="grid grid-cols-3 gap-md text-body-sm my-xs bg-background/50 p-sm rounded border border-outline-variant/40">
                         <div>
                           <span className="text-on-surface-variant font-label-md block">Requester Sub-Agent</span>
-                          <span className="font-bold text-primary">{item.requester_id || 'Sub-Agent'}</span>
+                          <span className="font-bold text-primary">{item.requester_id || item.agent_instance_id || 'Customer Support Agent'}</span>
                         </div>
                         <div>
                           <span className="text-on-surface-variant font-label-md block">Amount / Reference</span>
                           <span className="font-bold">
-                            {details.amount ? `$${parseFloat(details.amount).toLocaleString()}` : details.bid_reference || details.invoice_number || 'N/A'}
+                            {details.amount ? `$${parseFloat(details.amount).toLocaleString()}` : details.order_id || details.orderId || details.bid_reference || details.invoice_number || 'N/A'}
                           </span>
                         </div>
                         <div>
                           <span className="text-on-surface-variant font-label-md block">Vendor / Customer</span>
-                          <span className="font-bold">{details.vendor_name || details.vendor_email || details.customer_email || 'N/A'}</span>
+                          <span className="font-bold">{details.customer_name || details.customer_email || details.vendor_name || details.vendor_email || 'N/A'}</span>
                         </div>
                       </div>
 

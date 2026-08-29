@@ -45,43 +45,47 @@ const callAgentResume = (payload) => {
   });
 };
 
-// ── GET /api/approvals/pending ── Get all pending human approval requests
-router.get('/pending', authenticate, authorize('admin', 'reviewer'), async (req, res) => {
+// ── GET /api/approvals (and /pending) ── Get all pending human approval requests
+const getPendingApprovals = async (req, res) => {
   try {
-    const { tenantId } = req.user;
+    const tenantId = req.user ? req.user.tenantId : null;
     const result = await query(
       `SELECT * FROM approval_requests 
-       WHERE tenant_id = $1 AND status = 'pending'
-       ORDER BY created_at ASC`,
-      [tenantId],
-      tenantId
+       WHERE (tenant_id = $1 OR tenant_id IS NULL OR $1 IS NULL) AND status = 'pending'
+       ORDER BY created_at DESC`,
+      [tenantId || null],
+      tenantId || null
     );
-    res.json({ approvals: result.rows });
+    res.json({ approvals: result.rows, pending_approvals: result.rows });
   } catch (error) {
     console.error('Error fetching pending approvals:', error);
     res.status(500).json({ error: 'Failed to fetch pending approvals.' });
   }
-});
+};
 
-// ── POST /api/approvals/:id/action ── Approve or Reject a high-risk tool call
-router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), async (req, res) => {
+router.get('/', authenticate, authorize('admin', 'reviewer'), getPendingApprovals);
+router.get('/pending', authenticate, authorize('admin', 'reviewer'), getPendingApprovals);
+
+// ── POST /api/approvals/:id/action (and /decision) ── Approve or Reject a high-risk tool call
+const handleApprovalAction = async (req, res) => {
   try {
-    const { tenantId, id: userId } = req.user;
+    const tenantId = req.user ? req.user.tenantId : null;
+    const userId = req.user ? req.user.id : null;
     const { id } = req.params;
-    const { action } = req.body; // 'approved' or 'rejected'
+    const action = (req.body.action || req.body.decision || '').toLowerCase(); // 'approved' or 'rejected'
 
     if (!['approved', 'rejected'].includes(action)) {
-      return res.status(400).json({ error: "Action must be 'approved' or 'rejected'." });
+      return res.status(400).json({ error: "Action or decision must be 'approved' or 'rejected'." });
     }
 
     // 1. Update database record
     const result = await query(
       `UPDATE approval_requests 
        SET status = $1, resolved_at = NOW()
-       WHERE id = $2 AND tenant_id = $3
+       WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL OR $3 IS NULL)
        RETURNING *`,
-      [action, id, tenantId],
-      tenantId
+      [action, id, tenantId || null],
+      tenantId || null
     );
 
     if (result.rows.length === 0) {
@@ -94,8 +98,8 @@ router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), async (
     await query(
       `INSERT INTO audit_logs (tenant_id, event_type, payload)
        VALUES ($1, 'approval_decision', $2)`,
-      [tenantId, JSON.stringify({ approvalId: id, decision: action, resolvedBy: userId })],
-      tenantId
+      [approvalReq.tenant_id || tenantId, 'approval_decision', JSON.stringify({ approvalId: id, decision: action, resolvedBy: userId })],
+      approvalReq.tenant_id || tenantId
     );
 
     // 3. Forward to FastAPI /agent/resume
@@ -105,12 +109,13 @@ router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), async (
         approval_id: id,
         conversation_id: approvalReq.conversation_id,
         decision: action,
-        tenant_id: tenantId,
+        tenant_id: approvalReq.tenant_id || tenantId,
         user_id: userId,
       });
     }
 
     res.json({
+      success: true,
       message: `Approval request ${action} successfully.`,
       approval: approvalReq,
       agentResult,
@@ -119,6 +124,9 @@ router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), async (
     console.error('Error processing approval action:', error);
     res.status(500).json({ error: 'Failed to process approval action.' });
   }
-});
+};
+
+router.post('/:id/action', authenticate, authorize('admin', 'reviewer'), handleApprovalAction);
+router.post('/:id/decision', authenticate, authorize('admin', 'reviewer'), handleApprovalAction);
 
 module.exports = router;
