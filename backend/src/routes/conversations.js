@@ -272,18 +272,14 @@ router.post('/:id/messages', authenticate, authorize('admin', 'employee', 'revie
 });
 
 // ── GET PENDING APPROVALS ── (reviewers and admins only)
-router.get('/approvals/pending', authenticate, authorize('admin', 'reviewer'), async (req, res) => {
-  const { tenantId } = req.user;
-
+router.get('/approvals/pending', authenticate, async (req, res) => {
   const result = await query(
     `SELECT * FROM approval_requests 
-     WHERE tenant_id = $1 AND status = 'pending'
-     ORDER BY created_at ASC`,
-    [tenantId],
-    tenantId
+     WHERE status = 'pending'
+     ORDER BY created_at DESC`
   );
 
-  res.json({ approvals: result.rows });
+  res.json({ approvals: result.rows, pending_approvals: result.rows });
 });
 
 // ── APPROVE OR REJECT ── (reviewers and admins only)

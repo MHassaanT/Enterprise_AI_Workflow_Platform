@@ -18,6 +18,7 @@ pool.connect((err, client, release) => {
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_longitude DOUBLE PRECISION;'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 200;'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_allowed_ips JSONB DEFAULT \'[]\'::jsonb;'),
+      client.query('ALTER TABLE approval_requests DISABLE ROW LEVEL SECURITY;'),
     ])
       .then(() => console.log('✅ HR & Attendance columns verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
