@@ -307,6 +307,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
             <a href="#workflow" className="hover:text-blue-400 transition-colors">Visual Workflows</a>
             <a href="#mcp" className="hover:text-blue-400 transition-colors">MCP Gateway</a>
             <a href="#security" className="hover:text-blue-400 transition-colors">Security & RLS</a>
+            <a href="#pricing" className="hover:text-blue-400 transition-colors">Pricing</a>
             <a href="#calculator" className="hover:text-blue-400 transition-colors">ROI Calculator</a>
           </nav>
 
@@ -970,6 +971,111 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                 className="mt-8 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-center transition-all shadow-lg shadow-blue-500/30 block"
               >
                 Claim Your Enterprise Productivity Boost
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING SECTION ── */}
+      <section id="pricing" className="py-24 border-b border-white/10 relative">
+        <div className="max-w-[1440px] mx-auto px-6">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <span className="text-xs text-blue-400 font-mono uppercase tracking-widest font-bold block mb-3">Transparent Pricing</span>
+            <h2 className="text-4xl font-extrabold text-white mb-4">Choose Your Enterprise Plan</h2>
+            <p className="text-gray-400 text-base">
+              Start with a 7-day free trial on any plan. Scale your AI workforce seamlessly as your enterprise grows.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Basic Plan */}
+            <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 transition-all duration-300 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-500/10">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-2xl">rocket_launch</span>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Basic</h3>
+              <p className="text-gray-400 text-sm mb-6 h-10">Essential AI agents for small teams.</p>
+              <div className="flex items-baseline gap-1 mb-8">
+                <span className="font-display-lg text-4xl font-extrabold text-white">$50</span>
+                <span className="font-body-md text-sm text-gray-400">/ month</span>
+              </div>
+              <div className="space-y-4 mb-8">
+                <div className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-wider mb-2">Included Agents:</div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> Customer Support Agent
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> HR Agent
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> PM Agent
+                </div>
+              </div>
+              <Link href="/signup" className="block w-full py-3.5 bg-white/5 border border-white/10 text-white font-bold rounded-xl text-center hover:bg-white/10 transition-colors">
+                Start 7-Day Free Trial
+              </Link>
+            </div>
+
+            {/* Pro Plan */}
+            <div className="bg-blue-900/10 border border-blue-500/50 rounded-2xl p-8 transition-all duration-300 relative shadow-2xl shadow-blue-500/20 scale-105 z-10">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-xs font-bold rounded-full shadow-lg">
+                Most Popular
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-400/50 text-blue-300 flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-2xl">auto_awesome</span>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
+              <p className="text-gray-300 text-sm mb-6 h-10">Advanced automation & developer tools.</p>
+              <div className="flex items-baseline gap-1 mb-8">
+                <span className="font-display-lg text-4xl font-extrabold text-white">$75</span>
+                <span className="font-body-md text-sm text-gray-400">/ month</span>
+              </div>
+              <div className="space-y-4 mb-8">
+                <div className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-wider mb-2">Included Agents:</div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">expand_circle_right</span> Everything in Basic
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> Coding Agent
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> Workflow Builder Agent
+                </div>
+              </div>
+              <Link href="/signup" className="block w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl text-center hover:from-blue-500 hover:to-indigo-500 transition-colors shadow-lg shadow-blue-500/25">
+                Start 7-Day Free Trial
+              </Link>
+            </div>
+
+            {/* Enterprise Plan */}
+            <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 transition-all duration-300 hover:border-amber-500/50 hover:shadow-2xl hover:shadow-amber-500/10">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-2xl">corporate_fare</span>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Enterprise</h3>
+              <p className="text-gray-400 text-sm mb-6 h-10">Full AI workforce for enterprise ops.</p>
+              <div className="flex items-baseline gap-1 mb-8">
+                <span className="font-display-lg text-4xl font-extrabold text-white">$110</span>
+                <span className="font-body-md text-sm text-gray-400">/ month</span>
+              </div>
+              <div className="space-y-4 mb-8">
+                <div className="text-xs font-mono font-semibold text-gray-400 uppercase tracking-wider mb-2">Included Agents:</div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-amber-400 text-sm">expand_circle_right</span> Everything in Pro
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Sales Agent
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Procurement & Finance
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Analytics Agent
+                </div>
+              </div>
+              <Link href="/signup" className="block w-full py-3.5 bg-white/5 border border-white/10 text-white font-bold rounded-xl text-center hover:bg-white/10 transition-colors">
+                Start 7-Day Free Trial
               </Link>
             </div>
           </div>
