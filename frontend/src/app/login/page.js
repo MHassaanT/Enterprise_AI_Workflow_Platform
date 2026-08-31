@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { login } from '@/lib/api';
+import { login, resendVerificationEmail } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -9,11 +9,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showResendVerification, setShowResendVerification] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendMessage, setResendMessage] = useState(null);
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setShowResendVerification(false);
+    setResendMessage(null);
     setLoading(true);
 
     try {
@@ -22,8 +27,26 @@ export default function LoginPage() {
         window.location.href = '/dashboard';
       }
     } catch (err) {
-      setError(err.message || 'Authentication failed. Please verify your credentials.');
+      const message = err.message || 'Authentication failed. Please verify your credentials.';
+
+      // Check if it's an email verification error
+      if (message.toLowerCase().includes('verify your email')) {
+        setShowResendVerification(true);
+        setResendEmail(email.trim());
+      }
+
+      setError(message);
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendMessage(null);
+    try {
+      await resendVerificationEmail(resendEmail);
+      setResendMessage({ type: 'success', text: 'Verification email resent! Check your inbox.' });
+    } catch (err) {
+      setResendMessage({ type: 'error', text: err.message || 'Failed to resend.' });
     }
   };
 
@@ -50,9 +73,29 @@ export default function LoginPage() {
         {/* Login Form Container */}
         <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
           {error && (
-            <div className="p-4 rounded-xl bg-error-container/20 border border-error/40 text-error font-label-md text-sm flex items-center gap-3">
-              <span className="material-symbols-outlined text-xl shrink-0">error</span>
-              <span>{error}</span>
+            <div className="p-4 rounded-xl bg-error-container/20 border border-error/40 text-error font-label-md text-sm flex items-start gap-3">
+              <span className="material-symbols-outlined text-xl shrink-0 mt-0.5">error</span>
+              <div className="space-y-2">
+                <span>{error}</span>
+
+                {/* Resend Verification Link */}
+                {showResendVerification && (
+                  <div className="pt-2 border-t border-error/20">
+                    <button
+                      onClick={handleResendVerification}
+                      className="text-primary font-semibold text-xs hover:underline flex items-center gap-1"
+                    >
+                      <span className="material-symbols-outlined text-sm">refresh</span>
+                      Resend Verification Email
+                    </button>
+                    {resendMessage && (
+                      <p className={`mt-1 text-xs ${resendMessage.type === 'success' ? 'text-emerald-400' : 'text-error'}`}>
+                        {resendMessage.text}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

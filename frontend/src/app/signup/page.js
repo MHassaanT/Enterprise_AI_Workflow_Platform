@@ -1,13 +1,9 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { register, crawlCompanyWebsite } from '@/lib/api';
+import { register, resendVerificationEmail } from '@/lib/api';
 
 export default function SignupPage() {
-  // Navigation hook
-  const [router, setRouter] = useState(null);
-
   // Form State
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [crawling, setCrawling] = useState(false);
@@ -30,6 +26,13 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Email Verification Modal State
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState(null);
+  const [devVerificationLink, setDevVerificationLink] = useState(null);
+
   const handleCrawlWebsite = async (e) => {
     e?.preventDefault();
     if (!websiteUrl.trim()) {
@@ -41,6 +44,7 @@ export default function SignupPage() {
     setCrawlNotice(null);
 
     try {
+      const { crawlCompanyWebsite } = await import('@/lib/api');
       const data = await crawlCompanyWebsite(websiteUrl.trim());
       if (data.company_name) setCompanyName(data.company_name);
       if (data.description) setDescription(data.description);
@@ -90,7 +94,7 @@ export default function SignupPage() {
     setSubmitting(true);
 
     try {
-      await register({
+      const result = await register({
         companyName: companyName.trim(),
         description: description.trim(),
         website: websiteUrl.trim(),
@@ -101,14 +105,32 @@ export default function SignupPage() {
         password
       });
 
-      // Auto login after registration
-      const { login } = await import('@/lib/api');
-      await login(email.trim(), password);
+      // Show verification modal instead of auto-login
+      setRegisteredEmail(email.trim());
+      setShowVerificationModal(true);
+      setSubmitting(false);
 
-      window.location.href = '/dashboard';
+      // Store dev verification link if available
+      if (result._devVerificationLink) {
+        setDevVerificationLink(result._devVerificationLink);
+      }
     } catch (err) {
       setError(err.message || 'Registration failed. Please check your information and try again.');
       setSubmitting(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResending(true);
+    setResendMessage(null);
+
+    try {
+      await resendVerificationEmail(registeredEmail);
+      setResendMessage({ type: 'success', text: 'Verification email resent! Check your inbox.' });
+    } catch (err) {
+      setResendMessage({ type: 'error', text: err.message || 'Failed to resend. Please try again.' });
+    } finally {
+      setResending(false);
     }
   };
 
@@ -116,6 +138,107 @@ export default function SignupPage() {
     <div className="min-h-screen bg-background text-on-surface font-body-md antialiased flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Background Glow */}
       <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/10 blur-[130px] rounded-full pointer-events-none"></div>
+
+      {/* ── EMAIL VERIFICATION MODAL ── */}
+      {showVerificationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 relative">
+            {/* Glow effect */}
+            <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[300px] h-[150px] bg-primary/15 blur-[80px] rounded-full pointer-events-none"></div>
+            
+            <div className="relative z-10 text-center space-y-6">
+              {/* Icon */}
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-container/20 border border-primary/30 mx-auto">
+                <span className="material-symbols-outlined text-primary text-4xl">mark_email_read</span>
+              </div>
+
+              <div>
+                <h2 className="font-display-lg text-2xl font-extrabold text-on-surface mb-2">
+                  Verify Your Email
+                </h2>
+                <p className="font-body-md text-sm text-on-surface-variant">
+                  We've sent a verification email to
+                </p>
+                <p className="font-body-md text-sm font-semibold text-primary mt-1">
+                  {registeredEmail}
+                </p>
+                <p className="font-body-md text-xs text-on-surface-variant mt-3">
+                  Please check your inbox and click the verification link before proceeding to payment.
+                </p>
+              </div>
+
+              {/* Resend Button */}
+              <button
+                onClick={handleResendVerification}
+                disabled={resending}
+                className="text-primary font-label-md text-xs hover:underline disabled:opacity-50 flex items-center justify-center gap-1 mx-auto"
+              >
+                {resending ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                    Resending...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                    Didn't receive it? Resend Verification Email
+                  </>
+                )}
+              </button>
+
+              {resendMessage && (
+                <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  resendMessage.type === 'success'
+                    ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                    : 'bg-error-container/20 border-error/40 text-error'
+                }`}>
+                  <span className="material-symbols-outlined text-sm">
+                    {resendMessage.type === 'success' ? 'check_circle' : 'error'}
+                  </span>
+                  {resendMessage.text}
+                </div>
+              )}
+
+              {/* Dev verification link (only in development) */}
+              {devVerificationLink && (
+                <div className="p-3 rounded-xl border bg-amber-950/40 border-amber-800/60 text-amber-300 text-xs">
+                  <p className="font-bold mb-1">🔧 Dev Mode — Verification Link:</p>
+                  <a
+                    href={devVerificationLink}
+                    className="text-amber-200 underline break-all text-[10px]"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {devVerificationLink}
+                  </a>
+                </div>
+              )}
+
+              {/* Proceed Info */}
+              <div className="pt-2 border-t border-outline-variant/60">
+                <p className="text-xs text-on-surface-variant mb-4">
+                  After verifying your email, you'll be redirected to select your subscription plan.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowVerificationModal(false)}
+                    className="flex-1 py-3 bg-surface-container-high border border-outline-variant text-on-surface font-label-md text-sm font-semibold rounded-xl hover:bg-surface-container-highest transition-colors"
+                  >
+                    Close
+                  </button>
+                  <Link
+                    href="/login"
+                    className="flex-1 py-3 bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                  >
+                    <span>Go to Login</span>
+                    <span className="material-symbols-outlined text-lg">login</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-3xl w-full mx-auto relative z-10">
         {/* Header Branding */}
@@ -338,7 +461,7 @@ export default function SignupPage() {
               </>
             ) : (
               <>
-                <span>Complete Sign Up & Launch Platform</span>
+                <span>Proceed</span>
                 <span className="material-symbols-outlined text-xl">arrow_forward</span>
               </>
             )}

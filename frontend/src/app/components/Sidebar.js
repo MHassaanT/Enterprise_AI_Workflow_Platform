@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getUser, logout } from '@/lib/api';
+import { canAccessRoute, AGENT_ROUTES, getAccessibleAgents } from '@/lib/planGating';
 import DocumentModal from './DocumentModal';
 
 export default function Sidebar() {
@@ -16,34 +17,47 @@ export default function Sidebar() {
     setUser(getUser());
   }, []);
 
-  if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance')) {
+  if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance') || pathname === '/subscribe' || pathname === '/verify-email') {
     return null;
   }
 
   const isAdmin = user?.role === 'admin';
+  const plan = user?.subscriptionPlan || 'none';
+  const accessibleAgents = getAccessibleAgents(plan);
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
-    { label: 'Support Chat', href: '/chat', icon: 'forum' },
-    { label: 'Sales Agent', href: '/sales', icon: 'trending_up' },
-    { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart' },
-    { label: 'HR Agent', href: '/hr', icon: 'groups' },
-    { label: 'Finance Agent', href: '/finance', icon: 'account_balance' },
-    { label: 'Analytics Agent', href: '/analytics', icon: 'analytics' },
-    { label: 'Coding Agent', href: '/coding', icon: 'code' },
-    { label: 'PM Agent', href: '/pm', icon: 'account_tree' },
-    { label: 'Approvals Hub', href: '/approvals', icon: 'gavel' },
-    { label: 'Widget Setup', href: '/widget-setup', icon: 'extension' },
-    { label: 'MCP Tools', href: '/mcp', icon: 'hub' },
-    { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications' },
-    { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree' },
-    ...(isAdmin ? [{ label: 'Team Users', href: '/users', icon: 'group' }] : []),
+  // Full nav items list — agents are filtered by plan
+  const allNavItems = [
+    { label: 'Dashboard', href: '/dashboard', icon: 'dashboard', isAgent: false },
+    { label: 'Customer Support Agent', href: '/chat', icon: 'forum', isAgent: true },
+    { label: 'Sales Agent', href: '/sales', icon: 'trending_up', isAgent: true },
+    { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart', isAgent: true },
+    { label: 'HR Agent', href: '/hr', icon: 'groups', isAgent: true },
+    { label: 'Finance Agent', href: '/finance', icon: 'account_balance', isAgent: true },
+    { label: 'Analytics Agent', href: '/analytics', icon: 'analytics', isAgent: true },
+    { label: 'Coding Agent', href: '/coding', icon: 'code', isAgent: true },
+    { label: 'PM Agent', href: '/pm', icon: 'account_tree', isAgent: true },
+    { label: 'Approvals Hub', href: '/approvals', icon: 'gavel', isAgent: false },
+    { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree', isAgent: true },
+    { label: 'Widget Setup', href: '/widget-setup', icon: 'extension', isAgent: false },
+    { label: 'MCP Tools', href: '/mcp', icon: 'hub', isAgent: false },
+    { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications', isAgent: false },
+    ...(isAdmin ? [{ label: 'Team Users', href: '/users', icon: 'group', isAgent: false }] : []),
+    { label: 'Billing', href: '/billing', icon: 'payments', isAgent: false },
   ];
+
+  // Filter nav items based on plan — non-agent items always shown, agent items filtered by plan access
+  const navItems = allNavItems.filter((item) => {
+    if (!item.isAgent) return true;
+    return accessibleAgents.some(route => item.href.startsWith(route));
+  });
 
   const isActive = (href) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
   };
+
+  // Plan badge display
+  const planBadge = plan !== 'none' ? plan.charAt(0).toUpperCase() + plan.slice(1) : null;
 
   return (
     <>
@@ -103,6 +117,13 @@ export default function Sidebar() {
                  <span className="material-symbols-outlined text-sm">keyboard_double_arrow_right</span>
                </button>
              </div>
+          )}
+
+          {/* Plan Badge */}
+          {planBadge && !isCollapsed && (
+            <div className="mx-sm px-3 py-1.5 rounded-lg bg-primary-container/10 border border-primary/20 text-center">
+              <span className="font-label-md text-label-md text-primary font-bold">{planBadge} Plan</span>
+            </div>
           )}
 
           {/* Navigation Links */}

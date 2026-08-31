@@ -25,8 +25,16 @@ const procurementRoutes = require('./routes/procurement');
 const financeRoutes = require('./routes/finance');
 const codingRoutes = require('./routes/coding');
 const analyticsRoutes = require('./routes/analytics');
+const paddleRoutes = require('./routes/paddle');
+const subscriptionRoutes = require('./routes/subscription');
+
+const { authenticate } = require('./middleware/auth');
+const { requirePlanAccess } = require('./middleware/subscriptionGuard');
 
 const app = express();
+
+// ── PADDLE WEBHOOK (must be BEFORE express.json — needs raw body for signature verification) ──
+app.use('/api/paddle', paddleRoutes);
 
 // ── MIDDLEWARE ──
 // Configure helmet to allow cross-origin resource embedding for widget.js
@@ -57,11 +65,15 @@ app.use('/api/widget', widgetRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/hr', hrTeamRoutes);
 app.use('/api/hr', hrAttendanceRoutes);
-app.use('/api/v1/sales', salesRoutes);
-app.use('/api/v1/procurement', procurementRoutes);
-app.use('/api/v1/finance', financeRoutes);
-app.use('/api/v1/coding', codingRoutes);
-app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/subscription', subscriptionRoutes);
+
+// ── PLAN-GATED AGENT ROUTES ──
+// These routes additionally check that the tenant's subscription includes the agent.
+app.use('/api/v1/sales', authenticate, requirePlanAccess('/sales'), salesRoutes);
+app.use('/api/v1/procurement', authenticate, requirePlanAccess('/procurement'), procurementRoutes);
+app.use('/api/v1/finance', authenticate, requirePlanAccess('/finance'), financeRoutes);
+app.use('/api/v1/coding', authenticate, requirePlanAccess('/coding'), codingRoutes);
+app.use('/api/v1/analytics', authenticate, requirePlanAccess('/analytics'), analyticsRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded
 
 

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
 import ApprovalCard from '../components/ApprovalCard';
 import { fetchConversations, fetchPendingApprovals, fetchDocuments, patchApproval, getUser } from '@/lib/api';
+import { getAccessibleAgents } from '@/lib/planGating';
 
 export default function TenantControlPanelPage() {
   const [conversations, setConversations] = useState([]);
@@ -45,6 +46,34 @@ export default function TenantControlPanelPage() {
   };
 
   const isAdmin = user?.role === 'admin';
+  const plan = user?.subscriptionPlan || 'none';
+  const planLabel = plan !== 'none' ? plan.charAt(0).toUpperCase() + plan.slice(1) : 'No Plan';
+  const statusLabel = user?.subscriptionStatus === 'trialing' ? 'Trial' : user?.subscriptionStatus === 'active' ? 'Active' : '';
+  const accessibleAgents = getAccessibleAgents(plan);
+
+  // Quick action cards — filtered by plan
+  const agentCards = [
+    { label: 'Customer Support Agent', href: '/chat', icon: 'forum', iconColor: 'text-primary', route: '/chat',
+      description: 'AI-powered customer support conversations, ticket resolution, and knowledge-based responses.' },
+    { label: 'Sales Agent', href: '/sales', icon: 'trending_up', iconColor: 'text-tertiary', route: '/sales',
+      description: 'CRM Leads, Pricing Quotes (Max 15% Cap), Contract Approvals & Revenue Forecast.' },
+    { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart', iconColor: 'text-secondary', route: '/procurement',
+      description: 'Supplier discovery, purchase order management, and spend analytics.' },
+    { label: 'HR Agent', href: '/hr', icon: 'groups', iconColor: 'text-primary', route: '/hr',
+      description: 'Screen resumes, rank candidates via semantic search, and auto-schedule interviews.' },
+    { label: 'Finance Agent', href: '/finance', icon: 'account_balance', iconColor: 'text-amber-400', route: '/finance',
+      description: 'Invoice processing, expense tracking, budget monitoring, and financial reporting.' },
+    { label: 'Analytics Agent', href: '/analytics', icon: 'analytics', iconColor: 'text-emerald-400', route: '/analytics',
+      description: 'Cross-department analytics, KPI dashboards, and AI-generated business insights.' },
+    { label: 'Coding Agent', href: '/coding', icon: 'code', iconColor: 'text-violet-400', route: '/coding',
+      description: 'GitHub-connected code analysis, PR reviews, and automated development workflows.' },
+    { label: 'PM Agent', href: '/pm', icon: 'account_tree', iconColor: 'text-secondary', route: '/pm',
+      description: 'Monitor project deadlines, track completion pacing velocity, and manage team rosters.' },
+  ];
+
+  const visibleAgentCards = agentCards.filter(card =>
+    accessibleAgents.some(route => card.route.startsWith(route))
+  );
 
   return (
     <AuthGuard>
@@ -53,7 +82,7 @@ export default function TenantControlPanelPage() {
           {/* Welcome Banner */}
           <header className="mb-xl border-b border-outline-variant pb-lg flex flex-col md:flex-row md:items-center justify-between gap-md">
             <div>
-              <div className="flex items-center gap-sm mb-sm">
+              <div className="flex items-center gap-sm mb-sm flex-wrap">
                 <span className="font-label-md text-label-md text-on-surface-variant bg-surface-container px-3 py-1 rounded-full border border-outline-variant">
                   ⚡ Tenant Control Panel
                 </span>
@@ -62,17 +91,28 @@ export default function TenantControlPanelPage() {
                     Role: {user.role}
                   </span>
                 )}
+                {plan !== 'none' && (
+                  <span className="font-label-md text-label-md px-3 py-1 rounded-full border text-primary bg-primary-container/10 border-primary/20 font-bold">
+                    {planLabel} Plan {statusLabel && `· ${statusLabel}`}
+                  </span>
+                )}
               </div>
               <h1 className="font-display-lg text-display-lg text-on-surface mb-2">
                 Enterprise AI Dashboard
               </h1>
               <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
-                Centralized management for customer support agent conversations, human approval queues, vector knowledge bases, and embeddable widget deployments.
+                Centralized management for AI agent conversations, human approval queues, vector knowledge bases, and embeddable widget deployments.
               </p>
             </div>
-            <Link href="/widget-setup" className="inline-flex items-center gap-2 px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors shadow-sm whitespace-nowrap">
-              🧩 Deploy Web Widget ➔
-            </Link>
+            <div className="flex gap-3">
+              <Link href="/billing" className="inline-flex items-center gap-2 px-lg py-md bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold rounded-lg hover:bg-surface-container-highest transition-colors shadow-sm whitespace-nowrap border border-outline-variant">
+                <span className="material-symbols-outlined text-base">payments</span>
+                Manage Billing
+              </Link>
+              <Link href="/widget-setup" className="inline-flex items-center gap-2 px-lg py-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors shadow-sm whitespace-nowrap">
+                🧩 Deploy Web Widget ➔
+              </Link>
+            </div>
           </header>
 
           {/* Metrics Grid */}
@@ -158,23 +198,24 @@ export default function TenantControlPanelPage() {
               )}
             </section>
 
-            {/* Right Column: Quick Management */}
+            {/* Right Column: Quick Actions — filtered by plan */}
             <aside className="lg:col-span-1 space-y-md">
-              <h3 className="font-headline-md text-headline-md text-on-surface mb-lg">Quick Actions</h3>
+              <h3 className="font-headline-md text-headline-md text-on-surface mb-lg">AI Agents</h3>
 
-              {/* Sales Agent Card */}
-              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-tertiary">trending_up</span>
-                  <h4 className="font-body-md text-body-md font-medium text-on-surface">Sales Agent</h4>
+              {visibleAgentCards.map((card) => (
+                <div key={card.href} className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className={`material-symbols-outlined ${card.iconColor}`}>{card.icon}</span>
+                    <h4 className="font-body-md text-body-md font-medium text-on-surface">{card.label}</h4>
+                  </div>
+                  <p className="font-label-md text-label-md text-on-surface-variant mb-4">
+                    {card.description}
+                  </p>
+                  <Link href={card.href} className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
+                    Open {card.label} ➔
+                  </Link>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  CRM Leads, Pricing Quotes (Max 15% Cap), Contract Approvals & Revenue Forecast.
-                </p>
-                <Link href="/sales" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
-                  Open Sales Hub ➔
-                </Link>
-              </div>
+              ))}
 
               {/* Universal Approvals Hub */}
               <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-error/50 transition-colors">
@@ -201,34 +242,6 @@ export default function TenantControlPanelPage() {
                 </p>
                 <Link href="/mcp" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
                   Manage MCP Tools ➔
-                </Link>
-              </div>
-
-              {/* HR Agent Card */}
-              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-primary">groups</span>
-                  <h4 className="font-body-md text-body-md font-medium text-on-surface">HR Agent</h4>
-                </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  Screen resumes, rank candidates via semantic search, and auto-schedule interviews.
-                </p>
-                <Link href="/hr" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
-                  Open HR Agent ➔
-                </Link>
-              </div>
-
-              {/* PM Agent Card */}
-              <div className="bg-surface border border-outline-variant rounded-lg p-md hover:border-primary/50 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-secondary">account_tree</span>
-                  <h4 className="font-body-md text-body-md font-medium text-on-surface">PM Agent</h4>
-                </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-4">
-                  Monitor project deadlines, track completion pacing velocity, and manage team rosters.
-                </p>
-                <Link href="/pm" className="inline-block w-full text-center px-md py-2 bg-surface-container-high border border-outline-variant rounded-md text-on-surface hover:bg-surface-container-highest transition-colors font-label-md text-label-md">
-                  Open PM Agent ➔
                 </Link>
               </div>
 

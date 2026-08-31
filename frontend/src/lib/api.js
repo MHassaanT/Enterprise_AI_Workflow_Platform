@@ -50,6 +50,18 @@ export async function login(email, password) {
     let data = {};
     try { data = JSON.parse(text); } catch (e) {}
     console.error(`Login error [HTTP ${res.status}]:`, text);
+
+    // Handle subscription required redirect
+    if (res.status === 402 && data.redirectTo) {
+      window.location.href = data.redirectTo;
+      throw new Error(data.error || 'Subscription required.');
+    }
+
+    // Handle email not verified
+    if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
+      throw new Error(data.error || 'Please verify your email before signing in.');
+    }
+
     throw new Error(data.error || `Login failed (HTTP ${res.status}). Check backend logs or API URL.`);
   }
 
@@ -1013,4 +1025,26 @@ export async function generateEmployeeAttendanceLink(employeeId) {
   return res.json();
 }
 
+// ── SUBSCRIPTION & BILLING ──
 
+export async function resendVerificationEmail(email) {
+  const res = await fetch('/api/auth/resend-verification', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to resend verification email.');
+  }
+  return res.json();
+}
+
+export async function fetchSubscriptionStatus() {
+  const res = await fetch('/api/auth/subscription-status', {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch subscription status');
+  return res.json();
+}
