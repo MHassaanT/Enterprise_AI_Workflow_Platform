@@ -100,22 +100,19 @@ router.post('/register', async (req, res) => {
 
   // Fallback: generate our own verification link if Firebase is not configured
   if (!verificationLink) {
-    const frontendUrl = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
+    const requestOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
+    const frontendUrl = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_FRONTEND_URL || requestOrigin || 'http://localhost:3000';
     verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
   }
 
   // Send the verification email
-  const emailResult = await sendVerificationEmail(email, verificationLink, fullName);
+  await sendVerificationEmail(email, verificationLink, fullName);
 
   res.status(201).json({
     success: true,
-    message: emailResult.success
-      ? 'Verification email sent. Please check your inbox to verify your email before proceeding to payment.'
-      : 'Account created. Please verify your email to proceed to payment.',
+    message: 'Verification email sent. Please check your inbox to verify your email before proceeding to payment.',
     tenant: { id: tenant.id, name: tenant.name },
     user: { id: user.id, email: user.email, role: user.role, fullName: user.full_name, companyRole: user.company_role },
-    // Include verification link if email delivery used fallback or in non-production/test environments
-    ...((!emailResult.success || process.env.NODE_ENV !== 'production' || process.env.SHOW_VERIFICATION_LINK === 'true') && { _devVerificationLink: verificationLink }),
   });
 });
 
@@ -123,7 +120,8 @@ router.post('/register', async (req, res) => {
 // Handles both Firebase verification callback and custom token verification.
 router.get('/verify-email', async (req, res) => {
   const { token, email, oobCode } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
+  const requestOrigin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
+  const frontendUrl = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_FRONTEND_URL || requestOrigin || 'http://localhost:3000';
 
   try {
     let verifiedEmail = null;
@@ -310,11 +308,26 @@ router.post('/login', async (req, res) => {
 
   // Check email verification
   if (!user.email_verified) {
-    return res.status(403).json({
-      error: 'Please verify your email before signing in. Check your inbox for the verification link.',
-      code: 'EMAIL_NOT_VERIFIED',
-      email: user.email,
-    });
+    // Sync with Firebase to check if user verified via Firebase email link
+    let firebaseVerified = false;
+    try {
+      if (isFirebaseAvailable()) {
+        firebaseVerified = await isEmailVerified(user.email);
+      }
+    } catch (fbErr) {
+      console.warn('Firebase email verification sync check error:', fbErr.message);
+    }
+
+    if (firebaseVerified) {
+      await query('UPDATE users SET email_verified = true, email_verification_token = NULL WHERE id = $1', [user.id]);
+      user.email_verified = true;
+    } else {
+      return res.status(403).json({
+        error: 'Please verify your email before signing in. Check your inbox for the verification link.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+      });
+    }
   }
 
   // Get tenant subscription info

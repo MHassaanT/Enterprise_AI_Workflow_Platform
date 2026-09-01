@@ -1,9 +1,29 @@
 'use client';
-import { useState } from 'react';
+
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { initializePaddle } from '@paddle/paddle-js';
 import { register, resendVerificationEmail } from '@/lib/api';
 
+const PRICE_IDS = {
+  basic: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_BASIC || 'pri_01kp5ptvbcrxkrp8zcvxnv7250',
+  pro: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_PRO || 'pri_01kp5py10knnk7gr62cfk7sbxe',
+  enterprise: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_ENTERPRISE || 'pri_01kp5py10knnk7gr62cfk7sbxe',
+};
+
+const PLANS = [
+  { id: 'basic', name: 'Basic', priceLabel: '$50/mo', desc: 'Core AI Agents for small teams' },
+  { id: 'pro', name: 'Pro', priceLabel: '$75/mo', desc: 'Full AI Workforce & Workflow Builder', popular: true },
+  { id: 'enterprise', name: 'Enterprise', priceLabel: '$110/mo', desc: 'Custom Agents & Dedicated Support' },
+];
+
 export default function SignupPage() {
+  const router = useRouter();
+
+  // Page State: 'form' | 'pending' | 'success'
+  const [pageState, setPageState] = useState('form');
+
   // Form State
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [crawling, setCrawling] = useState(false);
@@ -14,6 +34,7 @@ export default function SignupPage() {
   const [description, setDescription] = useState('');
   const [industry, setIndustry] = useState('');
   const [companyRole, setCompanyRole] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState('pro');
 
   // Section 2: User Details
   const [fullName, setFullName] = useState('');
@@ -26,12 +47,31 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Email Verification Modal State
+  // Email Verification Modal & Account State
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const [createdAccountData, setCreatedAccountData] = useState(null);
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState(null);
-  const [devVerificationLink, setDevVerificationLink] = useState(null);
+
+  // Paddle Instance
+  const [paddle, setPaddle] = useState(null);
+
+  useEffect(() => {
+    const environment = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT || 'sandbox';
+    const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || '';
+
+    initializePaddle({
+      environment: environment === 'production' ? 'production' : 'sandbox',
+      token,
+    }).then((instance) => {
+      if (instance) {
+        setPaddle(instance);
+      }
+    }).catch((err) => {
+      console.warn('Paddle initialization notice:', err);
+    });
+  }, []);
 
   const handleCrawlWebsite = async (e) => {
     e?.preventDefault();
@@ -94,6 +134,7 @@ export default function SignupPage() {
     setSubmitting(true);
 
     try {
+      // 1. Create account on Backend
       const result = await register({
         companyName: companyName.trim(),
         description: description.trim(),
@@ -105,7 +146,10 @@ export default function SignupPage() {
         password
       });
 
-      // Automatically trigger Firebase Client Email Verification if configured
+      setCreatedAccountData(result);
+      setRegisteredEmail(email.trim());
+
+      // 2. Automatically trigger Firebase Client Email Verification
       try {
         const { auth } = await import('@/lib/firebase');
         const { createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } = await import('firebase/auth');
@@ -129,18 +173,49 @@ export default function SignupPage() {
         console.warn('Firebase Client email dispatch fallback:', fbClientErr.message);
       }
 
-      // Show verification modal
-      setRegisteredEmail(email.trim());
+      // Show Verification Modal
       setShowVerificationModal(true);
       setSubmitting(false);
-
-      // Store dev verification link if available
-      if (result._devVerificationLink) {
-        setDevVerificationLink(result._devVerificationLink);
-      }
     } catch (err) {
       setError(err.message || 'Registration failed. Please check your information and try again.');
       setSubmitting(false);
+    }
+  };
+
+  const handleProceedToPayment = async () => {
+    setShowVerificationModal(false);
+    setPageState('pending');
+
+    const priceId = PRICE_IDS[selectedPlan] || PRICE_IDS.pro;
+
+    const customData = {
+      tenant_id: createdAccountData?.tenant?.id || '',
+      user_id: createdAccountData?.user?.id || '',
+      plan: selectedPlan,
+      email: registeredEmail,
+    };
+
+    if (paddle) {
+      try {
+        paddle.Checkout.open({
+          items: [{ priceId: priceId, quantity: 1 }],
+          customer: { email: registeredEmail },
+          customData,
+          settings: {
+            successUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/login?payment=success`,
+          },
+          eventCallback: (event) => {
+            if (event.name === 'checkout.completed') {
+              setPageState('success');
+            }
+          },
+        });
+      } catch (err) {
+        console.error('Paddle open error:', err);
+        router.push(`/subscribe?email=${encodeURIComponent(registeredEmail)}`);
+      }
+    } else {
+      router.push(`/subscribe?email=${encodeURIComponent(registeredEmail)}`);
     }
   };
 
@@ -149,7 +224,6 @@ export default function SignupPage() {
     setResendMessage(null);
 
     try {
-      // Try sending via Firebase Client SDK first
       let sentViaFirebase = false;
       try {
         const { auth } = await import('@/lib/firebase');
@@ -162,16 +236,13 @@ export default function SignupPage() {
         console.warn('Firebase Client resend fallback:', fbErr.message);
       }
 
-      const result = await resendVerificationEmail(registeredEmail);
+      await resendVerificationEmail(registeredEmail);
       setResendMessage({
         type: 'success',
         text: sentViaFirebase
           ? 'Verification email automatically sent to your inbox!'
-          : (result.message || 'Verification email resent! Check your inbox.')
+          : 'Verification email resent! Please check your inbox.'
       });
-      if (result._devVerificationLink) {
-        setDevVerificationLink(result._devVerificationLink);
-      }
     } catch (err) {
       setResendMessage({ type: 'error', text: err.message || 'Failed to resend. Please try again.' });
     } finally {
@@ -184,22 +255,20 @@ export default function SignupPage() {
       {/* Background Glow */}
       <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/10 blur-[130px] rounded-full pointer-events-none"></div>
 
-      {/* ── EMAIL VERIFICATION MODAL ── */}
+      {/* ── EMAIL VERIFICATION & PAYMENT MODAL ── */}
       {showVerificationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
-          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 relative">
-            {/* Glow effect */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl max-w-md w-full relative">
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[300px] h-[150px] bg-primary/15 blur-[80px] rounded-full pointer-events-none"></div>
-            
+
             <div className="relative z-10 text-center space-y-6">
-              {/* Icon */}
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-container/20 border border-primary/30 mx-auto">
-                <span className="material-symbols-outlined text-primary text-4xl">mark_email_read</span>
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 mx-auto">
+                <span className="material-symbols-outlined text-emerald-400 text-4xl">mark_email_read</span>
               </div>
 
               <div>
                 <h2 className="font-display-lg text-2xl font-extrabold text-on-surface mb-2">
-                  Verify Your Email
+                  Verification Email Sent
                 </h2>
                 <p className="font-body-md text-sm text-on-surface-variant">
                   We've sent a verification email to
@@ -208,7 +277,7 @@ export default function SignupPage() {
                   {registeredEmail}
                 </p>
                 <p className="font-body-md text-xs text-on-surface-variant mt-3">
-                  Please check your inbox and click the verification link before proceeding to payment.
+                  Please check your inbox (and spam folder). You can verify your email before or after completing your subscription payment.
                 </p>
               </div>
 
@@ -244,279 +313,328 @@ export default function SignupPage() {
                 </div>
               )}
 
-              {/* Verification link */}
-              {devVerificationLink && (
-                <div className="p-3 rounded-xl border bg-amber-950/40 border-amber-800/60 text-amber-300 text-xs">
-                  <p className="font-bold mb-1">🔗 Direct Verification Link:</p>
-                  <a
-                    href={devVerificationLink}
-                    className="text-amber-200 underline break-all text-[10px]"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {devVerificationLink}
-                  </a>
-                </div>
-              )}
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-3 pt-2">
+                <button
+                  onClick={handleProceedToPayment}
+                  className="w-full py-3 px-6 bg-primary text-on-primary font-label-md text-sm font-bold rounded-xl hover:bg-primary-container transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                >
+                  <span>Proceed to Payment</span>
+                  <span className="material-symbols-outlined text-base">arrow_forward</span>
+                </button>
 
-              {/* Proceed Info */}
-              <div className="pt-2 border-t border-outline-variant/60">
-                <p className="text-xs text-on-surface-variant mb-4">
-                  After verifying your email, you'll be redirected to select your subscription plan.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowVerificationModal(false)}
-                    className="flex-1 py-3 bg-surface-container-high border border-outline-variant text-on-surface font-label-md text-sm font-semibold rounded-xl hover:bg-surface-container-highest transition-colors"
-                  >
-                    Close
-                  </button>
-                  <Link
-                    href="/login"
-                    className="flex-1 py-3 bg-primary hover:bg-primary-container text-on-primary font-label-md text-sm font-bold rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
-                  >
-                    <span>Go to Login</span>
-                    <span className="material-symbols-outlined text-lg">login</span>
-                  </Link>
-                </div>
+                <button
+                  onClick={() => setShowVerificationModal(false)}
+                  className="w-full py-2.5 px-4 bg-surface-container border border-outline-variant text-on-surface-variant font-label-md text-xs font-semibold rounded-xl hover:bg-surface-container-high transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="max-w-3xl w-full mx-auto relative z-10">
-        {/* Header Branding */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-3 group mb-4">
-            <div className="h-12 w-12 rounded-xl bg-primary-container/20 border border-primary/40 flex items-center justify-center text-primary group-hover:scale-105 transition-transform shadow-md">
-              <span className="material-symbols-outlined text-3xl">hexagon</span>
+      {/* ── PAYMENT PENDING STATE ── */}
+      {pageState === 'pending' && (
+        <div className="max-w-md mx-auto w-full text-center space-y-6 my-auto">
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-primary-container/20 border border-primary/30 flex items-center justify-center mx-auto animate-pulse">
+              <span className="material-symbols-outlined text-primary text-3xl">payments</span>
             </div>
-            <span className="font-display-lg text-2xl font-extrabold text-on-surface tracking-tight">Enterprise AI</span>
-          </Link>
-          <h1 className="font-display-lg text-3xl font-extrabold text-on-surface">Create Your Workspace Account</h1>
-          <p className="font-body-md text-on-surface-variant mt-2">
-            Set up your organization and deploy custom AI agents in under 2 minutes.
-          </p>
-        </div>
-
-        {/* ── CRAWL4AI AUTO-FILL SECTION ── */}
-        <div className="bg-surface-container-low border border-primary/30 rounded-2xl p-6 mb-8 shadow-xl relative overflow-hidden">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="w-8 h-8 rounded-lg bg-primary-container/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-sm">
-              ⚡
-            </span>
             <div>
-              <h3 className="font-headline-md text-lg font-bold text-on-surface">Auto-fill Company Details</h3>
-              <p className="font-body-md text-xs text-on-surface-variant">Enter your company website to let Crawl4AI extract your details automatically.</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleCrawlWebsite} className="flex flex-col sm:flex-row gap-3 mt-4">
-            <div className="relative flex-1">
-              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">language</span>
-              <input
-                type="text"
-                placeholder="https://yourcompany.com"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary transition-colors text-sm"
-              />
+              <h2 className="font-display-lg text-2xl font-bold text-on-surface mb-2">Complete Your Payment</h2>
+              <p className="font-body-md text-sm text-on-surface-variant">
+                Please complete the checkout in the payment window to activate your subscription plan.
+              </p>
             </div>
             <button
-              type="submit"
-              disabled={crawling}
-              className="px-6 py-3 bg-primary/90 hover:bg-primary text-on-primary font-label-md text-label-md font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+              onClick={() => router.push('/login')}
+              className="text-xs text-primary hover:underline font-semibold"
             >
-              {crawling ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
-                  <span>Crawling Website...</span>
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                  <span>Auto-fill with Crawl4AI</span>
-                </>
-              )}
+              Skip to Sign In ↗
             </button>
-          </form>
-
-          {crawlNotice && (
-            <div className={`mt-4 p-3 rounded-xl border font-label-md text-xs flex items-center gap-2 ${
-              crawlNotice.type === 'success' 
-                ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' 
-                : 'bg-amber-950/40 border-amber-800/60 text-amber-300'
-            }`}>
-              <span className="material-symbols-outlined text-base">
-                {crawlNotice.type === 'success' ? 'check_circle' : 'info'}
-              </span>
-              <span>{crawlNotice.text}</span>
-            </div>
-          )}
+          </div>
         </div>
+      )}
 
-        {/* ── MAIN REGISTRATION FORM ── */}
-        <form onSubmit={handleSubmit} className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 sm:p-8 shadow-2xl space-y-8">
-          {error && (
-            <div className="p-4 rounded-xl bg-error-container/20 border border-error/40 text-error font-label-md text-sm flex items-center gap-3">
-              <span className="material-symbols-outlined text-xl shrink-0">error</span>
-              <span>{error}</span>
+      {/* ── PAYMENT CONFIRMED / SUCCESS STATE ── */}
+      {pageState === 'success' && (
+        <div className="max-w-md mx-auto w-full text-center space-y-6 my-auto">
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-emerald-400 text-4xl">check_circle</span>
             </div>
-          )}
-
-          {/* ── SECTION 1: COMPANY DETAILS ── */}
-          <div className="space-y-5 border-b border-outline-variant/60 pb-8">
-            <div className="flex items-center gap-3">
-              <span className="w-7 h-7 rounded-full bg-primary text-on-primary font-bold text-xs flex items-center justify-center">1</span>
-              <h2 className="font-headline-md text-xl font-bold text-on-surface">Company Details</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Company Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Acme Corporation"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Industry Sector</label>
-                <input
-                  type="text"
-                  placeholder="SaaS / Enterprise Software"
-                  value={industry}
-                  onChange={(e) => setIndustry(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
-              </div>
-            </div>
-
             <div>
-              <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Company Description</label>
-              <textarea
-                rows={3}
-                placeholder="Brief summary of company offerings, target market, and value proposition..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm resize-none"
-              />
+              <h2 className="font-display-lg text-2xl font-bold text-on-surface mb-2">Payment Confirmed!</h2>
+              <p className="font-body-md text-sm text-on-surface-variant">
+                Your subscription has been set up. Please verify your email from your inbox before logging in to your account.
+              </p>
             </div>
+            <Link
+              href="/login"
+              className="w-full inline-block py-3 px-6 bg-primary text-on-primary font-label-md text-sm font-bold rounded-xl hover:bg-primary-container transition-all shadow-lg shadow-primary/20"
+            >
+              Go to Sign In
+            </Link>
+          </div>
+        </div>
+      )}
 
-            <div>
-              <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Your Role at the Company</label>
-              <input
-                type="text"
-                placeholder="e.g. Chief Executive Officer, Sales VP, HR Manager"
-                value={companyRole}
-                onChange={(e) => setCompanyRole(e.target.value)}
-                className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-              />
-            </div>
+      {/* ── MAIN SIGNUP FORM ── */}
+      {pageState === 'form' && (
+        <div className="sm:mx-auto sm:w-full sm:max-w-xl relative z-10 my-auto">
+          {/* Logo & Header */}
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-flex items-center gap-3 group mb-4">
+              <div className="h-12 w-12 rounded-2xl bg-primary-container/20 flex items-center justify-center border border-primary/30 group-hover:border-primary/60 transition-colors">
+                <span className="material-symbols-outlined text-primary text-2xl">hexagon</span>
+              </div>
+            </Link>
+            <h1 className="font-display-lg text-3xl font-extrabold text-on-surface tracking-tight">
+              Start your free trial
+            </h1>
+            <p className="font-body-md text-on-surface-variant text-sm mt-2">
+              Create your Enterprise AI account — select your plan and verify your email.
+            </p>
           </div>
 
-          {/* ── SECTION 2: USER DETAILS ── */}
-          <div className="space-y-5">
-            <div className="flex items-center gap-3">
-              <span className="w-7 h-7 rounded-full bg-primary text-on-primary font-bold text-xs flex items-center justify-center">2</span>
-              <h2 className="font-headline-md text-xl font-bold text-on-surface">User Details & Credentials</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Sarah Jenkins"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+            {error && (
+              <div className="p-4 rounded-xl bg-error-container/20 border border-error/40 text-error font-body-md text-sm flex items-center gap-3">
+                <span className="material-symbols-outlined text-lg">error</span>
+                <span>{error}</span>
               </div>
+            )}
 
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Work Email *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="sarah@acme.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Password *</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block font-label-md text-xs font-semibold text-on-surface mb-2">Confirm Password *</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-colors text-sm"
-                />
+            {/* Plan Selector Cards */}
+            <div className="space-y-2">
+              <label className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider font-semibold">
+                Select Subscription Plan
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {PLANS.map((plan) => (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() => setSelectedPlan(plan.id)}
+                    className={`p-3 rounded-xl border text-left transition-all relative ${
+                      selectedPlan === plan.id
+                        ? 'bg-primary-container/10 border-primary text-on-surface font-semibold shadow-md'
+                        : 'bg-surface-container border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    {plan.popular && (
+                      <span className="absolute -top-2 right-2 px-1.5 py-0.5 bg-primary text-on-primary text-[9px] font-bold rounded uppercase">
+                        Popular
+                      </span>
+                    )}
+                    <p className="text-xs font-bold text-on-surface">{plan.name}</p>
+                    <p className="text-sm font-extrabold text-primary mt-1">{plan.priceLabel}</p>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="pt-2">
-              <label className="flex items-start gap-3 cursor-pointer">
+            {/* Website Crawler Auto-fill Card */}
+            <div className="p-4 rounded-xl bg-surface-container border border-outline-variant space-y-3">
+              <div className="flex items-center justify-between">
+                <label htmlFor="websiteUrl" className="font-label-md text-xs text-primary font-bold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">travel_explore</span>
+                  Auto-fill Company Info via Crawl4AI
+                </label>
+                <span className="text-[10px] bg-primary-container/20 text-primary px-2 py-0.5 rounded font-mono font-bold">
+                  AI Powered
+                </span>
+              </div>
+              <div className="flex gap-2">
                 <input
+                  id="websiteUrl"
+                  type="url"
+                  placeholder="https://yourcompany.com"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  className="flex-1 bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={handleCrawlWebsite}
+                  disabled={crawling}
+                  className="px-4 py-2 bg-primary-container/30 text-primary border border-primary/40 font-label-md text-xs font-bold rounded-lg hover:bg-primary-container/50 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+                >
+                  {crawling ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                      Extracting...
+                    </>
+                  ) : (
+                    'Auto-fill ✨'
+                  )}
+                </button>
+              </div>
+              {crawlNotice && (
+                <p className={`text-xs ${crawlNotice.type === 'success' ? 'text-emerald-400 font-medium' : 'text-amber-400'}`}>
+                  {crawlNotice.text}
+                </p>
+              )}
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Company Details */}
+              <div className="space-y-4 pt-2">
+                <h3 className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider font-semibold border-b border-outline-variant pb-2">
+                  1. Company & Organization
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Acme Corp"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Industry</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Technology, Retail"
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Role in Company</label>
+                    <select
+                      value={companyRole}
+                      onChange={(e) => setCompanyRole(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="">Select your role</option>
+                      <option value="Owner">Owner / CEO</option>
+                      <option value="Manager">Manager / Director</option>
+                      <option value="Marketing">Marketing / Sales</option>
+                      <option value="IT">IT / Developer</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Company Description</label>
+                    <input
+                      type="text"
+                      placeholder="Brief overview"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Account Credentials */}
+              <div className="space-y-4 pt-2">
+                <h3 className="font-label-md text-xs text-on-surface-variant uppercase tracking-wider font-semibold border-b border-outline-variant pb-2">
+                  2. Administrator Account
+                </h3>
+                <div className="space-y-1">
+                  <label className="font-label-md text-xs text-on-surface-variant font-semibold">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-label-md text-xs text-on-surface-variant font-semibold">Work Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="john@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Password *</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Min 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-label-md text-xs text-on-surface-variant font-semibold">Confirm Password *</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Re-enter password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full bg-surface border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms Checkbox */}
+              <div className="flex items-start gap-3 pt-2">
+                <input
+                  id="acceptTerms"
                   type="checkbox"
                   checked={acceptTerms}
                   onChange={(e) => setAcceptTerms(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary bg-surface"
+                  className="mt-1 h-4 w-4 rounded border-outline-variant bg-surface text-primary focus:ring-primary"
                 />
-                <span className="font-body-md text-xs text-on-surface-variant">
-                  I agree to the <a href="#" className="text-primary hover:underline font-semibold">Terms of Service</a> and <a href="#" className="text-primary hover:underline font-semibold">Privacy Policy</a>.
-                </span>
-              </label>
-            </div>
+                <label htmlFor="acceptTerms" className="font-body-md text-xs text-on-surface-variant leading-relaxed">
+                  I agree to the <Link href="/" className="text-primary hover:underline font-semibold">Terms of Service</Link> and <Link href="/" className="text-primary hover:underline font-semibold">Privacy Policy</Link>.
+                </label>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-3.5 px-6 bg-primary text-on-primary font-label-md text-sm font-bold rounded-xl hover:bg-primary-container transition-all shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
+                    Setting up account...
+                  </>
+                ) : (
+                  'Continue to Payment'
+                )}
+              </button>
+            </form>
           </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-4 bg-primary hover:bg-primary-container text-on-primary font-label-md text-label-md font-bold rounded-xl transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2 text-base disabled:opacity-50"
-          >
-            {submitting ? (
-              <>
-                <span className="w-5 h-5 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
-                <span>Creating Workspace...</span>
-              </>
-            ) : (
-              <>
-                <span>Proceed</span>
-                <span className="material-symbols-outlined text-xl">arrow_forward</span>
-              </>
-            )}
-          </button>
-
-          <p className="text-center font-body-md text-xs text-on-surface-variant">
-            Already have an account? <Link href="/login" className="text-primary font-bold hover:underline">Sign In</Link>
+          <p className="text-center font-body-md text-xs text-on-surface-variant mt-6">
+            Already have an account?{' '}
+            <Link href="/login" className="text-primary hover:underline font-semibold">
+              Sign In
+            </Link>
           </p>
-        </form>
-      </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer className="text-center py-4 font-body-md text-xs text-on-surface-variant relative z-10">
+        &copy; {new Date().getFullYear()} Enterprise AI Platform. All rights reserved.
+      </footer>
     </div>
   );
 }
