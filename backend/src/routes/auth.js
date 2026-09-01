@@ -339,13 +339,6 @@ router.post('/login', async (req, res) => {
     }
   }
 
-  // Get tenant subscription info
-  const tenantResult = await query(
-    'SELECT subscription_plan, subscription_status, trial_ends_at FROM tenants WHERE id = $1',
-    [user.tenant_id]
-  );
-  const tenant = tenantResult.rows[0];
-
   // Check subscription status — if pending, redirect to payment
   if (tenant?.subscription_status === 'pending_verification' || tenant?.subscription_plan === 'none') {
     // User verified email but hasn't completed payment
