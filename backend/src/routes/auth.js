@@ -105,15 +105,17 @@ router.post('/register', async (req, res) => {
   }
 
   // Send the verification email
-  await sendVerificationEmail(email, verificationLink, fullName);
+  const emailResult = await sendVerificationEmail(email, verificationLink, fullName);
 
   res.status(201).json({
     success: true,
-    message: 'Verification email sent. Please check your inbox to verify your email before proceeding to payment.',
+    message: emailResult.success
+      ? 'Verification email sent. Please check your inbox to verify your email before proceeding to payment.'
+      : 'Account created. Please verify your email to proceed to payment.',
     tenant: { id: tenant.id, name: tenant.name },
     user: { id: user.id, email: user.email, role: user.role, fullName: user.full_name, companyRole: user.company_role },
-    // Include verification link in dev mode for testing
-    ...(process.env.NODE_ENV !== 'production' && { _devVerificationLink: verificationLink }),
+    // Include verification link if email delivery used fallback or in non-production/test environments
+    ...((!emailResult.success || process.env.NODE_ENV !== 'production' || process.env.SHOW_VERIFICATION_LINK === 'true') && { _devVerificationLink: verificationLink }),
   });
 });
 
@@ -247,9 +249,13 @@ router.post('/resend-verification', async (req, res) => {
     verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
   }
 
-  await sendVerificationEmail(email, verificationLink, user.full_name);
+  const emailResult = await sendVerificationEmail(email, verificationLink, user.full_name);
 
-  res.json({ success: true, message: 'Verification email sent.' });
+  res.json({
+    success: true,
+    message: emailResult.success ? 'Verification email sent.' : 'Verification link generated.',
+    ...((!emailResult.success || process.env.NODE_ENV !== 'production' || process.env.SHOW_VERIFICATION_LINK === 'true') && { _devVerificationLink: verificationLink }),
+  });
 });
 
 // ── SUBSCRIPTION STATUS (Authenticated) ──

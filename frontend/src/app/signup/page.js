@@ -105,7 +105,31 @@ export default function SignupPage() {
         password
       });
 
-      // Show verification modal instead of auto-login
+      // Automatically trigger Firebase Client Email Verification if configured
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const { createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } = await import('firebase/auth');
+        if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY && auth) {
+          let fbUser;
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+            fbUser = userCredential.user;
+          } catch (fbErr) {
+            if (fbErr?.code === 'auth/email-already-in-use') {
+              const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+              fbUser = userCredential.user;
+            }
+          }
+          if (fbUser) {
+            await sendEmailVerification(fbUser);
+            console.log('✅ Firebase Client Verification Email sent to:', email.trim());
+          }
+        }
+      } catch (fbClientErr) {
+        console.warn('Firebase Client email dispatch fallback:', fbClientErr.message);
+      }
+
+      // Show verification modal
       setRegisteredEmail(email.trim());
       setShowVerificationModal(true);
       setSubmitting(false);
@@ -125,8 +149,29 @@ export default function SignupPage() {
     setResendMessage(null);
 
     try {
-      await resendVerificationEmail(registeredEmail);
-      setResendMessage({ type: 'success', text: 'Verification email resent! Check your inbox.' });
+      // Try sending via Firebase Client SDK first
+      let sentViaFirebase = false;
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const { sendEmailVerification } = await import('firebase/auth');
+        if (auth?.currentUser) {
+          await sendEmailVerification(auth.currentUser);
+          sentViaFirebase = true;
+        }
+      } catch (fbErr) {
+        console.warn('Firebase Client resend fallback:', fbErr.message);
+      }
+
+      const result = await resendVerificationEmail(registeredEmail);
+      setResendMessage({
+        type: 'success',
+        text: sentViaFirebase
+          ? 'Verification email automatically sent to your inbox!'
+          : (result.message || 'Verification email resent! Check your inbox.')
+      });
+      if (result._devVerificationLink) {
+        setDevVerificationLink(result._devVerificationLink);
+      }
     } catch (err) {
       setResendMessage({ type: 'error', text: err.message || 'Failed to resend. Please try again.' });
     } finally {
@@ -199,10 +244,10 @@ export default function SignupPage() {
                 </div>
               )}
 
-              {/* Dev verification link (only in development) */}
+              {/* Verification link */}
               {devVerificationLink && (
                 <div className="p-3 rounded-xl border bg-amber-950/40 border-amber-800/60 text-amber-300 text-xs">
-                  <p className="font-bold mb-1">🔧 Dev Mode — Verification Link:</p>
+                  <p className="font-bold mb-1">🔗 Direct Verification Link:</p>
                   <a
                     href={devVerificationLink}
                     className="text-amber-200 underline break-all text-[10px]"

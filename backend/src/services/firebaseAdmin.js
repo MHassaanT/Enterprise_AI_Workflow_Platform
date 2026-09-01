@@ -11,7 +11,7 @@ function initializeFirebase() {
   if (firebaseInitialized) return;
 
   try {
-    const base64ServiceAccount = process.env.FIREBASE_BASE64_SERVICE_ACCOUNT;
+    const base64ServiceAccount = process.env.FIREBASE_BASE64_ADMIN_KEY || process.env.FIREBASE_BASE64_SERVICE_ACCOUNT;
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
     if (base64ServiceAccount) {
