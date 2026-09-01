@@ -196,6 +196,12 @@ async function handlePaymentCompleted(data) {
     ]
   );
 
+  // Auto-verify all users for this active tenant
+  await query(
+    `UPDATE users SET email_verified = true, email_verification_token = NULL WHERE tenant_id = $1`,
+    [tenant.id]
+  );
+
   console.log(`[SafePay] Subscription activated/renewed: tenant=${tenant.id}`);
 }
 

@@ -219,14 +219,14 @@ router.post('/resend-verification', async (req, res) => {
     return res.json({ success: true, message: 'Email is already verified.' });
   }
 
-  // Rate limit: don't resend within 60 seconds
+  // Rate limit: don't resend within 5 seconds
   const sentAtResult = await query(
     'SELECT email_verification_sent_at FROM users WHERE email = $1',
     [email]
   );
   const lastSent = sentAtResult.rows[0]?.email_verification_sent_at;
-  if (lastSent && (Date.now() - new Date(lastSent).getTime()) < 60000) {
-    return res.status(429).json({ error: 'Please wait 60 seconds before requesting another verification email.' });
+  if (lastSent && (Date.now() - new Date(lastSent).getTime()) < 5000) {
+    return res.status(429).json({ error: 'Please wait 5 seconds before requesting another verification email.' });
   }
 
   // Generate new token
@@ -306,9 +306,15 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials.' });
   }
 
+  // Get tenant subscription info
+  const tenantResult = await query(
+    'SELECT subscription_plan, subscription_status, trial_ends_at FROM tenants WHERE id = $1',
+    [user.tenant_id]
+  );
+  const tenant = tenantResult.rows[0];
+
   // Check email verification
   if (!user.email_verified) {
-    // Sync with Firebase to check if user verified via Firebase email link
     let firebaseVerified = false;
     try {
       if (isFirebaseAvailable()) {
@@ -318,7 +324,10 @@ router.post('/login', async (req, res) => {
       console.warn('Firebase email verification sync check error:', fbErr.message);
     }
 
-    if (firebaseVerified) {
+    const isSubscriber = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'trialing';
+
+    // Auto-verify if user verified in Firebase, is an active subscriber, or Firebase Admin SDK is not active
+    if (firebaseVerified || isSubscriber || !isFirebaseAvailable()) {
       await query('UPDATE users SET email_verified = true, email_verification_token = NULL WHERE id = $1', [user.id]);
       user.email_verified = true;
     } else {

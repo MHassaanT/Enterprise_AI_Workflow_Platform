@@ -45,8 +45,13 @@ function LoginPageContent() {
 
   const handleResendVerification = async () => {
     setResendMessage(null);
+    const targetEmail = (resendEmail || email || '').trim();
+    if (!targetEmail) {
+      setResendMessage({ type: 'error', text: 'Please enter your email address in the input above.' });
+      return;
+    }
     try {
-      await resendVerificationEmail(resendEmail);
+      await resendVerificationEmail(targetEmail);
       setResendMessage({ type: 'success', text: 'Verification email resent! Check your inbox.' });
     } catch (err) {
       setResendMessage({ type: 'error', text: err.message || 'Failed to resend.' });
