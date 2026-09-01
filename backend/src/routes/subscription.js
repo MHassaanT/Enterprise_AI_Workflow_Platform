@@ -8,30 +8,43 @@ const { safepay, getPlanId } = require('../services/safepay');
  * GET /api/subscription/status
  */
 router.get('/status', authenticate, async (req, res) => {
-  const tenantId = req.user.tenantId;
-  
-  const result = await query(
-    `SELECT subscription_plan, subscription_status, payment_subscription_id,
-            safepay_plan_id, trial_ends_at, subscription_ends_at,
-            subscription_renews_at, billing_cycle, subscription_updated_at
-     FROM tenants WHERE id = $1`,
-    [tenantId]
-  );
-  
-  const tenant = result.rows[0];
-  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-  
-  res.json({
-    plan: tenant.subscription_plan,
-    status: tenant.subscription_status,
-    subscriptionId: tenant.payment_subscription_id,
-    planId: tenant.safepay_plan_id,
-    trialEndsAt: tenant.trial_ends_at,
-    subscriptionEndsAt: tenant.subscription_ends_at,
-    renewsAt: tenant.subscription_renews_at,
-    billingCycle: tenant.billing_cycle,
-    updatedAt: tenant.subscription_updated_at,
-  });
+  try {
+    let tenantId = req.user?.tenantId || req.user?.tenant_id;
+
+    if (!tenantId && req.user?.id) {
+      const uRes = await query('SELECT tenant_id FROM users WHERE id = $1', [req.user.id]);
+      tenantId = uRes.rows[0]?.tenant_id;
+    }
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID not found for user' });
+    }
+    
+    const result = await query(
+      `SELECT subscription_plan, subscription_status, payment_subscription_id,
+              safepay_plan_id, trial_ends_at, subscription_ends_at,
+              subscription_renews_at, billing_cycle, subscription_updated_at
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    
+    const tenant = result.rows[0] || {};
+    
+    res.json({
+      plan: tenant.subscription_plan || 'none',
+      status: tenant.subscription_status || 'pending_verification',
+      subscriptionId: tenant.payment_subscription_id || null,
+      planId: tenant.safepay_plan_id || null,
+      trialEndsAt: tenant.trial_ends_at || null,
+      subscriptionEndsAt: tenant.subscription_ends_at || null,
+      renewsAt: tenant.subscription_renews_at || null,
+      billingCycle: tenant.billing_cycle || 'monthly',
+      updatedAt: tenant.subscription_updated_at || null,
+    });
+  } catch (err) {
+    console.error('Error in /api/subscription/status:', err);
+    res.status(500).json({ error: 'Failed to load subscription status', details: err.message });
+  }
 });
 
 /**

@@ -25,6 +25,10 @@ pool.connect((err, client, release) => {
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS safepay_reference VARCHAR(255);'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(50) DEFAULT \'safepay\';'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_updated_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS last_payment_at TIMESTAMPTZ;'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(20) DEFAULT \'monthly\';'),
       client.query(`CREATE TABLE IF NOT EXISTS webhook_events (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
