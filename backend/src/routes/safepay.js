@@ -32,19 +32,23 @@ router.post('/checkout', async (req, res) => {
       redirectUrl: `${process.env.FRONTEND_URL || ''}/payment/success`,
     });
 
-    // Store pending subscription record
+    // Store pending subscription record (non-blocking for checkout session generation)
     if (tenantId) {
-      await query(
-        `UPDATE tenants 
-         SET subscription_plan = $1,
-             billing_cycle = $2,
-             safepay_plan_id = $3,
-             safepay_reference = $4,
-             subscription_status = 'trialing',
-             subscription_updated_at = NOW()
-         WHERE id = $5`,
-        [plan, billingCycle, planId, reference, tenantId]
-      );
+      try {
+        await query(
+          `UPDATE tenants 
+           SET subscription_plan = $1,
+               billing_cycle = $2,
+               safepay_plan_id = $3,
+               safepay_reference = $4,
+               subscription_status = 'trialing',
+               subscription_updated_at = NOW()
+           WHERE id = $5`,
+          [plan, billingCycle, planId, reference, tenantId]
+        );
+      } catch (dbErr) {
+        console.warn('[SafePay Checkout] DB update warning:', dbErr.message);
+      }
     }
 
     res.json({ checkoutUrl: url, reference });

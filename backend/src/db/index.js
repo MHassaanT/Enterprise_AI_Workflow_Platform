@@ -19,8 +19,23 @@ pool.connect((err, client, release) => {
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS geofence_radius_meters INTEGER DEFAULT 200;'),
       client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS office_allowed_ips JSONB DEFAULT \'[]\'::jsonb;'),
       client.query('ALTER TABLE approval_requests DISABLE ROW LEVEL SECURITY;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_subscription_id VARCHAR(255);'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_customer_id VARCHAR(255);'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS safepay_plan_id VARCHAR(255);'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS safepay_reference VARCHAR(255);'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(50) DEFAULT \'safepay\';'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_renews_at TIMESTAMPTZ;'),
+      client.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_cycle VARCHAR(20) DEFAULT \'monthly\';'),
+      client.query(`CREATE TABLE IF NOT EXISTS webhook_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id VARCHAR(255) UNIQUE NOT NULL,
+        event_type VARCHAR(100) NOT NULL,
+        payload JSONB NOT NULL,
+        processed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );`),
     ])
-      .then(() => console.log('✅ HR & Attendance columns verified'))
+      .then(() => console.log('✅ HR & SafePay database columns verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }
