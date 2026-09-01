@@ -25,11 +25,30 @@ router.post('/checkout', async (req, res) => {
     // Generate a unique reference for reconciliation
     const reference = `${tenantId || 'unknown'}-${userId || 'unknown'}-${Date.now()}`;
 
+    // Determine base frontend URL dynamically if FRONTEND_URL env is missing
+    const rawOrigin = req.headers.origin || req.headers.referer;
+    let baseUrl = process.env.FRONTEND_URL;
+    if (!baseUrl && rawOrigin) {
+      try {
+        const parsed = new URL(rawOrigin);
+        baseUrl = parsed.origin;
+      } catch (e) {
+        baseUrl = rawOrigin.replace(/\/$/, '');
+      }
+    }
+    if (!baseUrl) {
+      baseUrl = 'https://enterprise-ai-workflow-platform.vercel.app';
+    }
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+
+    const cancelUrl = `${cleanBaseUrl}/subscribe`;
+    const redirectUrl = `${cleanBaseUrl}/login?payment=success`;
+
     const url = await safepay.checkout.createSubscription({
       planId,
       reference,
-      cancelUrl: `${process.env.FRONTEND_URL || ''}/payment/cancel`,
-      redirectUrl: `${process.env.FRONTEND_URL || ''}/payment/success`,
+      cancelUrl,
+      redirectUrl,
     });
 
     // Store pending subscription record (non-blocking for checkout session generation)

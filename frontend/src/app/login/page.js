@@ -1,10 +1,14 @@
 'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { login, resendVerificationEmail } from '@/lib/api';
-import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
+import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { login, resendVerificationEmail } from '@/lib/api';
+
+function LoginPageContent() {
+  const searchParams = useSearchParams();
+  const paymentSuccess = searchParams.get('payment') === 'success';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -29,7 +33,6 @@ export default function LoginPage() {
     } catch (err) {
       const message = err.message || 'Authentication failed. Please verify your credentials.';
 
-      // Check if it's an email verification error
       if (message.toLowerCase().includes('verify your email')) {
         setShowResendVerification(true);
         setResendEmail(email.trim());
@@ -70,6 +73,19 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Success Banner when returning from SafePay payment */}
+        {paymentSuccess && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 text-sm font-semibold flex items-center gap-3 shadow-lg animate-fade-in">
+            <span className="material-symbols-outlined text-2xl text-emerald-400">check_circle</span>
+            <div>
+              <p className="font-bold text-white">Payment Successful! 🎉</p>
+              <p className="text-xs text-emerald-200/80 font-normal">
+                Your subscription has been processed. Sign in below to access your workspace.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Login Form Container */}
         <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
           {error && (
@@ -78,7 +94,6 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <span>{error}</span>
 
-                {/* Resend Verification Link */}
                 {showResendVerification && (
                   <div className="pt-2 border-t border-error/20">
                     <button
@@ -162,5 +177,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }
