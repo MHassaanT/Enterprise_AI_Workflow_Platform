@@ -28,6 +28,7 @@ export default function Sidebar() {
   // Full nav items list — agents are filtered by plan
   const allNavItems = [
     { label: 'Dashboard', href: '/dashboard', icon: 'dashboard', isAgent: false },
+    { label: 'Onboarding Setup', href: '/onboard', icon: 'rocket_launch', isAgent: false },
     { label: 'Customer Support Agent', href: '/chat', icon: 'forum', isAgent: true },
     { label: 'Sales Agent', href: '/sales', icon: 'trending_up', isAgent: true },
     { label: 'Procurement Agent', href: '/procurement', icon: 'shopping_cart', isAgent: true },

@@ -19,6 +19,7 @@ export const PLAN_AGENT_ACCESS = {
  */
 export const ALWAYS_ACCESSIBLE_ROUTES = [
   '/dashboard',
+  '/onboard',
   '/approvals',
   '/widget-setup',
   '/mcp',

@@ -59,11 +59,17 @@ function PaymentSuccessContent() {
         {status === 'success' && (
           <>
             <span className="material-symbols-outlined text-6xl text-emerald-400 mb-2">check_circle</span>
-            <h1 className="text-2xl font-bold text-on-surface">Payment Successful!</h1>
-            <p className="text-on-surface-variant text-sm mt-2">Your subscription is now active.</p>
-            <Link href="/dashboard" className="mt-6 inline-block px-6 py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg hover:bg-primary-container transition-all">
-              Go to Dashboard
-            </Link>
+            <h1 className="text-2xl font-bold text-on-surface">Payment Successful! 🎉</h1>
+            <p className="text-on-surface-variant text-sm mt-2">Your subscription is now active. Let&apos;s set up your AI agents.</p>
+            <div className="flex flex-col gap-3 mt-6">
+              <Link href="/onboard" className="w-full py-3.5 px-6 bg-primary text-on-primary font-bold text-sm rounded-xl shadow-lg hover:bg-primary-container transition-all flex items-center justify-center gap-2">
+                <span>Start Agent Onboarding Setup</span>
+                <span className="material-symbols-outlined text-lg">rocket_launch</span>
+              </Link>
+              <Link href="/dashboard" className="w-full py-2.5 px-4 bg-surface-container border border-outline-variant text-on-surface-variant font-semibold text-xs rounded-xl hover:bg-surface-container-high transition-colors">
+                Skip to Workspace Dashboard
+              </Link>
+            </div>
           </>
         )}
         {status === 'pending' && (
@@ -71,9 +77,15 @@ function PaymentSuccessContent() {
             <span className="material-symbols-outlined text-6xl text-amber-400 mb-2">schedule</span>
             <h1 className="text-2xl font-bold text-on-surface">Payment Processing</h1>
             <p className="text-on-surface-variant text-sm mt-2">Your payment is being processed by SafePay. We&apos;ll update your account shortly.</p>
-            <Link href="/dashboard" className="mt-6 inline-block px-6 py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg hover:bg-primary-container transition-all">
-              Go to Dashboard
-            </Link>
+            <div className="flex flex-col gap-3 mt-6">
+              <Link href="/onboard" className="w-full py-3.5 px-6 bg-primary text-on-primary font-bold text-sm rounded-xl shadow-lg hover:bg-primary-container transition-all flex items-center justify-center gap-2">
+                <span>Proceed to Agent Onboarding</span>
+                <span className="material-symbols-outlined text-lg">arrow_forward</span>
+              </Link>
+              <Link href="/dashboard" className="w-full py-2.5 px-4 bg-surface-container border border-outline-variant text-on-surface-variant font-semibold text-xs rounded-xl hover:bg-surface-container-high transition-colors">
+                Go to Dashboard
+              </Link>
+            </div>
           </>
         )}
         {status === 'error' && (
