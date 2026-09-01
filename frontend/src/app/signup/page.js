@@ -58,11 +58,12 @@ export default function SignupPage() {
   const [paddle, setPaddle] = useState(null);
 
   useEffect(() => {
-    const environment = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT || 'sandbox';
+    const envVar = process.env.NEXT_PUBLIC_PADDLE_ENV || process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
+    const environment = envVar === 'sandbox' ? 'sandbox' : 'production';
     const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || '';
 
     initializePaddle({
-      environment: environment === 'production' ? 'production' : 'sandbox',
+      environment,
       token,
     }).then((instance) => {
       if (instance) {
@@ -205,6 +206,9 @@ export default function SignupPage() {
             successUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/login?payment=success`,
           },
           eventCallback: (event) => {
+            if (event.name === 'checkout.closed' && event.data?.status !== 'completed') {
+              setPageState('form');
+            }
             if (event.name === 'checkout.completed') {
               setPageState('success');
             }
