@@ -9,40 +9,48 @@ const { safepay, getPlanId } = require('../services/safepay');
  */
 router.post('/checkout', async (req, res) => {
   try {
-    const { plan, billingCycle = 'monthly', tenantId, userId } = req.body;
+    const body = req.body || {};
+    const { plan, billingCycle = 'monthly', tenantId, userId } = body;
     
+    if (!plan) {
+      return res.status(400).json({ error: 'Plan parameter is required' });
+    }
+
     const planId = getPlanId(plan, billingCycle);
     if (!planId) {
-      return res.status(400).json({ error: 'Invalid plan or billing cycle' });
+      console.warn(`[SafePay Checkout] Missing planId for plan '${plan}', cycle '${billingCycle}'. Check environment variables.`);
+      return res.status(400).json({ error: `Invalid plan (${plan}) or billing cycle (${billingCycle})` });
     }
 
     // Generate a unique reference for reconciliation
-    const reference = `${tenantId}-${userId}-${Date.now()}`;
+    const reference = `${tenantId || 'unknown'}-${userId || 'unknown'}-${Date.now()}`;
 
     const url = await safepay.checkout.createSubscription({
       planId,
       reference,
-      cancelUrl: `${process.env.FRONTEND_URL}/payment/cancel`,
-      redirectUrl: `${process.env.FRONTEND_URL}/payment/success`,
+      cancelUrl: `${process.env.FRONTEND_URL || ''}/payment/cancel`,
+      redirectUrl: `${process.env.FRONTEND_URL || ''}/payment/success`,
     });
 
     // Store pending subscription record
-    await query(
-      `UPDATE tenants 
-       SET subscription_plan = $1,
-           billing_cycle = $2,
-           safepay_plan_id = $3,
-           safepay_reference = $4,
-           subscription_status = 'trialing',
-           subscription_updated_at = NOW()
-       WHERE id = $5`,
-      [plan, billingCycle, planId, reference, tenantId]
-    );
+    if (tenantId) {
+      await query(
+        `UPDATE tenants 
+         SET subscription_plan = $1,
+             billing_cycle = $2,
+             safepay_plan_id = $3,
+             safepay_reference = $4,
+             subscription_status = 'trialing',
+             subscription_updated_at = NOW()
+         WHERE id = $5`,
+        [plan, billingCycle, planId, reference, tenantId]
+      );
+    }
 
     res.json({ checkoutUrl: url, reference });
   } catch (err) {
-    console.error('SafePay checkout error:', err);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error('SafePay checkout error details:', err?.response?.data || err.stack || err);
+    res.status(500).json({ error: err.message || 'Failed to create checkout session' });
   }
 });
 

@@ -33,21 +33,27 @@ const { requirePlanAccess } = require('./middleware/subscriptionGuard');
 
 const app = express();
 
-// ── PADDLE WEBHOOK (must be BEFORE express.json — needs raw body for signature verification) ──
-app.use('/api/safepay', safepayRoutes);
-
 // ── MIDDLEWARE ──
 // Configure helmet to allow cross-origin resource embedding for widget.js
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 app.use(cors());
-app.use(express.json());
+
+// Parse JSON body for all routes EXCEPT SafePay webhook (which requires raw body bytes)
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/safepay/webhook') {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
 // ── STATIC PUBLIC ASSETS (widget.js, demo.html) ──
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ── ROUTES ──
+app.use('/api/safepay', safepayRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/documents', documentRoutes);
