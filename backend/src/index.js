@@ -25,7 +25,7 @@ const procurementRoutes = require('./routes/procurement');
 const financeRoutes = require('./routes/finance');
 const codingRoutes = require('./routes/coding');
 const analyticsRoutes = require('./routes/analytics');
-const paddleRoutes = require('./routes/paddle');
+const safepayRoutes = require('./routes/safepay');
 const subscriptionRoutes = require('./routes/subscription');
 
 const { authenticate } = require('./middleware/auth');
@@ -34,7 +34,7 @@ const { requirePlanAccess } = require('./middleware/subscriptionGuard');
 const app = express();
 
 // ── PADDLE WEBHOOK (must be BEFORE express.json — needs raw body for signature verification) ──
-app.use('/api/paddle', paddleRoutes);
+app.use('/api/safepay', safepayRoutes);
 
 // ── MIDDLEWARE ──
 // Configure helmet to allow cross-origin resource embedding for widget.js

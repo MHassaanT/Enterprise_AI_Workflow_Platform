@@ -8,7 +8,8 @@ const PLANS = [
   {
     id: 'basic',
     name: 'Basic',
-    price: '$50/mo',
+    monthlyPrice: 'PKR 5,000/mo',
+    yearlyPrice: 'PKR 55,000/yr',
     agents: ['Customer Support Agent', 'HR Agent', 'PM Agent'],
     icon: 'rocket_launch',
     color: 'blue',
@@ -16,17 +17,19 @@ const PLANS = [
   {
     id: 'pro',
     name: 'Pro',
-    price: '$75/mo',
-    agents: ['Everything in Basic', 'Coding Agent', 'Workflow Builder Agent'],
-    icon: 'auto_awesome',
+    monthlyPrice: 'PKR 7,500/mo',
+    yearlyPrice: 'PKR 82,500/yr',
+    agents: ['Customer Support Agent', 'HR Agent', 'PM Agent', 'Sales Agent', 'Marketing Agent'],
+    icon: 'workspace_premium',
     color: 'violet',
     popular: true,
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    price: '$110/mo',
-    agents: ['Everything in Pro', 'Sales Agent', 'Procurement Agent', 'Finance Agent', 'Analytics Agent'],
+    monthlyPrice: 'PKR 11,000/mo',
+    yearlyPrice: 'PKR 121,000/yr',
+    agents: ['Customer Support Agent', 'HR Agent', 'PM Agent', 'Sales Agent', 'Marketing Agent', 'Finance Agent'],
     icon: 'corporate_fare',
     color: 'amber',
   },
@@ -48,6 +51,7 @@ export default function BillingPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export default function BillingPage() {
       const res = await fetch('/api/subscription/status', {
         headers: { ...getAuthHeader() },
       });
-      if (!res.ok) throw new Error('Failed to load subscription');
+      if (!res.ok) throw new Error('Failed to load subscription status');
       const data = await res.json();
       setSubscription(data);
     } catch (err) {
@@ -77,22 +81,71 @@ export default function BillingPage() {
     setSuccess(null);
 
     try {
+      const billingCycle = subscription?.billingCycle || 'monthly';
       const res = await fetch('/api/subscription/change-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ newPlan }),
+        body: JSON.stringify({ newPlan, billingCycle }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setSuccess(data.message);
+      if (!res.ok) throw new Error(data.error || 'Failed to change plan');
 
-      // Update local user data
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      setSuccess(data.message || 'Plan changed successfully.');
+
       const currentUser = getUser();
       if (currentUser) {
         currentUser.subscriptionPlan = newPlan;
         localStorage.setItem('ai_platform_user', JSON.stringify(currentUser));
       }
 
+      await loadSubscription();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePause = async () => {
+    setActionLoading('pause');
+    setError(null);
+    setSuccess(null);
+    setShowPauseModal(false);
+
+    try {
+      const res = await fetch('/api/subscription/pause', {
+        method: 'POST',
+        headers: { ...getAuthHeader() },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to pause subscription');
+      setSuccess(data.message || 'Subscription paused.');
+      await loadSubscription();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResume = async () => {
+    setActionLoading('resume');
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch('/api/subscription/resume', {
+        method: 'POST',
+        headers: { ...getAuthHeader() },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to resume subscription');
+      setSuccess(data.message || 'Subscription resumed.');
       await loadSubscription();
     } catch (err) {
       setError(err.message);
@@ -113,48 +166,9 @@ export default function BillingPage() {
         headers: { ...getAuthHeader() },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setSuccess(data.message);
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel subscription');
+      setSuccess(data.message || 'Subscription canceled.');
       await loadSubscription();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleResume = async () => {
-    setActionLoading('resume');
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const res = await fetch('/api/subscription/resume', {
-        method: 'POST',
-        headers: { ...getAuthHeader() },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setSuccess(data.message);
-      await loadSubscription();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleUpdatePayment = async () => {
-    setActionLoading('payment');
-    try {
-      const res = await fetch('/api/subscription/update-payment-url', {
-        headers: { ...getAuthHeader() },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      if (data.url) {
-        window.open(data.url, '_blank');
-      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -163,7 +177,8 @@ export default function BillingPage() {
   };
 
   const statusInfo = STATUS_LABELS[subscription?.status] || STATUS_LABELS.pending_verification;
-  const isActive = ['active', 'trialing'].includes(subscription?.status);
+  const isActive = subscription?.status === 'active';
+  const isPaused = subscription?.status === 'paused';
   const isCanceled = subscription?.status === 'canceled';
 
   return (
@@ -177,7 +192,7 @@ export default function BillingPage() {
               <h1 className="font-display-lg text-3xl font-extrabold text-on-surface">Billing & Subscription</h1>
             </div>
             <p className="font-body-md text-on-surface-variant">
-              Manage your subscription plan, billing details, and payment methods.
+              Manage your SafePay automated subscription plan, status, and billing lifecycle.
             </p>
           </header>
 
@@ -198,7 +213,10 @@ export default function BillingPage() {
           )}
 
           {loading ? (
-            <div className="text-center py-20 text-on-surface-variant">Loading billing information...</div>
+            <div className="text-center py-20 text-on-surface-variant flex items-center justify-center gap-2">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span>Loading billing information...</span>
+            </div>
           ) : (
             <div className="space-y-8">
               {/* Current Plan Overview */}
@@ -214,23 +232,28 @@ export default function BillingPage() {
                     <p className="font-display-lg text-3xl font-extrabold text-on-surface capitalize">
                       {subscription?.plan || 'None'}
                     </p>
-                    {subscription?.trialEndsAt && subscription?.status === 'trialing' && (
+                    {subscription?.renewsAt && isActive && (
                       <p className="font-body-md text-sm text-on-surface-variant mt-1">
-                        Trial ends: <span className="text-primary font-semibold">{new Date(subscription.trialEndsAt).toLocaleDateString()}</span>
+                        Renews on: <span className="text-primary font-semibold">{new Date(subscription.renewsAt).toLocaleDateString()}</span>
+                      </p>
+                    )}
+                    {subscription?.subscriptionEndsAt && isCanceled && (
+                      <p className="font-body-md text-sm text-on-surface-variant mt-1">
+                        Access expires: <span className="text-amber-400 font-semibold">{new Date(subscription.subscriptionEndsAt).toLocaleDateString()}</span>
                       </p>
                     )}
                   </div>
 
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-wrap">
                     {isActive && (
                       <>
                         <button
-                          onClick={handleUpdatePayment}
-                          disabled={actionLoading === 'payment'}
+                          onClick={() => setShowPauseModal(true)}
+                          disabled={actionLoading === 'pause'}
                           className="px-4 py-2 bg-surface-container-high border border-outline-variant rounded-xl text-on-surface font-label-md text-sm hover:bg-surface-container-highest transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
-                          <span className="material-symbols-outlined text-base">credit_card</span>
-                          Update Payment
+                          <span className="material-symbols-outlined text-base">pause</span>
+                          Pause Plan
                         </button>
                         <button
                           onClick={() => setShowCancelModal(true)}
@@ -241,6 +264,20 @@ export default function BillingPage() {
                           Cancel Plan
                         </button>
                       </>
+                    )}
+                    {isPaused && (
+                      <button
+                        onClick={handleResume}
+                        disabled={actionLoading === 'resume'}
+                        className="px-4 py-2 bg-primary hover:bg-primary-container text-on-primary rounded-xl font-label-md text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {actionLoading === 'resume' ? (
+                          <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                        ) : (
+                          <span className="material-symbols-outlined text-base">play_arrow</span>
+                        )}
+                        Resume Plan
+                      </button>
                     )}
                     {isCanceled && (
                       <button
@@ -253,7 +290,7 @@ export default function BillingPage() {
                         ) : (
                           <span className="material-symbols-outlined text-base">play_arrow</span>
                         )}
-                        Resume Subscription
+                        Reactivate Subscription
                       </button>
                     )}
                   </div>
@@ -269,6 +306,7 @@ export default function BillingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {PLANS.map((plan) => {
                     const isCurrent = subscription?.plan === plan.id;
+                    const priceDisplay = subscription?.billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
                     return (
                       <div
                         key={plan.id}
@@ -285,12 +323,12 @@ export default function BillingPage() {
                         )}
 
                         <h3 className="font-headline-md text-lg font-bold text-on-surface mb-1">{plan.name}</h3>
-                        <p className="font-display-lg text-2xl font-extrabold text-on-surface mb-3">{plan.price}</p>
+                        <p className="font-display-lg text-2xl font-extrabold text-on-surface mb-3">{priceDisplay}</p>
 
                         <div className="space-y-1.5 mb-4">
                           {plan.agents.map((agent, idx) => (
                             <div key={idx} className="flex items-center gap-2 font-body-md text-xs text-on-surface-variant">
-                              <span className="material-symbols-outlined text-xs text-primary">check</span>
+                              <span className="material-symbols-outlined text-xs text-emerald-400">check_circle</span>
                               {agent}
                             </div>
                           ))}
@@ -303,17 +341,14 @@ export default function BillingPage() {
                         ) : (
                           <button
                             onClick={() => handleChangePlan(plan.id)}
-                            disabled={!!actionLoading || !isActive}
+                            disabled={!!actionLoading}
                             className="w-full py-2.5 bg-surface-container-high border border-outline-variant rounded-xl text-on-surface font-label-md text-xs font-semibold hover:bg-surface-container-highest transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                           >
                             {actionLoading === plan.id ? (
                               <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
                             ) : (
                               <>
-                                {subscription?.plan && PLANS.findIndex(p => p.id === subscription.plan) < PLANS.findIndex(p => p.id === plan.id)
-                                  ? 'Upgrade'
-                                  : 'Switch'
-                                } to {plan.name}
+                                Switch to {plan.name}
                               </>
                             )}
                           </button>
@@ -324,11 +359,11 @@ export default function BillingPage() {
                 </div>
               </section>
 
-              {/* Billing Info */}
+              {/* Billing Details */}
               <section className="bg-surface-container-low border border-outline-variant rounded-2xl p-6">
                 <h2 className="font-headline-md text-lg font-bold text-on-surface mb-4 flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary">receipt_long</span>
-                  Billing Details
+                  SafePay Details
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-body-md text-sm">
                   <div>
@@ -336,8 +371,21 @@ export default function BillingPage() {
                     <p className="text-on-surface font-semibold">{user?.email || '—'}</p>
                   </div>
                   <div>
-                    <span className="text-on-surface-variant text-xs">Plan</span>
-                    <p className="text-on-surface font-semibold capitalize">{subscription?.plan || 'None'}</p>
+                    <span className="text-on-surface-variant text-xs">Payment Provider</span>
+                    <p className="text-on-surface font-semibold flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-emerald-400">verified</span>
+                      SafePay Sandbox / Live
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant text-xs">Billing Cycle</span>
+                    <p className="text-on-surface font-semibold capitalize">{subscription?.billingCycle || 'monthly'}</p>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant text-xs">SafePay Subscription ID</span>
+                    <p className="text-on-surface font-mono font-semibold text-xs break-all">
+                      {subscription?.subscriptionId || '—'}
+                    </p>
                   </div>
                   <div>
                     <span className="text-on-surface-variant text-xs">Status</span>
@@ -361,17 +409,53 @@ export default function BillingPage() {
             </div>
           )}
 
+          {/* Pause Confirmation Modal */}
+          {showPauseModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
+              <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 shadow-2xl max-w-md w-full">
+                <div className="text-center space-y-4">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 mx-auto">
+                    <span className="material-symbols-outlined text-amber-400 text-3xl">pause_circle</span>
+                  </div>
+                  <h3 className="font-headline-md text-xl font-bold text-on-surface">Pause Subscription?</h3>
+                  <p className="font-body-md text-sm text-on-surface-variant">
+                    Pausing will temporarily stop automatic recurring charges on your SafePay subscription. You can resume anytime.
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShowPauseModal(false)}
+                      className="flex-1 py-3 bg-surface-container-high border border-outline-variant rounded-xl text-on-surface font-label-md text-sm font-semibold hover:bg-surface-container-highest transition-colors"
+                    >
+                      Keep Active
+                    </button>
+                    <button
+                      onClick={handlePause}
+                      disabled={actionLoading === 'pause'}
+                      className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-label-md text-sm font-bold hover:bg-amber-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {actionLoading === 'pause' ? (
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      ) : (
+                        'Yes, Pause'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Cancel Confirmation Modal */}
           {showCancelModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
-              <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
+              <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-6 shadow-2xl max-w-md w-full">
                 <div className="text-center space-y-4">
                   <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-error-container/20 border border-error/30 mx-auto">
                     <span className="material-symbols-outlined text-error text-3xl">warning</span>
                   </div>
                   <h3 className="font-headline-md text-xl font-bold text-on-surface">Cancel Subscription?</h3>
                   <p className="font-body-md text-sm text-on-surface-variant">
-                    Your subscription will remain active until the end of the current billing period. After that, you'll lose access to all AI agents.
+                    Your SafePay subscription will be canceled. Your agent access will continue until the end of the current billing period.
                   </p>
                   <div className="flex gap-3 pt-2">
                     <button

@@ -1,21 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { initializePaddle } from '@paddle/paddle-js';
 import { register, resendVerificationEmail } from '@/lib/api';
 
-const PRICE_IDS = {
-  basic: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_BASIC || 'pri_01kp5ptvbcrxkrp8zcvxnv7250',
-  pro: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_PRO || 'pri_01kp5py10knnk7gr62cfk7sbxe',
-  enterprise: process.env.NEXT_PUBLIC_PADDLE_PRICE_ID_ENTERPRISE || 'pri_01kp5py10knnk7gr62cfk7sbxe',
-};
-
 const PLANS = [
-  { id: 'basic', name: 'Basic', priceLabel: '$50/mo', desc: 'Core AI Agents for small teams' },
-  { id: 'pro', name: 'Pro', priceLabel: '$75/mo', desc: 'Full AI Workforce & Workflow Builder', popular: true },
-  { id: 'enterprise', name: 'Enterprise', priceLabel: '$110/mo', desc: 'Custom Agents & Dedicated Support' },
+  { id: 'basic', name: 'Basic', priceLabel: 'PKR 5,000/mo', desc: 'Core AI Agents for small teams' },
+  { id: 'pro', name: 'Pro', priceLabel: 'PKR 7,500/mo', desc: 'Full AI Workforce & Workflow Builder', popular: true },
+  { id: 'enterprise', name: 'Enterprise', priceLabel: 'PKR 11,000/mo', desc: 'Custom Agents & Dedicated Support' },
 ];
 
 export default function SignupPage() {
@@ -53,35 +46,6 @@ export default function SignupPage() {
   const [createdAccountData, setCreatedAccountData] = useState(null);
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState(null);
-
-  // Paddle Instance
-  const [paddle, setPaddle] = useState(null);
-
-  useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || '';
-    const envVar = process.env.NEXT_PUBLIC_PADDLE_ENV || process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
-    
-    // Auto-detect environment based on client token prefix (test_ -> sandbox, live_ -> production)
-    let environment = 'production';
-    if (token.startsWith('test_')) {
-      environment = 'sandbox';
-    } else if (envVar === 'sandbox') {
-      environment = 'sandbox';
-    }
-
-    console.log(`[Paddle Init] Initializing Paddle in '${environment}' mode with token: '${token ? token.slice(0, 8) + '...' : 'NONE'}'`);
-
-    initializePaddle({
-      environment,
-      token,
-    }).then((instance) => {
-      if (instance) {
-        setPaddle(instance);
-      }
-    }).catch((err) => {
-      console.warn('Paddle initialization notice:', err);
-    });
-  }, []);
 
   const handleCrawlWebsite = async (e) => {
     e?.preventDefault();
@@ -137,7 +101,7 @@ export default function SignupPage() {
       return;
     }
     if (!acceptTerms) {
-      setError('You must accept the Terms and Conditions & Privacy Policy to sign up.');
+      setError('You must accept the Terms of Service & Privacy Policy to sign up.');
       return;
     }
 
@@ -195,40 +159,32 @@ export default function SignupPage() {
   const handleProceedToPayment = async () => {
     setShowVerificationModal(false);
     setPageState('pending');
+    setError(null);
 
-    const priceId = PRICE_IDS[selectedPlan] || PRICE_IDS.pro;
+    try {
+      const res = await fetch('/api/safepay/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: selectedPlan,
+          billingCycle: 'monthly',
+          tenantId: createdAccountData?.tenant?.id,
+          userId: createdAccountData?.user?.id,
+        }),
+      });
 
-    const customData = {
-      tenant_id: createdAccountData?.tenant?.id || '',
-      user_id: createdAccountData?.user?.id || '',
-      plan: selectedPlan,
-      email: registeredEmail,
-    };
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Checkout initialization failed');
 
-    if (paddle) {
-      try {
-        paddle.Checkout.open({
-          items: [{ priceId: priceId, quantity: 1 }],
-          customer: { email: registeredEmail },
-          customData,
-          settings: {
-            successUrl: `${typeof window !== 'undefined' ? window.location.origin : ''}/login?payment=success`,
-          },
-          eventCallback: (event) => {
-            if (event.name === 'checkout.closed' && event.data?.status !== 'completed') {
-              setPageState('form');
-            }
-            if (event.name === 'checkout.completed') {
-              setPageState('success');
-            }
-          },
-        });
-      } catch (err) {
-        console.error('Paddle open error:', err);
-        router.push(`/subscribe?email=${encodeURIComponent(registeredEmail)}`);
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error('No checkout URL returned from SafePay');
       }
-    } else {
-      router.push(`/subscribe?email=${encodeURIComponent(registeredEmail)}`);
+    } catch (err) {
+      console.error('SafePay checkout error:', err);
+      setError(err.message || 'Failed to initiate SafePay checkout.');
+      setPageState('form');
     }
   };
 
@@ -290,7 +246,7 @@ export default function SignupPage() {
                   {registeredEmail}
                 </p>
                 <p className="font-body-md text-xs text-on-surface-variant mt-3">
-                  Please check your inbox (and spam folder). You can verify your email before or after completing your subscription payment.
+                  Please check your inbox. You can verify your email before or after completing your subscription payment.
                 </p>
               </div>
 
@@ -332,7 +288,7 @@ export default function SignupPage() {
                   onClick={handleProceedToPayment}
                   className="w-full py-3 px-6 bg-primary text-on-primary font-label-md text-sm font-bold rounded-xl hover:bg-primary-container transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
                 >
-                  <span>Proceed to Payment</span>
+                  <span>Proceed to SafePay Payment</span>
                   <span className="material-symbols-outlined text-base">arrow_forward</span>
                 </button>
 
@@ -356,9 +312,9 @@ export default function SignupPage() {
               <span className="material-symbols-outlined text-primary text-3xl">payments</span>
             </div>
             <div>
-              <h2 className="font-display-lg text-2xl font-bold text-on-surface mb-2">Complete Your Payment</h2>
+              <h2 className="font-display-lg text-2xl font-bold text-on-surface mb-2">Redirecting to SafePay...</h2>
               <p className="font-body-md text-sm text-on-surface-variant">
-                Please complete the checkout in the payment window to activate your subscription plan.
+                Please complete checkout on SafePay to activate your subscription plan.
               </p>
             </div>
             <button
@@ -367,29 +323,6 @@ export default function SignupPage() {
             >
               Skip to Sign In ↗
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── PAYMENT CONFIRMED / SUCCESS STATE ── */}
-      {pageState === 'success' && (
-        <div className="max-w-md mx-auto w-full text-center space-y-6 my-auto">
-          <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-8 shadow-2xl space-y-6">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto">
-              <span className="material-symbols-outlined text-emerald-400 text-4xl">check_circle</span>
-            </div>
-            <div>
-              <h2 className="font-display-lg text-2xl font-bold text-on-surface mb-2">Payment Confirmed!</h2>
-              <p className="font-body-md text-sm text-on-surface-variant">
-                Your subscription has been set up. Please verify your email from your inbox before logging in to your account.
-              </p>
-            </div>
-            <Link
-              href="/login"
-              className="w-full inline-block py-3 px-6 bg-primary text-on-primary font-label-md text-sm font-bold rounded-xl hover:bg-primary-container transition-all shadow-lg shadow-primary/20"
-            >
-              Go to Sign In
-            </Link>
           </div>
         </div>
       )}
@@ -405,7 +338,7 @@ export default function SignupPage() {
               </div>
             </Link>
             <h1 className="font-display-lg text-3xl font-extrabold text-on-surface tracking-tight">
-              Start your free trial
+              Start your subscription
             </h1>
             <p className="font-body-md text-on-surface-variant text-sm mt-2">
               Create your Enterprise AI account — select your plan and verify your email.
