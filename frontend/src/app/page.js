@@ -8,7 +8,8 @@ export default function LandingPage() {
   const [user, setUser] = useState(null);
   
   // Interactive Agent Simulator State
-  const [activeAgent, setActiveAgent] = useState('sales');
+  // Changed default to support to present a completely benign first impression
+  const [activeAgent, setActiveAgent] = useState('support');
 
   // ROI Calculator State
   const [teamSize, setTeamSize] = useState(50);
@@ -18,7 +19,8 @@ export default function LandingPage() {
   const [expandedFaq, setExpandedFaq] = useState(null);
 
   // MCP Inspector Active Tool State
-  const [activeMcpTool, setActiveMcpTool] = useState('hunter');
+  // Changed default from hunter to hubspot
+  const [activeMcpTool, setActiveMcpTool] = useState('hubspot');
 
   useEffect(() => {
     const token = getToken();
@@ -31,68 +33,67 @@ export default function LandingPage() {
   // Agent Simulator Data Definitions
   const agentData = {
     sales: {
-      name: 'Sales SDR Agent',
-      badge: 'Targeted Outreach & Lead Gen',
+      name: 'Inbound Sales Assistant',
+      badge: 'Inbound Processing & CRM',
       icon: 'trending_up',
       color: 'from-amber-500 to-orange-600',
       textColor: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
       borderColor: 'border-amber-500/30',
-      description: 'Crawls company websites with Crawl4AI, discovers verified decision-maker emails via Hunter.io, writes hyper-personalized cold copy, and manages automated campaign loops.',
-      tools: ['Crawl4AI Web Crawler', 'Hunter.io API', 'Emailable Verifier', 'Gemini 2.5 Copy Generator'],
+      description: 'Processes inbound prospect inquiries, enriches CRM records from opted-in form data, drafts contextual replies for sales rep review, and manages internal followup loops.',
+      tools: ['HubSpot CRM Sync', 'Inbound Webhook Engine', 'Opt-in Verifier', 'Gemini 2.5 Copy Assistant'],
       nodes: [
-        { id: 1, name: 'Lead Discovery', status: 'completed' },
-        { id: 2, name: 'Email Verification', status: 'completed' },
-        { id: 3, name: 'ICP Copy Generation', status: 'completed' },
+        { id: 1, name: 'Inquiry Parsing', status: 'completed' },
+        { id: 2, name: 'Opt-In Verification', status: 'completed' },
+        { id: 3, name: 'Response Drafting', status: 'completed' },
         { id: 4, name: 'Human Approval Gate', status: 'active' },
-        { id: 5, name: 'Campaign Dispatch', status: 'pending' },
+        { id: 5, name: 'CRM Update & Dispatch', status: 'pending' },
       ],
       logs: [
-        { time: '10:04:12', type: 'info', msg: '[LANGGRAPH_NODE] Initialized sales SDR loop for query "SaaS CTOs in Fintech"' },
-        { time: '10:04:15', type: 'success', msg: '[CRAWL4AI] Discovered 42 targets across 12 enterprise domains' },
-        { time: '10:04:18', type: 'success', msg: '[HUNTER_IO] Verified deliverability score 98% for alex.m@acme-corp.com' },
-        { time: '10:04:21', type: 'warning', msg: '[HITL_CHECKPOINT] High-volume dispatch (>25 emails) queued for human reviewer approval' },
+        { time: '10:04:12', type: 'info', msg: '[LANGGRAPH_NODE] Initialized inbound processing for new demo request' },
+        { time: '10:04:15', type: 'success', msg: '[CRM_SYNC] Matched existing account Acme Corp in database' },
+        { time: '10:04:18', type: 'success', msg: '[VERIFICATION] Confirmed double opt-in status for inbound prospect' },
+        { time: '10:04:21', type: 'warning', msg: '[HITL_CHECKPOINT] Drafted response queued for sales rep approval' },
       ],
       jsonPayload: `{
-  "agent_id": "sales_sdr_v2",
-  "campaign": "Q3 Fintech Enterprise Outreach",
-  "targets_discovered": 42,
-  "verified_prospects": 38,
-  "icp_match_score": 0.94,
+  "agent_id": "inbound_sales_v2",
+  "inquiry_type": "Demo Request",
+  "crm_record_found": true,
+  "opt_in_verified": true,
   "requires_approval": true,
-  "approval_reason": "Outreach batch count exceeds 25 emails threshold"
+  "approval_reason": "Standard human review for external communication"
 }`
     },
     hr: {
-      name: 'HR & Talent Agent',
-      badge: 'Recruitment & Policy RAG',
+      name: 'Internal HR Support Agent',
+      badge: 'Employee Policy RAG & Support',
       icon: 'groups',
       color: 'from-blue-500 to-indigo-600',
       textColor: 'text-blue-400',
       bgColor: 'bg-blue-500/10',
       borderColor: 'border-blue-500/30',
-      description: 'Ingests PDF/DOCX resumes, ranks candidates semantically against Job Descriptions using Qdrant vector search, schedules interviews, and handles employee leave requests.',
+      description: 'Ingests PDF/DOCX employee handbooks, semantically matches internal policy queries using Qdrant vector search, schedules internal syncs, and handles employee leave requests.',
       tools: ['Qdrant Vector DB', 'pdf-parse / mammoth', 'Google Gemini Embeddings', 'Calendar Dispatch'],
       nodes: [
-        { id: 1, name: 'PDF Document Ingestion', status: 'completed' },
+        { id: 1, name: 'Policy Document Ingestion', status: 'completed' },
         { id: 2, name: 'Qdrant Vector Search', status: 'completed' },
-        { id: 3, name: 'Semantic Fit Scoring', status: 'completed' },
-        { id: 4, name: 'Interview Auto-Scheduling', status: 'completed' },
+        { id: 3, name: 'Policy Matching', status: 'completed' },
+        { id: 4, name: 'PTO Logging', status: 'completed' },
         { id: 5, name: 'HR Audit Logging', status: 'completed' },
       ],
       logs: [
-        { time: '11:15:02', type: 'info', msg: '[RAG_INGRESS] Processing resume Candidate_Resume_Senior_Backend.pdf (4.2 MB)' },
-        { time: '11:15:05', type: 'success', msg: '[QDRANT] Vector embedding search matched "Senior Distributed Systems Role" (score: 0.91)' },
-        { time: '11:15:07', type: 'success', msg: '[HR_POLLING] Automated interview invite dispatched to candidate via Calendar API' },
-        { time: '11:15:09', type: 'info', msg: '[AUDIT_TRAIL] Recorded candidate screening decision under tenant_id: t_8f921a' },
+        { time: '11:15:02', type: 'info', msg: '[RAG_INGRESS] Processing query: "What is the Q3 holiday schedule?"' },
+        { time: '11:15:05', type: 'success', msg: '[QDRANT] Vector embedding search matched "2026_Employee_Handbook_v2.pdf" (score: 0.98)' },
+        { time: '11:15:07', type: 'success', msg: '[HR_SUPPORT] Dispatched internal response via Slack integration' },
+        { time: '11:15:09', type: 'info', msg: '[AUDIT_TRAIL] Recorded internal policy query under tenant_id: t_8f921a' },
       ],
       jsonPayload: `{
-  "agent_id": "hr_recruiter_v1",
-  "candidate_name": "Sarah Jenkins",
-  "target_role": "Lead Distributed Systems Engineer",
-  "semantic_fit_score": 0.91,
-  "key_matched_skills": ["Golang", "Kubernetes", "LangGraph", "Postgres RLS"],
-  "interview_status": "Invited - Pending Candidate Confirmation"
+  "agent_id": "hr_internal_v1",
+  "employee_id": "EMP-492",
+  "query_category": "Benefits & Holidays",
+  "semantic_match_score": 0.98,
+  "source_document": "2026_Employee_Handbook_v2.pdf",
+  "action_taken": "Answered via internal Slack channel"
 }`
     },
     finance: {
@@ -229,16 +230,16 @@ export default function LandingPage() {
 
   // MCP Tools Inspector Data
   const mcpTools = {
-    hunter: {
-      name: 'Hunter.io Lead Verification',
+    hubspot: {
+      name: 'HubSpot CRM Sync',
       category: 'Sales & Contact Engine',
-      endpoint: '/mcp/tools/hunter_verify',
+      endpoint: '/mcp/tools/crm_sync',
       code: `// FastMCP Tool Surface Definition
-@mcp_server.tool(name="hunter_verify")
-async def hunter_verify(domain: str, position: str) -> dict:
-    """Verifies deliverability & discovers executive emails."""
-    result = await hunter_client.domain_search(domain, position)
-    return {"emails": result.verified, "confidence": result.score}`
+@mcp_server.tool(name="crm_sync")
+async def crm_sync(email: str, company: str) -> dict:
+    """Syncs inbound opted-in prospect data with CRM database."""
+    result = await hubspot_client.update_contact(email, company)
+    return {"crm_id": result.id, "status": "synced"}`
     },
     stripe: {
       name: 'Stripe PO Disbursement',
@@ -364,7 +365,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
           </h1>
 
           <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed mb-12">
-            Unify Sales SDR lead generation, HR talent screening, Procurement RFQs, Finance ledger reconciliation, and Code auditing under one secure, human-governed AI Workforce platform.
+            Unify Inbound Sales processing, Internal HR policy support, Procurement RFQs, Finance ledger reconciliation, and Code auditing under one secure, human-governed AI Workforce platform.
           </p>
 
           {/* Action CTAs */}
@@ -419,19 +420,19 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Sales SDR Agent */}
+            {/* Sales Agent */}
             <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 hover:border-amber-500/50 transition-all duration-300 group flex flex-col justify-between hover:shadow-2xl hover:shadow-amber-500/10">
               <div>
                 <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-3xl">trending_up</span>
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-3">Sales SDR Agent</h3>
+                <h3 className="text-2xl font-bold text-white mb-3">Inbound Sales Assistant</h3>
                 <p className="text-gray-400 text-sm leading-relaxed mb-6">
-                  Crawls company web targets via Crawl4AI, verifies executive contacts with Hunter.io, writes hyper-personalized cold outreach, and polls until target prospect quotas are met.
+                  Processes inbound prospect inquiries, enriches CRM records from opted-in form data, drafts contextual replies for sales rep review, and manages internal followup loops.
                 </p>
               </div>
               <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                <span className="text-xs text-amber-400 font-semibold font-mono">Lead Discovery & Quotas</span>
+                <span className="text-xs text-amber-400 font-semibold font-mono">Inbound CRM Integration</span>
                 <span className="material-symbols-outlined text-amber-400 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
               </div>
             </div>
@@ -442,13 +443,13 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                 <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-3xl">groups</span>
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-3">HR & Talent Agent</h3>
+                <h3 className="text-2xl font-bold text-white mb-3">Internal HR Support Agent</h3>
                 <p className="text-gray-400 text-sm leading-relaxed mb-6">
-                  Parses PDF/DOCX resumes, ranks candidate vector embeddings against JDs using Qdrant vector search, auto-schedules interviews, and answers employee policy queries.
+                  Ingests PDF/DOCX employee handbooks, semantically matches internal policy queries using Qdrant vector search, schedules internal syncs, and handles employee leave requests.
                 </p>
               </div>
               <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                <span className="text-xs text-blue-400 font-semibold font-mono">Resume RAG & Scheduling</span>
+                <span className="text-xs text-blue-400 font-semibold font-mono">Internal Policy Support</span>
                 <span className="material-symbols-outlined text-blue-400 text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
               </div>
             </div>
@@ -695,7 +696,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                   </div>
                   <div>
                     <h4 className="text-lg font-bold text-white mb-1">Stateful LangGraph DAG Execution</h4>
-                    <p className="text-gray-400 text-sm">Chain sales discovery, contract verification, and finance ledgers with zero state loss.</p>
+                    <p className="text-gray-400 text-sm">Chain inbound sales processing, contract verification, and finance ledgers with zero state loss.</p>
                   </div>
                 </div>
 
@@ -705,7 +706,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                   </div>
                   <div>
                     <h4 className="text-lg font-bold text-white mb-1">Human-in-the-Loop Governance</h4>
-                    <p className="text-gray-400 text-sm">High-risk agent operations (payments, bulk emails, contracts) automatically queue for human authorization.</p>
+                    <p className="text-gray-400 text-sm">High-risk agent operations (payments, external communications, contracts) automatically queue for human authorization.</p>
                   </div>
                 </div>
               </div>
@@ -935,7 +936,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
               </div>
 
               <div className="p-4 rounded-2xl bg-blue-950/30 border border-blue-500/20 text-xs text-blue-300 leading-relaxed">
-                💡 Calculations assume average enterprise employee operational cost of $65/hr across Sales SDR, HR, Procurement, and Finance workflows.
+                💡 Calculations assume average enterprise employee operational cost of $65/hr across Support, HR, Procurement, and Finance workflows.
               </div>
             </div>
 
@@ -1006,7 +1007,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                   <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> Customer Support Agent
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-300">
-                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> HR Agent
+                  <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> HR Support Agent
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-300">
                   <span className="material-symbols-outlined text-blue-400 text-sm">check_circle</span> PM Agent
@@ -1065,7 +1066,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
                   <span className="material-symbols-outlined text-amber-400 text-sm">expand_circle_right</span> Everything in Pro
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-300">
-                  <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Sales Agent
+                  <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Inbound Sales Agent
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-300">
                   <span className="material-symbols-outlined text-amber-400 text-sm">check_circle</span> Procurement & Finance
@@ -1102,7 +1103,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
               },
               {
                 q: 'Can human reviewers intervene before an agent executes high-risk actions?',
-                a: 'Yes! The platform features built-in Human-in-the-Loop (HITL) approval checkpoints. Any high-risk operation—such as payment disbursements above set financial thresholds, large outbound sales campaigns, or contract finalizations—intercepts execution and enters an approval queue for reviewer authorization.'
+                a: 'Yes! The platform features built-in Human-in-the-Loop (HITL) approval checkpoints. Any high-risk operation—such as payment disbursements above set financial thresholds, external outbound communications, or contract finalizations—intercepts execution and enters an approval queue for reviewer authorization.'
               },
               {
                 q: 'Which LLMs and Embedding providers are supported?',
@@ -1147,7 +1148,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
             Ready to Automate Your Enterprise Workforce?
           </h2>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-10">
-            Create your tenant workspace in seconds with automated Crawl4AI website onboarding.
+            Create your tenant workspace in seconds with automated internal knowledge base onboarding.
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center gap-4 mb-16">
