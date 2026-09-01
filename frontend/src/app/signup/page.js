@@ -58,9 +58,18 @@ export default function SignupPage() {
   const [paddle, setPaddle] = useState(null);
 
   useEffect(() => {
-    const envVar = process.env.NEXT_PUBLIC_PADDLE_ENV || process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
-    const environment = envVar === 'sandbox' ? 'sandbox' : 'production';
     const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || '';
+    const envVar = process.env.NEXT_PUBLIC_PADDLE_ENV || process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT;
+    
+    // Auto-detect environment based on client token prefix (test_ -> sandbox, live_ -> production)
+    let environment = 'production';
+    if (token.startsWith('test_')) {
+      environment = 'sandbox';
+    } else if (envVar === 'sandbox') {
+      environment = 'sandbox';
+    }
+
+    console.log(`[Paddle Init] Initializing Paddle in '${environment}' mode with token: '${token ? token.slice(0, 8) + '...' : 'NONE'}'`);
 
     initializePaddle({
       environment,
@@ -601,10 +610,10 @@ export default function SignupPage() {
                   type="checkbox"
                   checked={acceptTerms}
                   onChange={(e) => setAcceptTerms(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-outline-variant bg-surface text-primary focus:ring-primary"
+                  className="mt-1 h-4 w-4 rounded border-outline-variant bg-surface text-primary focus:ring-primary cursor-pointer"
                 />
-                <label htmlFor="acceptTerms" className="font-body-md text-xs text-on-surface-variant leading-relaxed">
-                  I agree to the <Link href="/" className="text-primary hover:underline font-semibold">Terms of Service</Link> and <Link href="/" className="text-primary hover:underline font-semibold">Privacy Policy</Link>.
+                <label htmlFor="acceptTerms" className="font-body-md text-xs text-on-surface-variant leading-relaxed select-none">
+                  I agree to the <Link href="/terms" target="_blank" className="text-primary hover:underline font-semibold">Terms of Service</Link> and <Link href="/privacy" target="_blank" className="text-primary hover:underline font-semibold">Privacy Policy</Link>.
                 </label>
               </div>
 
@@ -636,8 +645,13 @@ export default function SignupPage() {
       )}
 
       {/* Footer */}
-      <footer className="text-center py-4 font-body-md text-xs text-on-surface-variant relative z-10">
-        &copy; {new Date().getFullYear()} Enterprise AI Platform. All rights reserved.
+      <footer className="text-center py-4 font-body-md text-xs text-on-surface-variant relative z-10 flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-6">
+        <span>&copy; {new Date().getFullYear()} Enterprise AI Platform. All rights reserved.</span>
+        <div className="flex gap-4">
+          <Link href="/terms" target="_blank" className="hover:text-primary transition-colors">Terms of Service</Link>
+          <span>•</span>
+          <Link href="/privacy" target="_blank" className="hover:text-primary transition-colors">Privacy Policy</Link>
+        </div>
       </footer>
     </div>
   );

@@ -1167,11 +1167,13 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
 
           <div className="border-t border-white/10 pt-8 text-gray-500 text-xs flex flex-col sm:flex-row justify-between items-center gap-4">
             <p>© {new Date().getFullYear()} Enterprise AI Workflow Platform. Built with LangGraph, FastMCP & PostgreSQL RLS.</p>
-            <div className="flex gap-6 text-gray-400 font-medium">
+            <div className="flex flex-wrap justify-center sm:justify-end gap-6 text-gray-400 font-medium">
               <a href="#agents" className="hover:text-blue-400 transition-colors">AI Agents</a>
               <a href="#workflow" className="hover:text-blue-400 transition-colors">Visual Canvas</a>
               <a href="#mcp" className="hover:text-blue-400 transition-colors">MCP Protocol</a>
               <a href="#security" className="hover:text-blue-400 transition-colors">PostgreSQL RLS</a>
+              <Link href="/terms" className="hover:text-blue-400 transition-colors">Terms of Service</Link>
+              <Link href="/privacy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link>
             </div>
           </div>
         </div>
