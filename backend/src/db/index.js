@@ -38,8 +38,17 @@ pool.connect((err, client, release) => {
         processed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );`),
+      client.query(`CREATE TABLE IF NOT EXISTS onboarding_progress (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        step_id VARCHAR(100) NOT NULL,
+        completed BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(tenant_id, step_id)
+      );`),
     ])
-      .then(() => console.log('✅ HR & SafePay database columns verified'))
+      .then(() => console.log('✅ HR, SafePay & Onboarding database columns verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }

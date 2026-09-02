@@ -1048,3 +1048,26 @@ export async function fetchSubscriptionStatus() {
   if (!res.ok) throw new Error('Failed to fetch subscription status');
   return res.json();
 }
+
+// ── ONBOARDING PROGRESS ──
+
+export async function getOnboardingProgress() {
+  const res = await fetch('/api/auth/onboarding-progress', {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to fetch onboarding progress');
+  const data = await res.json();
+  return data.steps || {};
+}
+
+export async function toggleOnboardingStep(stepId, completed) {
+  const res = await fetch('/api/auth/onboarding-progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify({ stepId, completed }),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) throw new Error('Failed to update onboarding step');
+  return res.json();
+}

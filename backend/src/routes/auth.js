@@ -396,4 +396,54 @@ router.post('/login', async (req, res) => {
   });
 });
 
+// ── GET ONBOARDING PROGRESS (Authenticated) ──
+router.get('/onboarding-progress', authenticate, async (req, res) => {
+  const tenantId = req.user.tenantId;
+
+  try {
+    const result = await query(
+      'SELECT step_id, completed FROM onboarding_progress WHERE tenant_id = $1',
+      [tenantId]
+    );
+
+    const progressMap = {};
+    result.rows.forEach(row => {
+      progressMap[row.step_id] = row.completed;
+    });
+
+    res.json({ success: true, steps: progressMap });
+  } catch (err) {
+    console.error('Error fetching onboarding progress:', err);
+    res.status(500).json({ error: 'Failed to fetch onboarding progress.' });
+  }
+});
+
+// ── TOGGLE / UPDATE ONBOARDING PROGRESS (Authenticated) ──
+router.post('/onboarding-progress', authenticate, async (req, res) => {
+  const tenantId = req.user.tenantId;
+  const { stepId, completed } = req.body;
+
+  if (!stepId) {
+    return res.status(400).json({ error: 'Step ID is required.' });
+  }
+
+  try {
+    const isCompleted = completed !== undefined ? Boolean(completed) : true;
+
+    const result = await query(
+      `INSERT INTO onboarding_progress (tenant_id, step_id, completed, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (tenant_id, step_id) 
+       DO UPDATE SET completed = EXCLUDED.completed, updated_at = NOW()
+       RETURNING step_id, completed`,
+      [tenantId, stepId, isCompleted]
+    );
+
+    res.json({ success: true, step: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating onboarding progress:', err);
+    res.status(500).json({ error: 'Failed to update onboarding progress.' });
+  }
+});
+
 module.exports = router;

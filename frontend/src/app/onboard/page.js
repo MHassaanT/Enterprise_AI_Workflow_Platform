@@ -234,27 +234,67 @@ export default function OnboardingPage() {
       setUserPlan(currentUser.subscriptionPlan);
     }
 
-    // Load saved checklist state from localStorage if available
-    try {
-      const saved = localStorage.getItem('onboarding_completed_steps');
-      if (saved) {
-        setCompletedSteps(JSON.parse(saved));
+    const storageKey = currentUser?.tenantId
+      ? `onboarding_completed_steps_${currentUser.tenantId}`
+      : (currentUser?.id ? `onboarding_completed_steps_${currentUser.id}` : 'onboarding_completed_steps');
+
+    // Fetch progress from PostgreSQL backend API, fallback to localStorage
+    const loadProgress = async () => {
+      try {
+        const { getOnboardingProgress } = await import('@/lib/api');
+        const dbSteps = await getOnboardingProgress();
+        if (dbSteps && Object.keys(dbSteps).length > 0) {
+          setCompletedSteps(dbSteps);
+          localStorage.setItem(storageKey, JSON.stringify(dbSteps));
+          return;
+        }
+      } catch (err) {
+        console.warn('Backend onboarding progress sync warning, reading localStorage fallback:', err.message);
       }
-    } catch (e) {
-      console.error('Failed to load onboarding steps:', e);
-    }
+
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          setCompletedSteps(JSON.parse(saved));
+        } else {
+          setCompletedSteps({});
+        }
+      } catch (e) {
+        console.error('Failed to load onboarding steps:', e);
+      }
+    };
+
+    loadProgress();
   }, []);
 
-  const toggleStep = (stepId) => {
-    setCompletedSteps((prev) => {
-      const next = { ...prev, [stepId]: !prev[stepId] };
-      try {
-        localStorage.setItem('onboarding_completed_steps', JSON.stringify(next));
-      } catch (e) {
-        console.error('Failed to save onboarding step state:', e);
-      }
-      return next;
-    });
+  const toggleStep = async (stepId) => {
+    const nextCompleted = !completedSteps[stepId];
+
+    // Optimistic UI update
+    setCompletedSteps((prev) => ({
+      ...prev,
+      [stepId]: nextCompleted,
+    }));
+
+    const storageKey = user?.tenantId
+      ? `onboarding_completed_steps_${user.tenantId}`
+      : (user?.id ? `onboarding_completed_steps_${user.id}` : 'onboarding_completed_steps');
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      saved[stepId] = nextCompleted;
+      localStorage.setItem(storageKey, JSON.stringify(saved));
+    } catch (e) {
+      console.error('Failed to save onboarding step state to localStorage:', e);
+    }
+
+    // Persist to backend PostgreSQL
+    try {
+      const { toggleOnboardingStep } = await import('@/lib/api');
+      await toggleOnboardingStep(stepId, nextCompleted);
+    } catch (err) {
+      console.warn('Backend toggleOnboardingStep error:', err.message);
+    }
   };
 
   // Determine accessible routes for current plan
