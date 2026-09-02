@@ -9,7 +9,7 @@ WITH upsert AS (
             'GitHub Developer Platform',
             'github',
             false,
-            '{"type":"object","properties":{"action":{"type":"string","description":"get_issues, get_pull_requests, or trigger_workflow"},"owner":{"type":"string"},"repo":{"type":"string"},"issue_number":{"type":"number"},"pull_number":{"type":"number"},"workflow_id":{"type":"string"},"ref":{"type":"string"}}}'::jsonb
+            '{"type":"object","properties":{"action":{"type":"string","description":"create_branch, get_issues, get_pull_requests, or trigger_workflow"},"owner":{"type":"string"},"repo":{"type":"string"},"branch_name":{"type":"string"},"base_branch":{"type":"string"},"issue_number":{"type":"number"},"pull_number":{"type":"number"},"workflow_id":{"type":"string"},"ref":{"type":"string"}}}'::jsonb
         ),
         (
             'Vercel',

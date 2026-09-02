@@ -100,6 +100,22 @@ async def execute_github_tool(tool_name: str, arguments: Dict[str, Any], credent
                     return f"Successfully triggered GitHub workflow dispatch for '{workflow_id}' on ref '{ref}' in repo '{owner}/{repo}'."
                 return f"GitHub Workflow Dispatch Error ({res.status_code}): {res.text}"
 
+            # 4. Create Branch
+            elif "branch" in action_lower or "create_branch" in action_lower:
+                new_branch = arguments.get("branch_name") or arguments.get("branch") or arguments.get("new_branch")
+                base_branch = arguments.get("base_branch") or arguments.get("base") or "main"
+
+                if not owner or not repo or not new_branch:
+                    return "Error: 'owner', 'repo', and 'branch_name' (or 'new_branch') are required to create a new branch."
+
+                from services.github_service import create_branch
+                res_dict = await create_branch(owner=owner, repo=repo, base_branch=base_branch, new_branch=new_branch, token=token)
+                if res_dict.get("success"):
+                    if res_dict.get("already_existed"):
+                        return f"Branch '{new_branch}' already exists in repo '{owner}/{repo}' (based on '{base_branch}')."
+                    return f"Successfully created branch '{new_branch}' in repo '{owner}/{repo}' based on '{base_branch}'."
+                return f"GitHub Create Branch Error: {res_dict.get('error')}"
+
             # Fallback
             else:
                 if owner and repo:

@@ -217,3 +217,35 @@ class TestExpressionEvaluation:
         from workflow_utils import evaluate_expression
         result = evaluate_expression("{{status}} == 'active'", {"status": "active"})
         assert result is True
+
+
+class TestGitHubAdapterToolExecution:
+    @pytest.mark.asyncio
+    async def test_create_branch_adapter_execution(self):
+        from unittest.mock import patch, AsyncMock
+        from tool_gateway.adapters.github_adapter import execute_github_tool
+
+        mock_creds = {"access_token": "mock-token-123"}
+        args = {
+            "action": "create_branch",
+            "owner": "test-owner",
+            "repo": "test-repo",
+            "branch_name": "feature/new-workflow-step",
+            "base_branch": "main"
+        }
+
+        with patch("services.github_service.create_branch", AsyncMock(return_value={
+            "success": True,
+            "branch": "feature/new-workflow-step",
+            "base_branch": "main",
+            "already_existed": False
+        })) as mock_create:
+            res = await execute_github_tool("GitHub", args, mock_creds)
+            assert "Successfully created branch 'feature/new-workflow-step'" in res
+            mock_create.assert_called_once_with(
+                owner="test-owner",
+                repo="test-repo",
+                base_branch="main",
+                new_branch="feature/new-workflow-step",
+                token="mock-token-123"
+            )

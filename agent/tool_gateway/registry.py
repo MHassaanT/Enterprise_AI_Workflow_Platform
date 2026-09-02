@@ -169,6 +169,18 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
             values: Any = Field(default=None, description="Values/rows data (2D array)")
             title: str = Field(default=None, description="Title for new spreadsheet")
         return GoogleSheetsDynamicInput
+    elif "github" in tool_name.lower():
+        class GitHubDynamicInput(BaseModel):
+            action: str = Field(description="Action to perform: 'create_branch', 'get_issues', 'get_pull_requests', or 'trigger_workflow'")
+            owner: str = Field(default=None, description="GitHub repository owner/organization")
+            repo: str = Field(default=None, description="GitHub repository name")
+            branch_name: str = Field(default=None, description="Name of the new branch to create")
+            base_branch: str = Field(default="main", description="Base branch to create from (default: main)")
+            issue_number: int = Field(default=None, description="Issue number")
+            pull_number: int = Field(default=None, description="Pull request number")
+            workflow_id: str = Field(default=None, description="Workflow ID or filename for dispatch")
+            ref: str = Field(default=None, description="Git ref or branch for workflow dispatch")
+        return GitHubDynamicInput
 
     params_raw = config.get("parameters") or config.get("params") or {}
 
