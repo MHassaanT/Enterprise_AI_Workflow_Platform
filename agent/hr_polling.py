@@ -353,12 +353,14 @@ async def poll_hr_mailbox(tenant_id: str):
         
         all_message_ids = set()
         for sq in search_queries:
+            # Restrict search query to incoming inbox messages, excluding sent messages from connected account
+            scoped_query = f"in:inbox -from:me ({sq})"
             try:
                 result = await execute_mcp_tool(
                     tenant_id=tenant_id,
                     agent_instance_id="workflow-builder",
                     tool_name="gmail",
-                    arguments={"action": "search", "q": sq, "limit": 20}
+                    arguments={"action": "search", "q": scoped_query, "limit": 20}
                 )
                 
                 if "Error" in result or "No messages" in result:
@@ -377,7 +379,7 @@ async def poll_hr_mailbox(tenant_id: str):
                 except Exception:
                     pass
             except Exception as e:
-                print(f"[HR POLL] Search error for query '{sq}': {e}")
+                print(f"[HR POLL] Search error for query '{scoped_query}': {e}")
         
         # 4. Filter out already-processed messages
         new_message_ids = all_message_ids - processed_ids
@@ -393,10 +395,19 @@ async def poll_hr_mailbox(tenant_id: str):
         print(f"[HR POLL] Found {len(new_message_ids)} new message(s) for tenant {str(tenant_id)[:8]}")
         
         # 5. Process each new message
+        creds = await fetch_tool_credentials(str(tenant_id), tool_id="gmail")
+        user_email = (creds.get("email") or creds.get("user_email") or "").strip().lower()
+
         for msg_id in new_message_ids:
             try:
                 email_details = await _get_email_details(tenant_id, msg_id)
                 if not email_details:
+                    processed_ids.add(msg_id)
+                    continue
+                
+                sender_email = (email_details.get("sender_email") or "").strip().lower()
+                if user_email and sender_email == user_email:
+                    print(f"[HR POLL] Skipping self-sent email {msg_id} from {sender_email}")
                     processed_ids.add(msg_id)
                     continue
                 
