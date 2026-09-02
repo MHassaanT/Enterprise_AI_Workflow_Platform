@@ -23,8 +23,28 @@ async def execute_github_tool(tool_name: str, arguments: Dict[str, Any], credent
     action = arguments.get("action") or tool_name
     action_lower = action.lower()
 
-    owner = arguments.get("owner")
-    repo = arguments.get("repo")
+    repo = arguments.get("repo") or arguments.get("repository") or arguments.get("repository_name")
+    owner = arguments.get("owner") or arguments.get("repo_owner") or credentials.get("owner")
+
+    if repo and "/" in str(repo):
+        parts = str(repo).split("/", 1)
+        owner = parts[0]
+        repo = parts[1]
+
+    if not owner and token:
+        try:
+            from services.github_service import list_repositories
+            user_repos = await list_repositories(token)
+            for r in user_repos:
+                if repo and r.get("name", "").lower() == str(repo).lower():
+                    owner = r.get("owner")
+                    break
+            if not owner and user_repos:
+                owner = user_repos[0].get("owner")
+                if not repo:
+                    repo = user_repos[0].get("name")
+        except Exception as err:
+            print(f"[GITHUB ADAPTER] Owner auto-discovery error: {err}")
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -101,7 +121,13 @@ async def execute_github_tool(tool_name: str, arguments: Dict[str, Any], credent
                 return f"GitHub Workflow Dispatch Error ({res.status_code}): {res.text}"
 
             # 4. Create Branch
-            elif "branch" in action_lower or "create_branch" in action_lower:
+            elif (
+                "branch" in action_lower or
+                "create_branch" in action_lower or
+                arguments.get("branch") or
+                arguments.get("branch_name") or
+                arguments.get("new_branch")
+            ):
                 new_branch = arguments.get("branch_name") or arguments.get("branch") or arguments.get("new_branch")
                 base_branch = arguments.get("base_branch") or arguments.get("base") or "main"
 

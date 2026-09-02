@@ -31,6 +31,26 @@ async def _auto_discover_base_id(token: str) -> str | None:
     return None
 
 
+async def _get_table_fields(base_id: str, table_name: str, token: str) -> list:
+    """
+    Fallback: fetch actual field names for table_name from Meta API so formula search uses existing columns.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.get(
+                f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if res.is_success:
+                tables = res.json().get("tables", [])
+                for t in tables:
+                    if t.get("name", "").lower() == table_name.lower():
+                        return [f.get("name") for f in t.get("fields", []) if f.get("name")]
+    except Exception as e:
+        print(f"[AIRTABLE ADAPTER] Meta API table schema fetch error: {e}")
+    return []
+
+
 async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], credentials: Dict[str, Any]) -> str:
     token = credentials.get("access_token") or credentials.get("api_key") or credentials.get("bearer_token") or credentials.get("token")
     if not token:
@@ -73,23 +93,39 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
             # 1. READ / SEARCH / GET RECORDS
             if any(k in action for k in ("search", "get", "check", "order", "list", "read", "find")):
                 query_str = arguments.get("query") or arguments.get("order_id") or arguments.get("email") or arguments.get("customer_email") or ""
+                query_lower = query_str.lower().strip()
+
+                is_generic_query = (
+                    not query_lower or
+                    query_lower in (
+                        "fetch_record_details", "fetch_all", "get_records", "read", "list", "all",
+                        "fetch the record's details", "fetch record details", "check_order_status"
+                    ) or
+                    query_lower.startswith("fetch_") or
+                    query_lower.startswith("get_")
+                )
 
                 records = []
                 # Attempt filtered search first, then fall back to unfiltered fetch
-                if query_str:
+                if query_str and not is_generic_query:
                     search_field = arguments.get("search_field")
                     if search_field:
                         formula = f"SEARCH('{query_str}', {{{search_field}}})"
                     else:
-                        formula = (
-                            f"OR("
-                            f"SEARCH('{query_str}', {{OrderId}}), "
-                            f"SEARCH('{query_str}', {{CustomerEmail}}), "
-                            f"SEARCH('{query_str}', {{CustomerName}}), "
-                            f"SEARCH('{query_str}', {{Name}}), "
-                            f"SEARCH('{query_str}', {{Email}})"
-                            f")"
-                        )
+                        table_fields = await _get_table_fields(base_id, table_name, token)
+                        if table_fields:
+                            search_clauses = [f"SEARCH('{query_str}', {{{f}}})" for f in table_fields[:10]]
+                            formula = f"OR({', '.join(search_clauses)})"
+                        else:
+                            formula = (
+                                f"OR("
+                                f"SEARCH('{query_str}', {{OrderId}}), "
+                                f"SEARCH('{query_str}', {{CustomerEmail}}), "
+                                f"SEARCH('{query_str}', {{CustomerName}}), "
+                                f"SEARCH('{query_str}', {{Name}}), "
+                                f"SEARCH('{query_str}', {{Email}})"
+                                f")"
+                            )
 
                     res = await client.get(url, headers=headers, params={"filterByFormula": formula})
                     print(f"[AIRTABLE ADAPTER] Filtered search response: status={res.status_code} body={res.text[:300]}")
@@ -104,18 +140,19 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
                         print(f"[AIRTABLE ADAPTER] Unfiltered fetch response: status={fallback_res.status_code}")
                         if fallback_res.is_success:
                             all_records = fallback_res.json().get("records", [])
-                            query_lower = query_str.lower().strip()
-                            
-                            # Self-healing: if LLM sent a formula like "OrderId = '123'", extract the '123'
-                            if "=" in query_lower:
-                                query_lower = query_lower.split("=", 1)[1].strip(" '\"")
-                            elif ":" in query_lower:
-                                query_lower = query_lower.split(":", 1)[1].strip(" '\"")
-                                
-                            records = [
-                                r for r in all_records
-                                if any(query_lower in str(v).lower() for v in (r.get("fields") or {}).values())
-                            ]
+                            if is_generic_query:
+                                records = all_records
+                            else:
+                                clean_query = query_lower
+                                if "=" in clean_query:
+                                    clean_query = clean_query.split("=", 1)[1].strip(" '\"")
+                                elif ":" in clean_query:
+                                    clean_query = clean_query.split(":", 1)[1].strip(" '\"")
+                                    
+                                records = [
+                                    r for r in all_records
+                                    if any(clean_query in str(v).lower() for v in (r.get("fields") or {}).values())
+                                ]
                         else:
                             return f"Airtable API Error ({fallback_res.status_code}): {fallback_res.text[:300]}"
                     else:

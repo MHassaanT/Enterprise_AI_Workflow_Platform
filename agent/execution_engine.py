@@ -124,9 +124,10 @@ Current Workflow Variables:
 {schema_str}
 Instructions:
 1. Determine the best API arguments needed to perform the action in the specified app.
-2. If variables are needed (e.g. an email address from the trigger), extract them from the Current Workflow Variables.
-3. Do NOT use placeholder values like 'your_base_id_here'. Use real values from the workflow variables.
-4. Return ONLY a valid JSON object containing the arguments matching the schema (if provided). Do not include markdown formatting or backticks.
+2. If variables are needed (e.g. an email address or customer name from previous nodes/triggers), extract actual real values from the Current Workflow Variables.
+3. Do NOT use placeholder values like 'your_base_id_here' or template strings like '{{customer_name}}'. Extract the real values from the Current Workflow Variables.
+4. Always include an 'action' field in the returned JSON describing the operation (e.g. 'airtable_search_records', 'create_branch', 'get_issues', 'send_email', etc.).
+5. Return ONLY a valid JSON object containing the arguments matching the schema (if provided). Do not include markdown formatting or backticks.
 """
                     llm_response = await llm.ainvoke(prompt)
                     content = llm_response.content.strip()
