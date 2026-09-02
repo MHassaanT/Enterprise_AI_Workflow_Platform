@@ -8,8 +8,8 @@ const PLANS = [
   {
     id: 'basic',
     name: 'Basic',
-    monthlyPrice: 'PKR 5,000/mo',
-    yearlyPrice: 'PKR 55,000/yr',
+    monthlyPrice: '$50/mo',
+    yearlyPrice: '$550/yr',
     agents: ['Customer Support Agent', 'HR Agent', 'PM Agent'],
     icon: 'rocket_launch',
     color: 'blue',
@@ -17,8 +17,8 @@ const PLANS = [
   {
     id: 'pro',
     name: 'Pro',
-    monthlyPrice: 'PKR 7,500/mo',
-    yearlyPrice: 'PKR 82,500/yr',
+    monthlyPrice: '$75/mo',
+    yearlyPrice: '$825/yr',
     agents: ['Customer Support Agent', 'HR Agent', 'PM Agent', 'Sales Agent', 'Marketing Agent'],
     icon: 'workspace_premium',
     color: 'violet',
@@ -27,8 +27,8 @@ const PLANS = [
   {
     id: 'enterprise',
     name: 'Enterprise',
-    monthlyPrice: 'PKR 11,000/mo',
-    yearlyPrice: 'PKR 121,000/yr',
+    monthlyPrice: '$110/mo',
+    yearlyPrice: '$1,210/yr',
     agents: ['Customer Support Agent', 'HR Agent', 'PM Agent', 'Sales Agent', 'Marketing Agent', 'Finance Agent'],
     icon: 'corporate_fare',
     color: 'amber',

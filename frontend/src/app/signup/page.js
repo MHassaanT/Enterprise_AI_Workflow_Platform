@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import { register, resendVerificationEmail } from '@/lib/api';
 
 const PLANS = [
-  { id: 'basic', name: 'Basic', priceLabel: 'PKR 5,000/mo', desc: 'Core AI Agents for small teams' },
-  { id: 'pro', name: 'Pro', priceLabel: 'PKR 7,500/mo', desc: 'Full AI Workforce & Workflow Builder', popular: true },
-  { id: 'enterprise', name: 'Enterprise', priceLabel: 'PKR 11,000/mo', desc: 'Custom Agents & Dedicated Support' },
+  { id: 'basic', name: 'Basic', priceLabel: '$50/mo', desc: 'Core AI Agents for small teams' },
+  { id: 'pro', name: 'Pro', priceLabel: '$75/mo', desc: 'Full AI Workforce & Workflow Builder', popular: true },
+  { id: 'enterprise', name: 'Enterprise', priceLabel: '$110/mo', desc: 'Custom Agents & Dedicated Support' },
 ];
 
 export default function SignupPage() {

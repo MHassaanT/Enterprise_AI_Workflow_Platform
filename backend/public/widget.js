@@ -189,6 +189,11 @@
         padding: 10px 16px;
         font-size: 14px;
         outline: none;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+      }
+      .ai-widget-input::placeholder {
+        color: #94a3b8 !important;
       }
       .ai-widget-input:focus {
         border-color: #2563eb;
