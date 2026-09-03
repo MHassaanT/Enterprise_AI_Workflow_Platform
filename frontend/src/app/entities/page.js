@@ -115,6 +115,57 @@ export default function EntitiesPage() {
     } catch(e) { showToast('Error','error'); } finally { setSaving(false); }
   };
 
+  const autoGenerateEntities = async () => {
+    setIsAutoGenerating(true);
+    try {
+      const res = await fetch(`${API}/api/entities/auto-generate`, { method: 'POST', headers: headers() });
+      if (res.ok) {
+        showToast('Entities auto-generated successfully!');
+        fetchEntities();
+        setShowOnboardingModal(false);
+      } else {
+        const e = await res.json();
+        showToast(e.error || 'Failed to auto-generate', 'error');
+      }
+    } catch (e) {
+      showToast('Error', 'error');
+    } finally {
+      setIsAutoGenerating(false);
+    }
+  };
+
+  const magicGenerateEntity = async () => {
+    if (!magicPrompt.trim()) return showToast('Please enter a description', 'error');
+    setIsMagicGenerating(true);
+    try {
+      const res = await fetch(`${API}/api/entities/generate`, { method: 'POST', headers: headers(), body: JSON.stringify({ prompt: magicPrompt }) });
+      if (res.ok) {
+        showToast('Entity generated successfully!');
+        setMagicPrompt('');
+        fetchEntities();
+      } else {
+        const e = await res.json();
+        showToast(e.error || 'Failed to generate', 'error');
+      }
+    } catch (e) {
+      showToast('Error', 'error');
+    } finally {
+      setIsMagicGenerating(false);
+    }
+  };
+
+  const approveEntity = async (entityId) => {
+    try {
+      const res = await fetch(`${API}/api/entities/${entityId}`, { method: 'PUT', headers: headers(), body: JSON.stringify({ status: 'active' }) });
+      if (res.ok) {
+        showToast('Entity approved and activated!');
+        fetchEntities();
+      }
+    } catch (e) {
+      showToast('Error', 'error');
+    }
+  };
+
   const tabs = [
     { id:'entities', label:'Entities', icon:'database' },
     { id:'context', label:'Agent Context', icon:'smart_toy' },
