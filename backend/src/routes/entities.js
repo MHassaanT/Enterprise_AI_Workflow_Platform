@@ -301,10 +301,10 @@ router.post('/auto-generate', authenticate, authorize('admin'), async (req, res)
     const tenant = tenantResult.rows[0];
     if (!tenant) return res.status(404).json({ error: 'Tenant not found.' });
 
-    const prompt = \`Company Name: \${tenant.name}
-Industry: \${tenant.industry || 'Unknown'}
-Description: \${tenant.description || 'N/A'}
-Generate core entities for this business.\`;
+    const prompt = `Company Name: ${tenant.name}
+Industry: ${tenant.industry || 'Unknown'}
+Description: ${tenant.description || 'N/A'}
+Generate core entities for this business.`;
 
     const generatedEntities = await generateEntitySchema(prompt, true);
     if (!generatedEntities || generatedEntities.length === 0) {
@@ -330,9 +330,9 @@ router.post('/generate', authenticate, authorize('admin'), async (req, res) => {
     const tenantResult = await query('SELECT industry, name FROM tenants WHERE id = $1', [tenantId]);
     const tenant = tenantResult.rows[0];
 
-    const fullPrompt = \`Context: \${tenant.name} (\${tenant.industry || 'Unknown'}). 
-User Request: \${prompt}
-Generate a single entity based on the user request.\`;
+    const fullPrompt = `Context: ${tenant.name} (${tenant.industry || 'Unknown'}). 
+User Request: ${prompt}
+Generate a single entity based on the user request.`;
 
     const generatedEntities = await generateEntitySchema(fullPrompt, false);
     if (!generatedEntities || generatedEntities.length === 0) {
