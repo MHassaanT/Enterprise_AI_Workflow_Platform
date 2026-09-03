@@ -135,3 +135,6 @@ CREATE POLICY tenant_isolation_ticket_notes ON support_ticket_notes
 INSERT INTO tenant_agent_context (tenant_id, agent_type, company_name, support_tone)
 SELECT id, 'customer_support', name, 'professional' FROM tenants
 ON CONFLICT (tenant_id, agent_type) DO NOTHING;
+
+SELECT 'Migration 034 completed successfully' AS migration_status;
+

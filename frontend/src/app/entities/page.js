@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Sidebar from '../components/Sidebar';
-import AuthGuard from '../components/AuthGuard';
+
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -110,11 +109,9 @@ export default function EntitiesPage() {
   ];
 
   return (
-    <AuthGuard>
-      <div style={{ display:'flex', minHeight:'100vh', background:'#0b0f17' }}>
-        <Sidebar />
-        <main style={{ flex:1, padding:'32px', maxWidth:1200, margin:'0 auto', width:'100%' }}>
-          {/* Header */}
+    <>
+      <main style={{ flex:1, padding:'32px', maxWidth:1200, margin:'0 auto', width:'100%' }}>
+        {/* Header */}
           <div style={{ marginBottom:32 }}>
             <h1 style={{ fontSize:28, fontWeight:800, color:'#f0f0f0', marginBottom:6, fontFamily:'Inter,sans-serif' }}>Entity Schema Builder</h1>
             <p style={{ color:'#9ca3af', fontSize:14 }}>Configure business entities, fields, and agent behavior for your tenant.</p>
@@ -354,12 +351,11 @@ export default function EntitiesPage() {
             </>
           )}
         </main>
-      </div>
       <style jsx global>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes slideUp { from { transform: translateY(-10px); opacity:0; } to { transform: translateY(0); opacity:1; } }
       `}</style>
-    </AuthGuard>
+    </>
   );
 }
 
