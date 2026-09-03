@@ -3,6 +3,7 @@ const router = express.Router();
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
+const { generateEntitySchema } = require('../services/llmService');
 
 // ── GET /api/entities ──
 // List all entities with fields and operations for the current tenant
@@ -69,9 +70,10 @@ router.put('/:entityId', authenticate, authorize('admin'), async (req, res) => {
         data_source_type = COALESCE($4, data_source_type),
         data_source_config = COALESCE($5, data_source_config),
         is_enabled = COALESCE($6, is_enabled),
+        status = COALESCE($7, status),
         updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8 RETURNING *`,
-      [display_name, description, icon, data_source_type, data_source_config ? JSON.stringify(data_source_config) : null, is_enabled, entityId, tenantId],
+       WHERE id = $8 AND tenant_id = $9 RETURNING *`,
+      [display_name, description, icon, data_source_type, data_source_config ? JSON.stringify(data_source_config) : null, is_enabled, req.body.status, entityId, tenantId],
       tenantId
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'Entity not found.' });
@@ -246,6 +248,102 @@ router.put('/agent-context', authenticate, authorize('admin'), async (req, res) 
   } catch (error) {
     console.error('Error updating agent context:', error);
     res.status(500).json({ error: 'Failed to update agent context.' });
+  }
+});
+
+// ── INTERNAL HELPER: Insert Generated Entities ──
+async function _insertGeneratedEntities(tenantId, entities) {
+  const insertedEntities = [];
+  for (const ent of entities) {
+    try {
+      const entityResult = await query(
+        `INSERT INTO tenant_entities (tenant_id, entity_name, display_name, description, icon, status)
+         VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING *`,
+        [tenantId, ent.entity_name, ent.display_name, ent.description || '', ent.icon || 'box'],
+        tenantId
+      );
+      const entityId = entityResult.rows[0].id;
+
+      if (ent.fields && ent.fields.length > 0) {
+        for (const field of ent.fields) {
+          await query(
+            `INSERT INTO tenant_entity_fields (entity_id, field_name, display_name, field_type, is_required, is_searchable, is_filterable, enum_values, description)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [entityId, field.field_name, field.display_name, field.field_type, field.is_required || false, field.is_searchable !== false, field.is_filterable !== false, field.enum_values ? JSON.stringify(field.enum_values) : null, field.description || ''],
+            tenantId
+          );
+        }
+      }
+
+      if (ent.operations && ent.operations.length > 0) {
+        for (const op of ent.operations) {
+          await query(
+            `INSERT INTO tenant_entity_operations (entity_id, operation_name, requires_approval) VALUES ($1, $2, false)`,
+            [entityId, op.operation_name],
+            tenantId
+          );
+        }
+      }
+      insertedEntities.push(entityResult.rows[0]);
+    } catch (e) {
+      console.warn('Skipping entity generation due to conflict or error:', e.message);
+    }
+  }
+  return insertedEntities;
+}
+
+// ── POST /api/entities/auto-generate ──
+// Auto-generate entities based on tenant industry & description
+router.post('/auto-generate', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  try {
+    const tenantResult = await query('SELECT industry, description, name FROM tenants WHERE id = $1', [tenantId]);
+    const tenant = tenantResult.rows[0];
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found.' });
+
+    const prompt = \`Company Name: \${tenant.name}
+Industry: \${tenant.industry || 'Unknown'}
+Description: \${tenant.description || 'N/A'}
+Generate core entities for this business.\`;
+
+    const generatedEntities = await generateEntitySchema(prompt, true);
+    if (!generatedEntities || generatedEntities.length === 0) {
+      return res.status(400).json({ error: 'Failed to generate entities.' });
+    }
+
+    const inserted = await _insertGeneratedEntities(tenantId, generatedEntities);
+    res.json({ success: true, count: inserted.length, entities: inserted });
+  } catch (error) {
+    console.error('Auto-generate error:', error);
+    res.status(500).json({ error: 'Failed to auto-generate entities.' });
+  }
+});
+
+// ── POST /api/entities/generate ──
+// Generate a single entity based on user prompt
+router.post('/generate', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'Prompt is required.' });
+
+  try {
+    const tenantResult = await query('SELECT industry, name FROM tenants WHERE id = $1', [tenantId]);
+    const tenant = tenantResult.rows[0];
+
+    const fullPrompt = \`Context: \${tenant.name} (\${tenant.industry || 'Unknown'}). 
+User Request: \${prompt}
+Generate a single entity based on the user request.\`;
+
+    const generatedEntities = await generateEntitySchema(fullPrompt, false);
+    if (!generatedEntities || generatedEntities.length === 0) {
+      return res.status(400).json({ error: 'Failed to generate entity.' });
+    }
+
+    const inserted = await _insertGeneratedEntities(tenantId, generatedEntities);
+    res.json({ success: true, count: inserted.length, entities: inserted });
+  } catch (error) {
+    console.error('Generate entity error:', error);
+    res.status(500).json({ error: 'Failed to generate entity.' });
   }
 });
 

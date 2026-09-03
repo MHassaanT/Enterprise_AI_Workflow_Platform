@@ -26,12 +26,25 @@ export default function EntitiesPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [magicPrompt, setMagicPrompt] = useState('');
+  const [isMagicGenerating, setIsMagicGenerating] = useState(false);
+
   const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
   const fetchEntities = async () => {
     try {
       const res = await fetch(`${API}/api/entities`, { headers: headers() });
-      if (res.ok) { const d = await res.json(); setEntities(d.entities||[]); }
+      if (res.ok) { 
+        const d = await res.json(); 
+        const loadedEntities = d.entities || [];
+        setEntities(loadedEntities);
+        if (loadedEntities.length === 0 && !localStorage.getItem('entity_onboarding_seen')) {
+          setShowOnboardingModal(true);
+          localStorage.setItem('entity_onboarding_seen', 'true');
+        }
+      }
     } catch(e) { console.error(e); }
   };
   const fetchContext = async () => {
@@ -140,9 +153,44 @@ export default function EntitiesPage() {
             </div>
           ) : (
             <>
+              {/* ONBOARDING MODAL */}
+              {showOnboardingModal && (
+                <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)' }}>
+                  <div style={{ background:'#0f172a', border:'1px solid rgba(59,130,246,0.3)', borderRadius:16, padding:32, maxWidth:480, textAlign:'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:48, color:'#60a5fa', marginBottom:16 }}>auto_awesome</span>
+                    <h2 style={{ fontSize:22, fontWeight:800, color:'#f0f0f0', marginBottom:12 }}>AI Entity Generation</h2>
+                    <p style={{ color:'#9ca3af', fontSize:14, marginBottom:24, lineHeight:1.5 }}>
+                      We noticed you don't have any entities configured yet. Would you like our AI to automatically draft your core business entities based on your company's industry and description?
+                    </p>
+                    <div style={{ display:'flex', gap:12, justifyContent:'center' }}>
+                      <button onClick={() => setShowOnboardingModal(false)} style={{...btnSecondary, padding:'10px 24px'}}>Skip</button>
+                      <button onClick={autoGenerateEntities} disabled={isAutoGenerating} style={{...btnPrimary, padding:'10px 24px', display:'flex', alignItems:'center', gap:8}}>
+                        {isAutoGenerating ? <span className="material-symbols-outlined" style={{ fontSize:16, animation:'spin 1s linear infinite' }}>refresh</span> : <span className="material-symbols-outlined" style={{ fontSize:16 }}>magic_button</span>}
+                        {isAutoGenerating ? 'Generating...' : 'Auto-Generate Entities'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ENTITIES TAB */}
               {tab === 'entities' && (
                 <div>
+                  {/* MAGIC GENERATE UI */}
+                  <div style={{ background:'linear-gradient(to right, rgba(59,130,246,0.1), rgba(168,85,247,0.05))', border:'1px solid rgba(59,130,246,0.2)', borderRadius:14, padding:20, marginBottom:32, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize:28, color:'#8b5cf6' }}>auto_awesome</span>
+                    <div style={{ flex:1, minWidth:200 }}>
+                      <h3 style={{ fontSize:15, fontWeight:700, color:'#e5e7eb', marginBottom:4 }}>Magic Entity Generator</h3>
+                      <p style={{ fontSize:12, color:'#9ca3af' }}>Describe the data object you want to track, and AI will build the schema.</p>
+                    </div>
+                    <div style={{ display:'flex', gap:10, flex:2, minWidth:300 }}>
+                      <input value={magicPrompt} onChange={e=>setMagicPrompt(e.target.value)} placeholder="e.g. 'I need to track maintenance requests for properties'" style={{...inputStyle, flex:1, border:'1px solid rgba(139,92,246,0.3)', background:'rgba(0,0,0,0.2)'}} onKeyDown={e => e.key === 'Enter' && magicGenerateEntity()} />
+                      <button onClick={magicGenerateEntity} disabled={isMagicGenerating} style={{...btnPrimary, background:'rgba(139,92,246,0.15)', borderColor:'rgba(139,92,246,0.3)', color:'#a78bfa'}}>
+                        {isMagicGenerating ? 'Generating...' : 'Generate'}
+                      </button>
+                    </div>
+                  </div>
+
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                     <h2 style={{ fontSize:18, fontWeight:700, color:'#e5e7eb' }}>Business Entities ({entities.length})</h2>
                     <button onClick={()=>setShowNewEntity(!showNewEntity)} style={{ padding:'8px 18px', borderRadius:10, border:'1px solid rgba(59,130,246,0.3)', background:'rgba(59,130,246,0.1)', color:'#60a5fa', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s' }}>
@@ -210,8 +258,9 @@ export default function EntitiesPage() {
                           <div style={{ flex:1 }}>
                             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                               <span style={{ color:'#f0f0f0', fontWeight:700, fontSize:15 }}>{ent.display_name}</span>
+                              {ent.status === 'draft' && <span style={{ color:'#f59e0b', fontSize:10, fontWeight:800, background:'rgba(245,158,11,0.15)', padding:'2px 6px', borderRadius:4, border:'1px solid rgba(245,158,11,0.3)' }}>DRAFT</span>}
                               <span style={{ color:'#6b7280', fontSize:12, fontFamily:'monospace', background:'rgba(255,255,255,0.04)', padding:'2px 8px', borderRadius:6 }}>{ent.entity_name}</span>
-                              <span style={{ color: ent.is_enabled ? '#34d399' : '#ef4444', fontSize:11, fontWeight:600 }}>{ent.is_enabled?'Active':'Disabled'}</span>
+                              <span style={{ color: ent.status === 'draft' ? '#9ca3af' : (ent.is_enabled ? '#34d399' : '#ef4444'), fontSize:11, fontWeight:600 }}>{ent.status === 'draft' ? 'Pending Review' : (ent.is_enabled?'Active':'Disabled')}</span>
                             </div>
                             <p style={{ color:'#9ca3af', fontSize:12, marginTop:2 }}>{ent.description || 'No description'} · {fields.length} fields · {ops.length} operations</p>
                           </div>
@@ -278,8 +327,14 @@ export default function EntitiesPage() {
                                 })}
                               </div>
                             </div>
-                            {/* Delete */}
-                            <div style={{ marginTop:18, borderTop:'1px solid rgba(255,255,255,0.04)', paddingTop:14, display:'flex', justifyContent:'flex-end' }}>
+                            {/* Actions */}
+                            <div style={{ marginTop:18, borderTop:'1px solid rgba(255,255,255,0.04)', paddingTop:14, display:'flex', justifyContent:'flex-end', gap:10 }}>
+                              {ent.status === 'draft' && (
+                                <button onClick={()=>approveEntity(ent.id)} style={{ fontSize:12, color:'#34d399', background:'rgba(52,211,153,0.1)', border:'1px solid rgba(52,211,153,0.3)', borderRadius:8, padding:'5px 14px', cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize:14 }}>check_circle</span>
+                                  Approve & Activate
+                                </button>
+                              )}
                               <button onClick={()=>deleteEntity(ent.id)} style={{ fontSize:12, color:'#ef4444', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:8, padding:'5px 14px', cursor:'pointer', fontWeight:600 }}>
                                 Delete Entity
                               </button>
