@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const API = '';
 const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` });
 
