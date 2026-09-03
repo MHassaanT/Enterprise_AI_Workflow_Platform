@@ -34,6 +34,13 @@ def _route_after_approval(state: AgentState) -> str:
     return END
 
 
+def _route_after_intent(state: AgentState) -> str:
+    """Route greetings directly to reasoning (skip retriever)."""
+    if state.get("needs_retrieval", True):
+        return "retriever"
+    return "reasoning"
+
+
 def build_graph():
     builder = StateGraph(AgentState)
 
@@ -44,7 +51,13 @@ def build_graph():
     builder.add_node("tool_executor", tool_executor_node)
 
     builder.add_edge(START, "intent_classifier")
-    builder.add_edge("intent_classifier", "retriever")
+
+    # Conditional edge: skip retriever for greetings/system notifications
+    builder.add_conditional_edges(
+        "intent_classifier",
+        _route_after_intent,
+        {"retriever": "retriever", "reasoning": "reasoning"},
+    )
     builder.add_edge("retriever", "reasoning")
 
     builder.add_conditional_edges(

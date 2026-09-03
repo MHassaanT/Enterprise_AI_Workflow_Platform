@@ -1,96 +1,30 @@
 """
-Reasoning Node — the LLM brain of the agent.
+Reasoning Node — Dynamic LLM brain. NO hardcoded business logic.
 
-Receives: conversation history + retrieved context + tool results
+Receives: conversation history + retrieved context + tool results + tenant context
 Produces: either a final answer (next_step="respond") or a tool call (next_step="tool_call")
 
 Uses the LLM gateway abstraction — Gemini or Ollama, env-switched.
+Uses dynamic system prompt built from tenant entity schema and agent configuration.
 """
 from langchain_core.messages import SystemMessage, AIMessage, ToolMessage, HumanMessage
 from graph.state import AgentState
 from services.llm_gateway import get_llm
+from services.agent_context_client import build_dynamic_system_prompt
 from tool_gateway.registry import get_tools_for_agent, get_allowed_tool_bindings
 
-# Actions that default to high risk requiring human approval before execution if not configured in UI
-HIGH_RISK_TOOLS = {
-    "issue_refund", "process_payment", "submit_refund_request",
-    "escalate_to_human", "human_escalation", "escalate"
-}
-
-
-def _build_system_prompt(context: list[dict], has_recent_tool_call: bool = False) -> str:
-    prompt = """You are a helpful Customer Support AI agent for an enterprise platform.
-
-CRITICAL RULES (in priority order):
-"""
-    if not has_recent_tool_call:
-        prompt += """
-1. CONTEXT EVALUATION RULE:
-   - First, evaluate the user's question against the provided DOCUMENT EXCERPTS and available tools.
-   - If the question is in context (covered by the provided document excerpts or relates to available support tools/greetings), answer it using ONLY the provided document excerpts or tools.
-   - If the question is NOT in context (not covered by the provided document excerpts and not a tool request or greeting), you MUST respond with: "The query is out of context."
-   - Do NOT use outside general knowledge (such as recipes like how to make tea, general trivia, or unprovided topics) to answer questions.
-"""
-    else:
-        prompt += """
-1. POST-TOOL RULE:
-   - You have just executed a tool. Summarize the tool result into a helpful, conversational response.
-   - Never say the query is out of context when summarizing a tool result.
-   - For refund flows, carefully follow the REFUND FLOW RULE.
-"""
-
-    prompt += """
-2. TOOL-FIRST RULE: When a user asks about order status, order tracking, order details,
-   customer lookups, shipment tracking, or ANY data that can be retrieved via an available
-   tool — you MUST call that tool IMMEDIATELY. Do NOT answer from document excerpts for
-   these queries. Call the tool.
-
-3. DOCUMENT RULE: For product information, company policies, pricing, and general questions
-   that are NOT about specific customer data, use ONLY the provided document excerpts to answer.
-   If the answer is not in the document excerpts, state that the query is out of context.
-
-4. ESCALATION & REFUND RULE: For refunds, once order details are verified via `check_order_status`, you MUST call `submit_refund_request` to file a formal approval request for human review. Do NOT call `Gmail` or send emails directly to confirm a refund before `submit_refund_request` has been submitted and approved. For unresolvable manual issues, call `escalate_to_human`. DO NOT escalate when asked for simple order data lookups.
-
-5. SYSTEM RESUMPTION RULE (Critical for graph resumes):
-   - When you receive a SYSTEM NOTIFICATION about an approved or rejected refund action, you MUST call the Gmail tool immediately.
-   - Do NOT respond with text only. Call the tool first.
-   - The tool will use action='gmail_send_email' to notify the customer of the decision.
-   - Extract recipient email from the system notification message.
-   - After Gmail executes, summarize the notification result to confirm the customer was contacted.
-
-6. REFUND FLOW RULE: When the user asks for a refund, strictly follow this flow:
-   a. Ask for order ID or email if not provided.
-   b. Use `check_order_status` (or Airtable lookup) to fetch order details dynamically.
-   c. Inspect the returned data to determine if the order is delivered.
-   d. If delivered, ask/confirm the customer's name, email, and refund reason.
-   e. Upon confirmation (or when user asks to file/submit refund), call the `submit_refund_request` tool with order_id, customer_name, customer_email, order_details, and refund_reason.
-   f. `submit_refund_request` will automatically trigger human approval.
-   g. ONLY call `Gmail` (with action `gmail_send_email`) when executing a resumption after human approval or system notification.
-
-Response format:
-- Keep answers concise, direct, and focused (1-2 sentences).
-- Do NOT include citation markers like [1], [2], or source labels.
-- Do NOT invent information not present in documents or tool results.
-"""
-    if context:
-        excerpts = "\n\n".join(
-            f"[{i+1}] (Source: {c.get('documentName','Unknown')} | "
-            f"Section: {c.get('section','')}) \n{c.get('text','')}"
-            for i, c in enumerate(context)
-        )
-        prompt += f"\n\nDOCUMENT EXCERPTS:\n{excerpts}"
-    else:
-        prompt += "\n\nDOCUMENT EXCERPTS: None provided."
-    return prompt
-
-
 MAX_TOOL_RETRIES = 3  # Circuit breaker: max consecutive tool call attempts
+MAX_TOOL_CALLS_PER_TURN = 5  # Default max tool calls per conversation turn
 
 
 async def reasoning_node(state: AgentState) -> dict:
     llm = get_llm()
     agent_id = state.get("agent_instance_id") or "default"
-    tools = await get_tools_for_agent(agent_id)
+    tenant_id = state.get("tenant_id") or ""
+
+    # Fetch tenant context and tools
+    tenant_context = state.get("tenant_context", {})
+    tools = await get_tools_for_agent(agent_id, tenant_context=tenant_context)
     bindings = await get_allowed_tool_bindings(agent_id)
 
     # Circuit breaker: if the ReAct loop has retried tools too many times,
@@ -108,77 +42,56 @@ async def reasoning_node(state: AgentState) -> dict:
             "pending_tool_call": None,
         }
 
-    # Diagnostic logging — critical for debugging tool binding issues
-    tool_names = [t.name for t in tools] if tools else []
-    print(f"[REASONING] Agent={agent_id} | Tools bound: {tool_names} | Bindings count: {len(bindings)} | Context chunks: {len(state.get('context', []))}")
-    
     # Map tool names to whether they require human approval based on ToolBinding DB config
     high_risk_map = {
         b["tool_name"]: b.get("is_high_risk", False) for b in bindings
     }
 
-    # Keywords that indicate the user wants live data from a tool, not document excerpts
-    TOOL_INTENT_KEYWORDS = {
-        "order status", "track order", "order details", "my order",
-        "order id", "ord-", "shipping status", "delivery status",
-        "check order", "where is my order", "track my", "tracking number",
-        "order number", "order update", "check my order", "look up order",
-        "lookup order", "find my order", "order info",
-        "refund", "apply for refund", "request refund", "return order", "want a refund"
-    }
+    # Read tenant agent config for per-turn limits
+    agent_config = tenant_context.get("agent_context", {})
+    entities = tenant_context.get("entities", [])
+    company = tenant_context.get("company", {})
+    max_calls = agent_config.get("max_tool_calls_per_turn", MAX_TOOL_CALLS_PER_TURN)
 
-    GREETINGS = {
-        "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
-        "thanks", "thank you", "bye", "goodbye"
-    }
-
-    context = state.get("context", [])
-    has_tool_context = bool(tools)
-    question_lower = (state.get("question") or "").strip().lower()
-    is_tool_intent = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
-    is_greeting = any(g in question_lower for g in GREETINGS)
-    is_system = question_lower == "system notification"
-
-    # Check if a tool has already been executed for the current user turn
-    has_recent_tool_call = False
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage):
-            break
-        if isinstance(msg, ToolMessage):
-            has_recent_tool_call = True
-            break
-
-    # If no document context was retrieved from RAG, and query is neither a tool intent nor a greeting nor post-tool turn:
-    if not context and not is_tool_intent and not has_recent_tool_call and not is_greeting and not is_system:
+    # Tool call budget enforcement
+    tool_call_count = state.get("tool_call_count", 0)
+    if tool_call_count >= max_calls:
+        print(f"[REASONING] Tool call budget exhausted: {tool_call_count}/{max_calls} for agent={agent_id}")
         return {
-            "messages": [AIMessage(content="The query is out of context.")],
+            "messages": [AIMessage(content=(
+                "I've gathered as much information as I can. Let me summarize what I found and "
+                "escalate the remaining questions to a human agent who can dig deeper."
+            ))],
             "next_step": "respond",
             "tool_result": None,
             "pending_tool_call": None,
         }
 
-    if has_recent_tool_call:
-        # A tool has already executed for this turn: unbind tools so the LLM is forced to synthesize a final text response
-        llm_with_tools = llm
-        context = []
-    elif is_tool_intent and has_tool_context:
-        # Tool-intent detected on initial turn: force the LLM to call a tool and strip RAG context
-        # so the LLM doesn't get confused by irrelevant document excerpts
-        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
-        context = []  # Clear RAG context to prevent document-based answers
-        print(f"[REASONING] TOOL-INTENT detected for '{question_lower}' — forcing tool_choice='any', clearing RAG context")
-    elif is_system and has_tool_context:
-        # System notification detected (e.g. graph resume from human approval):
-        # Force the LLM to pick a tool (like Gmail) to carry out the system's instructions
-        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
-        context = []
-        print(f"[REASONING] SYSTEM-INTENT detected — forcing tool_choice='any', clearing RAG context")
-    elif has_tool_context:
-        llm_with_tools = llm.bind_tools(tools)
-    else:
-        llm_with_tools = llm
+    # Diagnostic logging
+    tool_names = [t.name for t in tools] if tools else []
+    print(f"[REASONING] Agent={agent_id} | Tools bound: {tool_names} | Bindings count: {len(bindings)} | Context chunks: {len(state.get('context', []))}")
 
-    system_msg = SystemMessage(content=_build_system_prompt(context, has_recent_tool_call))
+    # Build dynamic tool descriptions for the system prompt
+    tool_descriptions = "\n".join(
+        [f"- {t.name}: {t.description}" for t in tools]
+    ) if tools else "No tools available."
+
+    # Build RAG context string
+    context = state.get("context", [])
+    rag_context = "\n\n".join(
+        f"[{i+1}] (Source: {c.get('documentName', 'Unknown')})\n{c.get('text', '')}"
+        for i, c in enumerate(context)
+    ) if context else ""
+
+    # Build the dynamic system prompt from tenant configuration
+    system_prompt = build_dynamic_system_prompt(
+        agent_config, entities, company, tool_descriptions, rag_context
+    )
+
+    # Bind tools to LLM if available
+    llm_with_tools = llm.bind_tools(tools) if tools else llm
+
+    system_msg = SystemMessage(content=system_prompt)
     history = list(state["messages"])
 
     response: AIMessage = await llm_with_tools.ainvoke([system_msg] + history)
@@ -188,14 +101,13 @@ async def reasoning_node(state: AgentState) -> dict:
         call = response.tool_calls[0]
         tool_name = call["name"]
 
-        is_resuming_or_approved = (
-            state.get("approval_status") in ["approved", "rejected"]
-            or is_system
-        )
-        if is_resuming_or_approved:
+        # Determine high-risk status from DB bindings only — no hardcoded set
+        is_high_risk = high_risk_map.get(tool_name, False)
+
+        # If we're resuming from an approval decision, don't re-flag as high-risk
+        is_resuming = state.get("approval_status") in ["approved", "rejected"]
+        if is_resuming:
             is_high_risk = False
-        else:
-            is_high_risk = tool_name in HIGH_RISK_TOOLS or high_risk_map.get(tool_name, False)
 
         return {
             "messages": [response],
@@ -203,9 +115,10 @@ async def reasoning_node(state: AgentState) -> dict:
             "pending_tool_call": {
                 "name": tool_name,
                 "arguments": call["args"],
-                "id": call.get("id", tool_name),  # OpenAI requires exact tool_call_id match
+                "id": call.get("id", tool_name),
             },
             "is_high_risk": is_high_risk,
+            "tool_call_count": tool_call_count + 1,
         }
 
     # ── Final answer ──
@@ -213,4 +126,6 @@ async def reasoning_node(state: AgentState) -> dict:
         "messages": [response],
         "next_step": "respond",
         "tool_result": None,
+        "pending_tool_call": None,
+        "tool_call_count": 0,  # Reset for next turn
     }

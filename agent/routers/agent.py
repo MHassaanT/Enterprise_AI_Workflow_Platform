@@ -12,6 +12,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from config import settings
 from graph.graph import customer_support_graph
 from graph.state import AgentState
+from services.agent_context_client import get_tenant_agent_context
 
 router = APIRouter()
 
@@ -48,6 +49,9 @@ async def run_agent(
 ):
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    # Fetch dynamic tenant context (entities, agent config, company info)
+    tenant_context = await get_tenant_agent_context(request.tenant_id)
 
     # Reconstruct conversation history memory from past turns, filtering out previous fallback refusal loops
     messages_list = []
@@ -89,11 +93,14 @@ async def run_agent(
         "is_high_risk": False,
         "approval_id": None,
         "approval_status": None,
+        "tenant_context": tenant_context,
         "tenant_id": request.tenant_id,
         "agent_instance_id": request.agent_instance_id,
         "conversation_id": request.conversation_id,
         "question": request.question,
         "user_id": request.user_id,
+        "tool_retry_count": 0,
+        "tool_call_count": 0,
     }
 
     config = {"configurable": {"thread_id": request.conversation_id}}
@@ -124,26 +131,7 @@ async def run_agent(
         print(f"[AGENT FATAL] Graph execution failed: {e}")
         traceback.print_exc()
 
-        # Detect whether this was a tool-intent query (order lookups, etc.)
-        # If so, RAG fallback would produce irrelevant document text that
-        # looks like a refusal — give a clear error message instead.
-        from graph.nodes.intent_classifier import TOOL_INTENT_KEYWORDS
-        question_lower = request.question.strip().lower()
-        is_tool_query = any(kw in question_lower for kw in TOOL_INTENT_KEYWORDS)
-
-        if is_tool_query:
-            return AgentRunResponse(
-                answer=(
-                    "I encountered a technical error while trying to look up that information. "
-                    "Please try again in a moment, or contact support if the issue persists."
-                ),
-                citations=[],
-                tool_used=None,
-                approval_pending=False,
-                approval_id=None,
-            )
-
-        # Document/policy questions — RAG fallback is appropriate here
+        # RAG-only fallback — try to answer from documents
         from services.rag_client import query_rag
         rag_result = await query_rag(request.question, request.tenant_id)
         chunks = rag_result.get("chunks", [])
@@ -151,7 +139,8 @@ async def run_agent(
             top_text = chunks[0].get("text", "").replace("\n", " ").strip()
             answer = top_text[:300] + ("..." if len(top_text) > 300 else "")
         else:
-            answer = "The query is out of context."
+            answer = "I'm not sure how to help with that. Could you provide more details about your issue?"
+
         return AgentRunResponse(
             answer=answer,
             citations=rag_result.get("citations", []),
@@ -175,19 +164,6 @@ async def resume_agent(
         existing_state = await customer_support_graph.aget_state(config)
         prior_messages = existing_state.values.get("messages", []) if existing_state else []
 
-        import re
-        def _extract_customer_email(messages) -> str:
-            email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
-            for msg in reversed(messages):
-                content = getattr(msg, "content", "")
-                if isinstance(content, str):
-                    matches = re.findall(email_pattern, content)
-                    if matches:
-                        return matches[-1]
-            return "customer"
-            
-        customer_email = _extract_customer_email(prior_messages)
-
         existing_values = existing_state.values if existing_state else {}
         resume_update = {
             "approval_status": request.decision,
@@ -196,13 +172,22 @@ async def resume_agent(
             "agent_instance_id": existing_values.get("agent_instance_id") or "default",
             "tenant_id": request.tenant_id or existing_values.get("tenant_id") or "",
             "conversation_id": request.conversation_id,
+            "tenant_context": existing_values.get("tenant_context", {}),
         }
+
+        # Generic notification — no hardcoded refund/Gmail logic
         if request.decision == "rejected":
-            notification = f"SYSTEM NOTIFICATION: Refund request (Reference ID: {request.approval_id}) was REJECTED by human reviewer. YOU MUST immediately use the Gmail tool with action='gmail_send_email' to send a rejection notice to: {customer_email}. Include the reference ID and reason in the email."
-            resume_update["messages"] = prior_messages + [HumanMessage(content=notification)]
-        elif request.decision == "approved":
-            notification = f"SYSTEM NOTIFICATION: Refund request (Reference ID: {request.approval_id}) was APPROVED by human reviewer. YOU MUST immediately use the Gmail tool with action='gmail_send_email' to send approval notice to: {customer_email}. Include reference ID and next steps."
-            resume_update["messages"] = prior_messages + [HumanMessage(content=notification)]
+            notification = (
+                f"SYSTEM NOTIFICATION: Action (Ref: {request.approval_id}) was REJECTED by human reviewer. "
+                f"Inform the user politely and offer alternatives or escalation."
+            )
+        else:
+            notification = (
+                f"SYSTEM NOTIFICATION: Action (Ref: {request.approval_id}) was APPROVED by human reviewer. "
+                f"Proceed with confirming the result to the user."
+            )
+
+        resume_update["messages"] = prior_messages + [HumanMessage(content=notification)]
 
         final_state = await customer_support_graph.ainvoke(resume_update, config=config)
 

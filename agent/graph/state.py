@@ -21,10 +21,14 @@ class AgentState(TypedDict):
     tool_result: Optional[str]          # raw result from last tool execution
     is_high_risk: bool                  # whether pending tool requires human approval
     tool_retry_count: int               # circuit breaker: counts consecutive tool failures
+    tool_call_count: int                # per-turn tool call budget tracker
 
     # Approval tracking
     approval_id: Optional[str]          # UUID of the pending ApprovalRequest
     approval_status: Optional[str]      # "pending" | "approved" | "rejected"
+
+    # Tenant context — dynamic entity schema + agent configuration
+    tenant_context: Optional[dict]      # {agent_context, entities, company}
 
     # Request-scoped metadata (immutable after initialization)
     tenant_id: str

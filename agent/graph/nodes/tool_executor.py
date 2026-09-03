@@ -5,7 +5,7 @@ and logs tenant-scoped audit records.
 from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 from graph.state import AgentState
-from tool_gateway.registry import TOOL_INPUT_MODELS
+from tool_gateway.registry import TOOL_INPUT_MODELS, TOOL_REGISTRY
 from tool_gateway.centralized_gateway import execute_mcp_tool
 from services.db_client import write_audit_log
 

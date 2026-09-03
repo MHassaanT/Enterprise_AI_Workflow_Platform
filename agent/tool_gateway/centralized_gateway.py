@@ -126,7 +126,13 @@ async def execute_mcp_tool(
                     airtable_creds = await fetch_tool_credentials(tenant_id, tool_id="airtable")
                     if airtable_creds:
                         credentials.update(airtable_creds)
-                res = await tool_fn(**arguments, tenant_id=tenant_id, binding_id=binding_id, credentials=credentials)
+                res = await tool_fn(
+                    **arguments,
+                    tenant_id=tenant_id,
+                    binding_id=binding_id,
+                    credentials=credentials,
+                    conversation_id=arguments.get("conversation_id", ""),
+                )
                 return str(res)
             else:
                 return f"Error: Built-in tool '{tool_name}' not found in registry."

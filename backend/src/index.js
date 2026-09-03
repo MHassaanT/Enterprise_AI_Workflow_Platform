@@ -27,6 +27,7 @@ const codingRoutes = require('./routes/coding');
 const analyticsRoutes = require('./routes/analytics');
 const safepayRoutes = require('./routes/safepay');
 const subscriptionRoutes = require('./routes/subscription');
+const entitiesRoutes = require('./routes/entities');
 
 const { authenticate } = require('./middleware/auth');
 const { requirePlanAccess } = require('./middleware/subscriptionGuard');
@@ -72,6 +73,7 @@ app.use('/api/hr', hrRoutes);
 app.use('/api/hr', hrTeamRoutes);
 app.use('/api/hr', hrAttendanceRoutes);
 app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/entities', entitiesRoutes);
 
 // ── PLAN-GATED AGENT ROUTES ──
 // These routes additionally check that the tenant's subscription includes the agent.

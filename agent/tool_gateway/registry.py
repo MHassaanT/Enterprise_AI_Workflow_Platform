@@ -6,64 +6,144 @@ Central registry mapping tool names to:
   - Pydantic input models for validation (TOOL_INPUT_MODELS)
   - LangChain StructuredTool objects for LLM binding (LANGCHAIN_TOOLS)
   - Dynamic MCP connector tool generator via Postgres ToolBinding allowlist per agent_instance_id
+  - Dynamic entity-specific tool generator from tenant context
 """
 from typing import Callable, List, Dict, Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
 
 from tool_gateway.tools.check_order_status import check_order_status_impl, CheckOrderStatusInput
-from tool_gateway.tools.escalate_to_human import escalate_to_human_impl, EscalateToHumanInput
+from tool_gateway.tools.escalate_to_human import escalate_to_human_impl as legacy_escalate_impl, EscalateToHumanInput as LegacyEscalateInput
 from tool_gateway.tools.submit_refund_request import submit_refund_request_impl, SubmitRefundRequestInput
+from tool_gateway.tools.platform_primitives import (
+    get_current_user_impl, GetCurrentUserInput,
+    get_user_by_email_impl, GetUserByEmailInput,
+    search_entities_impl, SearchEntitiesInput,
+    get_entity_by_id_impl, GetEntityByIdInput,
+    create_support_ticket_impl, CreateSupportTicketInput,
+    get_support_tickets_impl, GetSupportTicketsInput,
+    add_ticket_note_impl, AddTicketNoteInput,
+    send_notification_impl, SendNotificationInput,
+    get_platform_status_impl, GetPlatformStatusInput,
+    escalate_to_human_impl, EscalateToHumanInput,
+)
 from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import get_agent_tool_bindings
 
 # ── Core built-in registries ──
 
 _check_order_desc = (
-    "Returns the current status of a customer order by order_id or email address. "
+    "(Legacy) Returns the current status of a customer order by order_id or email address. "
     "Use this when the user asks about their order status, shipment, delivery, or order details."
 )
 
-_escalate_desc = (
-    "Escalates an issue or high-risk action to a human supervisor for approval. "
-    "Use when an ungrounded inquiry cannot be answered accurately from documents, "
-    "or when an irreversible/high-risk action (such as refunds or credits) is requested."
-)
-
-_escalate_desc = (
-    "Escalates an issue or high-risk action to a human supervisor for approval. "
+_legacy_escalate_desc = (
+    "(Legacy) Escalates an issue or high-risk action to a human supervisor for approval. "
     "Use when an ungrounded inquiry cannot be answered accurately from documents, "
     "or when an irreversible/high-risk action (such as refunds or credits) is requested."
 )
 
 _submit_refund_desc = (
-    "Submits a refund request for an order. "
+    "(Legacy) Submits a refund request for an order. "
     "This is a high-risk tool and will require human approval. "
     "You MUST gather the customer's confirmed name, email, the refund reason, and the order details from check_order_status before calling this."
 )
 
+# ── Tool Descriptions for Platform Primitives ──
+
+TOOL_DESCRIPTIONS: Dict[str, str] = {
+    "get_current_user": (
+        "Get the currently authenticated user. ALWAYS call this first when a user starts a conversation "
+        "so you know who you're helping."
+    ),
+    "get_user_by_email": (
+        "Look up a user account by email address. Use this to identify a user when they mention their email."
+    ),
+    "search_entities": (
+        "Search for records across the platform by entity type. "
+        "Use this when the user mentions any business object type."
+    ),
+    "get_entity_by_id": (
+        "Fetch a specific record by its ID and entity type. Use after search_entities to get full details."
+    ),
+    "create_support_ticket": (
+        "Create a support ticket to track this issue. "
+        "Use this when the issue is complex, needs follow-up, or you need to escalate."
+    ),
+    "get_support_tickets": (
+        "Retrieve existing support tickets for a user or tenant."
+    ),
+    "add_ticket_note": (
+        "Append findings or actions to an existing support ticket."
+    ),
+    "send_notification": (
+        "Send an email or in-app message to the user. Use this to confirm actions or provide updates."
+    ),
+    "get_platform_status": (
+        "Check if the platform is experiencing known incidents or outages. "
+        "Use this when a user reports something not working."
+    ),
+    "escalate_to_human": (
+        "Hand off to a human support agent with full conversation context. "
+        "Use this when you cannot resolve the issue, the user is frustrated, or they explicitly ask for a human."
+    ),
+    # Legacy tools
+    "check_order_status": _check_order_desc,
+    "check_order_details": _check_order_desc,
+    "check_order": _check_order_desc,
+    "order_status": _check_order_desc,
+    "escalate": _legacy_escalate_desc,
+    "human_escalation": _legacy_escalate_desc,
+    "submit_refund_request": _submit_refund_desc,
+}
+
+# ── Registries ──
+
 TOOL_REGISTRY: Dict[str, Callable] = {
+    # Platform primitives
+    "get_current_user": get_current_user_impl,
+    "get_user_by_email": get_user_by_email_impl,
+    "search_entities": search_entities_impl,
+    "get_entity_by_id": get_entity_by_id_impl,
+    "create_support_ticket": create_support_ticket_impl,
+    "get_support_tickets": get_support_tickets_impl,
+    "add_ticket_note": add_ticket_note_impl,
+    "send_notification": send_notification_impl,
+    "get_platform_status": get_platform_status_impl,
+    "escalate_to_human": escalate_to_human_impl,
+    # Legacy tools (backward compatible)
     "check_order_status": check_order_status_impl,
     "check_order_details": check_order_status_impl,
     "check_order": check_order_status_impl,
     "order_status": check_order_status_impl,
-    "escalate_to_human": escalate_to_human_impl,
-    "human_escalation": escalate_to_human_impl,
-    "escalate": escalate_to_human_impl,
+    "human_escalation": legacy_escalate_impl,
+    "escalate": legacy_escalate_impl,
     "submit_refund_request": submit_refund_request_impl,
 }
 
 TOOL_INPUT_MODELS: Dict[str, type] = {
+    # Platform primitives
+    "get_current_user": GetCurrentUserInput,
+    "get_user_by_email": GetUserByEmailInput,
+    "search_entities": SearchEntitiesInput,
+    "get_entity_by_id": GetEntityByIdInput,
+    "create_support_ticket": CreateSupportTicketInput,
+    "get_support_tickets": GetSupportTicketsInput,
+    "add_ticket_note": AddTicketNoteInput,
+    "send_notification": SendNotificationInput,
+    "get_platform_status": GetPlatformStatusInput,
+    "escalate_to_human": EscalateToHumanInput,
+    # Legacy tools
     "check_order_status": CheckOrderStatusInput,
     "check_order_details": CheckOrderStatusInput,
     "check_order": CheckOrderStatusInput,
     "order_status": CheckOrderStatusInput,
-    "escalate_to_human": EscalateToHumanInput,
-    "human_escalation": EscalateToHumanInput,
-    "escalate": EscalateToHumanInput,
+    "human_escalation": LegacyEscalateInput,
+    "escalate": LegacyEscalateInput,
     "submit_refund_request": SubmitRefundRequestInput,
 }
 
+# Pre-built LangChain tools for legacy built-ins
 BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
     "check_order_status": StructuredTool.from_function(
         coroutine=check_order_status_impl,
@@ -92,20 +172,20 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
     "escalate_to_human": StructuredTool.from_function(
         coroutine=escalate_to_human_impl,
         name="escalate_to_human",
-        description=_escalate_desc,
+        description=TOOL_DESCRIPTIONS["escalate_to_human"],
         args_schema=EscalateToHumanInput,
     ),
     "human_escalation": StructuredTool.from_function(
-        coroutine=escalate_to_human_impl,
+        coroutine=legacy_escalate_impl,
         name="human_escalation",
-        description=_escalate_desc,
-        args_schema=EscalateToHumanInput,
+        description=_legacy_escalate_desc,
+        args_schema=LegacyEscalateInput,
     ),
     "escalate": StructuredTool.from_function(
-        coroutine=escalate_to_human_impl,
+        coroutine=legacy_escalate_impl,
         name="escalate",
-        description=_escalate_desc,
-        args_schema=EscalateToHumanInput,
+        description=_legacy_escalate_desc,
+        args_schema=LegacyEscalateInput,
     ),
     "submit_refund_request": StructuredTool.from_function(
         coroutine=submit_refund_request_impl,
@@ -113,7 +193,63 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         description=_submit_refund_desc,
         args_schema=SubmitRefundRequestInput,
     ),
+    # Platform primitives
+    "get_current_user": StructuredTool.from_function(
+        coroutine=get_current_user_impl,
+        name="get_current_user",
+        description=TOOL_DESCRIPTIONS["get_current_user"],
+        args_schema=GetCurrentUserInput,
+    ),
+    "get_user_by_email": StructuredTool.from_function(
+        coroutine=get_user_by_email_impl,
+        name="get_user_by_email",
+        description=TOOL_DESCRIPTIONS["get_user_by_email"],
+        args_schema=GetUserByEmailInput,
+    ),
+    "search_entities": StructuredTool.from_function(
+        coroutine=search_entities_impl,
+        name="search_entities",
+        description=TOOL_DESCRIPTIONS["search_entities"],
+        args_schema=SearchEntitiesInput,
+    ),
+    "get_entity_by_id": StructuredTool.from_function(
+        coroutine=get_entity_by_id_impl,
+        name="get_entity_by_id",
+        description=TOOL_DESCRIPTIONS["get_entity_by_id"],
+        args_schema=GetEntityByIdInput,
+    ),
+    "create_support_ticket": StructuredTool.from_function(
+        coroutine=create_support_ticket_impl,
+        name="create_support_ticket",
+        description=TOOL_DESCRIPTIONS["create_support_ticket"],
+        args_schema=CreateSupportTicketInput,
+    ),
+    "get_support_tickets": StructuredTool.from_function(
+        coroutine=get_support_tickets_impl,
+        name="get_support_tickets",
+        description=TOOL_DESCRIPTIONS["get_support_tickets"],
+        args_schema=GetSupportTicketsInput,
+    ),
+    "add_ticket_note": StructuredTool.from_function(
+        coroutine=add_ticket_note_impl,
+        name="add_ticket_note",
+        description=TOOL_DESCRIPTIONS["add_ticket_note"],
+        args_schema=AddTicketNoteInput,
+    ),
+    "send_notification": StructuredTool.from_function(
+        coroutine=send_notification_impl,
+        name="send_notification",
+        description=TOOL_DESCRIPTIONS["send_notification"],
+        args_schema=SendNotificationInput,
+    ),
+    "get_platform_status": StructuredTool.from_function(
+        coroutine=get_platform_status_impl,
+        name="get_platform_status",
+        description=TOOL_DESCRIPTIONS["get_platform_status"],
+        args_schema=GetPlatformStatusInput,
+    ),
 }
+
 
 # ── Dynamic Allowlist & MCP Tool Resolution ──
 
@@ -235,10 +371,59 @@ def _make_mcp_executor(tool_name: str, tenant_id: str, agent_instance_id: str):
     return executor
 
 
-async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
+def _build_entity_tools(tenant_context: dict) -> List[StructuredTool]:
+    """
+    Generate per-entity search and get tools from the tenant's configured entities.
+    These are dynamically created StructuredTool instances that the LLM can call.
+    """
+    entities = tenant_context.get("entities", [])
+    tools = []
+
+    for entity in entities:
+        name = entity.get("entity_name", "")
+        display = entity.get("display_name", name)
+        desc = entity.get("description", "")
+        ops = entity.get("operations", [])
+        fields = entity.get("fields", [])
+
+        field_descs = ", ".join(
+            [f"{f.get('field_name')} ({f.get('field_type')})" for f in fields]
+        )
+        op_names = [o.get("operation_name") for o in ops if o.get("is_enabled", True)]
+
+        if "search" in op_names:
+            search_tool = StructuredTool.from_function(
+                name=f"search_{name}",
+                description=(
+                    f"Search for {display} records on the platform. "
+                    f"Use this when the user mentions {display.lower()} or asks about their {name}s. "
+                    f"Fields: {field_descs}."
+                ),
+                args_schema=SearchEntitiesInput,
+                coroutine=search_entities_impl,
+            )
+            tools.append(search_tool)
+
+        if "get_by_id" in op_names:
+            get_tool = StructuredTool.from_function(
+                name=f"get_{name}_by_id",
+                description=(
+                    f"Fetch a specific {display} record by its ID. "
+                    f"Use after search to get full details."
+                ),
+                args_schema=GetEntityByIdInput,
+                coroutine=get_entity_by_id_impl,
+            )
+            tools.append(get_tool)
+
+    return tools
+
+
+async def get_tools_for_agent(agent_instance_id: str, tenant_context: dict = None) -> List[StructuredTool]:
     """
     Generates and returns LangChain StructuredTool objects for binding to the LLM,
-    strictly restricted to the agent's ToolBinding allowlist.
+    strictly restricted to the agent's ToolBinding allowlist,
+    plus any dynamic entity-specific tools from tenant context.
     """
     bindings = await get_allowed_tool_bindings(agent_instance_id)
     tools: List[StructuredTool] = []
@@ -249,7 +434,7 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
         norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
 
         # 1. Check if it's a built-in platform tool (direct match or alias)
-        if connector_type == "builtin" or norm_name in BUILTIN_LANGCHAIN_TOOLS or "order" in norm_name or "escalat" in norm_name:
+        if connector_type == "builtin" or norm_name in BUILTIN_LANGCHAIN_TOOLS or "order" in norm_name or "escalat" in norm_name or "refund" in norm_name:
             if norm_name in BUILTIN_LANGCHAIN_TOOLS:
                 tools.append(BUILTIN_LANGCHAIN_TOOLS[norm_name])
                 continue
@@ -265,8 +450,16 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
                 tools.append(StructuredTool.from_function(
                     coroutine=escalate_to_human_impl,
                     name=tool_name,
-                    description=_escalate_desc,
+                    description=TOOL_DESCRIPTIONS["escalate_to_human"],
                     args_schema=EscalateToHumanInput,
+                ))
+                continue
+            elif "refund" in norm_name:
+                tools.append(StructuredTool.from_function(
+                    coroutine=submit_refund_request_impl,
+                    name=tool_name,
+                    description=_submit_refund_desc,
+                    args_schema=SubmitRefundRequestInput,
                 ))
                 continue
 
@@ -291,10 +484,8 @@ async def get_tools_for_agent(agent_instance_id: str) -> List[StructuredTool]:
         )
         tools.append(mcp_tool)
 
-    # Always ensure core platform built-in tools (submit_refund_request, escalate_to_human, check_order_status) are bound
-    bound_names = {t.name.lower().replace("-", "_").replace(" ", "_") for t in tools}
-    for builtin_name in ["submit_refund_request", "escalate_to_human", "check_order_status"]:
-        if builtin_name not in bound_names and builtin_name in BUILTIN_LANGCHAIN_TOOLS:
-            tools.append(BUILTIN_LANGCHAIN_TOOLS[builtin_name])
+    # Add dynamic entity-specific tools from tenant context
+    if tenant_context:
+        tools.extend(_build_entity_tools(tenant_context))
 
     return tools

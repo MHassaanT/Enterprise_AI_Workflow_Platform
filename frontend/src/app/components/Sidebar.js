@@ -41,6 +41,7 @@ export default function Sidebar() {
     { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree', isAgent: true },
     { label: 'Widget Setup', href: '/widget-setup', icon: 'extension', isAgent: false },
     { label: 'MCP Tools', href: '/mcp', icon: 'hub', isAgent: false },
+    { label: 'Entity Schema', href: '/entities', icon: 'database', isAgent: false },
     { label: 'Admin Gateway', href: '/admin/tools', icon: 'settings_applications', isAgent: false },
     ...(isAdmin ? [{ label: 'Team Users', href: '/users', icon: 'group', isAgent: false }] : []),
     { label: 'Billing', href: '/billing', icon: 'payments', isAgent: false },

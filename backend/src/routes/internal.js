@@ -864,4 +864,204 @@ router.post('/hr/project-update-from-email', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════
+//  DYNAMIC AGENT CONTEXT & ENTITY ENDPOINTS
+// ═══════════════════════════════════════════════════════
+
+// ── GET /internal/tenants/:tenantId/agent-context ──
+// Returns the full agent context (entities, company, config) for the Python agent service
+router.get('/tenants/:tenantId/agent-context', async (req, res) => {
+  const { tenantId } = req.params;
+  try {
+    const contextRes = await query(
+      `SELECT * FROM tenant_agent_context WHERE tenant_id = $1 AND agent_type = 'customer_support'`,
+      [tenantId], tenantId
+    );
+    const agentContext = contextRes.rows[0] || {};
+
+    const entitiesRes = await query(
+      `SELECT e.*, 
+        COALESCE((SELECT json_agg(json_build_object(
+          'field_name', f.field_name, 'display_name', f.display_name, 'field_type', f.field_type,
+          'is_required', f.is_required, 'is_searchable', f.is_searchable, 'is_filterable', f.is_filterable,
+          'enum_values', f.enum_values, 'reference_entity_id', f.reference_entity_id, 'description', f.description
+        ) ORDER BY f.created_at) FROM tenant_entity_fields f WHERE f.entity_id = e.id), '[]'::json) as fields,
+        COALESCE((SELECT json_agg(json_build_object(
+          'operation_name', o.operation_name, 'is_enabled', o.is_enabled, 'requires_approval', o.requires_approval
+        ) ORDER BY o.created_at) FROM tenant_entity_operations o WHERE o.entity_id = e.id), '[]'::json) as operations
+      FROM tenant_entities e WHERE e.tenant_id = $1 AND e.is_enabled = true ORDER BY e.created_at`,
+      [tenantId], tenantId
+    );
+
+    const companyRes = await query(
+      `SELECT name, description, website, industry FROM tenants WHERE id = $1`,
+      [tenantId], tenantId
+    );
+    const company = companyRes.rows[0] || {};
+
+    res.json({
+      tenant_id: tenantId,
+      agent_context: {
+        company_name: agentContext.company_name || company.name || 'Enterprise Client',
+        company_description: agentContext.company_description || company.description || '',
+        support_tone: agentContext.support_tone || 'professional',
+        auto_escalate_keywords: agentContext.auto_escalate_keywords || [],
+        auto_escalate_after_attempts: agentContext.auto_escalate_after_attempts || 3,
+        max_tool_calls_per_turn: agentContext.max_tool_calls_per_turn || 5,
+        enable_proactive_suggestions: agentContext.enable_proactive_suggestions !== false,
+        custom_system_instructions: agentContext.custom_system_instructions || '',
+      },
+      entities: entitiesRes.rows,
+      company: { name: company.name, description: company.description, website: company.website, industry: company.industry }
+    });
+  } catch (error) {
+    console.error(`Error fetching agent context for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: 'Failed to fetch agent context.' });
+  }
+});
+
+// ── GET /internal/tenants/:tenantId/entities/:entityName/search ──
+// Generic entity search with filters — supports internal_api data sources
+router.get('/tenants/:tenantId/entities/:entityName/search', async (req, res) => {
+  const { tenantId, entityName } = req.params;
+  const { q, user_id, limit = 10, ...filters } = req.query;
+  try {
+    const entityRes = await query(
+      `SELECT * FROM tenant_entities WHERE tenant_id = $1 AND entity_name = $2 AND is_enabled = true`,
+      [tenantId, entityName], tenantId
+    );
+    if (!entityRes.rows[0]) return res.status(404).json({ error: `Entity '${entityName}' not found.` });
+    const entity = entityRes.rows[0];
+
+    if (entity.data_source_type === 'internal_api') {
+      const config = entity.data_source_config || {};
+      const tableName = config.table_name || entityName + 's';
+      const allowedTables = ['users', 'listings', 'orders', 'products', 'appointments', 'projects', 'subscriptions', 'inquiries'];
+      if (!allowedTables.includes(tableName)) {
+        return res.status(400).json({ error: 'Internal table not configured for generic search.' });
+      }
+      const conditions = [`tenant_id = $1`];
+      const params = [tenantId]; let idx = 2;
+      if (q) { conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx} OR id::text = $${idx})`); params.push(`%${q}%`); idx++; }
+      if (user_id) { conditions.push(`user_id = $${idx}`); params.push(user_id); idx++; }
+      Object.entries(filters).forEach(([key, value]) => {
+        if (key.startsWith('filter_')) {
+          const col = key.replace('filter_', '');
+          conditions.push(`${col} = $${idx}`); params.push(value); idx++;
+        }
+      });
+      const result = await query(
+        `SELECT * FROM ${tableName} WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT $${idx}`,
+        [...params, parseInt(limit) || 10], tenantId
+      );
+      return res.json({ entity: entityName, results: result.rows, count: result.rowCount });
+    }
+
+    // External data source — return metadata
+    res.json({ entity: entityName, data_source_type: entity.data_source_type, data_source_config: entity.data_source_config, message: 'External data source.' });
+  } catch (error) {
+    console.error(`Error searching entity ${entityName}:`, error);
+    res.status(500).json({ error: 'Entity search failed.' });
+  }
+});
+
+// ── GET /internal/tenants/:tenantId/entities/:entityName/:recordId ──
+// Fetch a single entity record by ID
+router.get('/tenants/:tenantId/entities/:entityName/:recordId', async (req, res) => {
+  const { tenantId, entityName, recordId } = req.params;
+  try {
+    const entityRes = await query(
+      `SELECT * FROM tenant_entities WHERE tenant_id = $1 AND entity_name = $2`,
+      [tenantId, entityName], tenantId
+    );
+    if (!entityRes.rows[0]) return res.status(404).json({ error: `Entity '${entityName}' not found.` });
+    const config = entityRes.rows[0].data_source_config || {};
+    const tableName = config.table_name || entityName + 's';
+    const result = await query(
+      `SELECT * FROM ${tableName} WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, recordId], tenantId
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Record not found.' });
+    res.json({ entity: entityName, record: result.rows[0] });
+  } catch (error) {
+    console.error('Error fetching record:', error);
+    res.status(500).json({ error: 'Failed to fetch record.' });
+  }
+});
+
+// ── POST /internal/support-tickets ──
+// Create a new support ticket
+router.post('/support-tickets', async (req, res) => {
+  const { tenantId, conversationId, userId, userEmail, title, description, priority, category } = req.body;
+  try {
+    const result = await query(
+      `INSERT INTO support_tickets (tenant_id, conversation_id, user_id, user_email, title, description, priority, category, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open') RETURNING *`,
+      [tenantId, conversationId || null, userId || null, userEmail || null, title, description, priority || 'medium', category || null],
+      tenantId
+    );
+    res.status(201).json({ ticket: result.rows[0] });
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    res.status(500).json({ error: 'Failed to create ticket.' });
+  }
+});
+
+// ── GET /internal/support-tickets ──
+// List tickets with tenant/user/status filters
+router.get('/support-tickets', async (req, res) => {
+  const { tenantId, userId, status, limit = 20 } = req.query;
+  try {
+    let sql = `SELECT * FROM support_tickets WHERE tenant_id = $1`;
+    const params = [tenantId]; let idx = 2;
+    if (userId) { sql += ` AND user_id = $${idx}`; params.push(userId); idx++; }
+    if (status) { sql += ` AND status = $${idx}`; params.push(status); idx++; }
+    sql += ` ORDER BY created_at DESC LIMIT $${idx}`; params.push(parseInt(limit) || 20);
+    const result = await query(sql, params, tenantId);
+    res.json({ tickets: result.rows });
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    res.status(500).json({ error: 'Failed to fetch tickets.' });
+  }
+});
+
+// ── POST /internal/support-tickets/:ticketId/notes ──
+// Add a note to a ticket
+router.post('/support-tickets/:ticketId/notes', async (req, res) => {
+  const { ticketId } = req.params;
+  const { note, authorType, authorId } = req.body;
+  try {
+    const result = await query(
+      `INSERT INTO support_ticket_notes (ticket_id, note, author_type, author_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [ticketId, note, authorType || 'ai_agent', authorId || null]
+    );
+    await query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [ticketId]);
+    res.status(201).json({ note: result.rows[0] });
+  } catch (error) {
+    console.error('Error adding note:', error);
+    res.status(500).json({ error: 'Failed to add note.' });
+  }
+});
+
+// ── PATCH /internal/support-tickets/:ticketId ──
+// Update ticket status/assignment/resolution
+router.patch('/support-tickets/:ticketId', async (req, res) => {
+  const { ticketId } = req.params;
+  const { status, assignedTo, resolutionSummary } = req.body;
+  try {
+    const updates = []; const params = []; let idx = 1;
+    if (status) { updates.push(`status = $${idx}`); params.push(status); idx++; }
+    if (assignedTo) { updates.push(`assigned_to = $${idx}`); params.push(assignedTo); idx++; }
+    if (resolutionSummary) { updates.push(`resolution_summary = $${idx}`); params.push(resolutionSummary); idx++; }
+    if (status === 'resolved' || status === 'closed') updates.push(`resolved_at = NOW()`);
+    updates.push(`updated_at = NOW()`);
+    params.push(ticketId);
+    const result = await query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`, params);
+    res.json({ ticket: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating ticket:', error);
+    res.status(500).json({ error: 'Failed to update ticket.' });
+  }
+});
+
 module.exports = router;

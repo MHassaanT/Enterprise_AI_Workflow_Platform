@@ -14,16 +14,8 @@ from services.db_client import create_approval_request, write_audit_log
 async def approval_checkpoint_node(state: AgentState) -> dict:
     tool_call = state["pending_tool_call"]
 
+    # Use the raw action payload universally — no tool-specific mapping
     action_payload = tool_call.get("arguments", {})
-    if tool_call["name"] == "submit_refund_request":
-        action_payload = {
-            "userName": action_payload.get("customer_name", ""),
-            "userEmail": action_payload.get("customer_email", ""),
-            "orderDetails": action_payload.get("order_details", ""),
-            "userRequest": action_payload.get("refund_reason", ""),
-            "orderId": action_payload.get("order_id", ""),
-            **action_payload
-        }
 
     # Write ApprovalRequest to Postgres via Node.js internal route
     approval_id = await create_approval_request({
