@@ -304,7 +304,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
 
           <nav className="hidden lg:flex items-center gap-8 text-sm text-gray-300 font-medium">
             <a href="#agents" className="hover:text-blue-400 transition-colors">AI Workforce</a>
-            <a href="#simulator" className="hover:text-blue-400 transition-colors">Live Simulator</a>
+            <a href="#simulator" className="hover:text-blue-400 transition-colors">How Agent Work</a>
             <a href="#workflow" className="hover:text-blue-400 transition-colors">Visual Workflows</a>
             <a href="#mcp" className="hover:text-blue-400 transition-colors">MCP Gateway</a>
             <a href="#security" className="hover:text-blue-400 transition-colors">Security & RLS</a>
@@ -382,7 +382,7 @@ async def qdrant_search(query: str, top_k: int = 5) -> dict:
               className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 text-white font-semibold rounded-2xl hover:bg-white/10 transition-all flex items-center justify-center gap-3 text-lg backdrop-blur-md"
             >
               <span className="material-symbols-outlined text-blue-400">play_circle</span>
-              <span>Launch Agent Simulator</span>
+              <span>See How Agent Work</span>
             </a>
           </div>
 
