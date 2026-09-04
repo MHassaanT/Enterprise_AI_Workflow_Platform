@@ -28,6 +28,7 @@ async def get_agent_tool_bindings(agent_instance_id: str) -> dict:
             "tools": [
                 {"tool_name": "check_order_status", "connector_type": "builtin", "is_high_risk": False},
                 {"tool_name": "escalate_to_human", "connector_type": "builtin", "is_high_risk": True},
+                {"tool_name": "authenticate_user_with_email", "connector_type": "builtin", "is_high_risk": False},
             ],
             "is_default_fallback": True,
         }
@@ -50,6 +51,7 @@ async def get_tenant_tool_bindings(tenant_id: str) -> dict:
             "tools": [
                 {"tool_name": "check_order_status", "connector_type": "builtin", "is_high_risk": False},
                 {"tool_name": "escalate_to_human", "connector_type": "builtin", "is_high_risk": True},
+                {"tool_name": "authenticate_user_with_email", "connector_type": "builtin", "is_high_risk": False},
             ],
             "is_default_fallback": True,
         }

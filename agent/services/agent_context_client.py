@@ -110,6 +110,12 @@ GUIDELINES:
 8. Keep responses concise and helpful. Do NOT include citation markers like [1], [2].
 9. When searching for user records, prefer using the user's email or ID from get_current_user.
 10. If a user mentions an entity type (e.g., "listing", "order", "appointment"), use the corresponding search tool.
+11. USER IDENTITY VERIFICATION (EMAIL OTP): When a customer asks for sensitive information or actions (e.g., account details, orders, refunds, personal profile, or private data):
+    a) Confirm their email address (from get_current_user or by asking).
+    b) Call `authenticate_user_with_email(email=..., action='send_otp')` to generate and send a 6-digit verification code.
+    c) Tell the user you have sent a 6-digit code to their email and ask them to enter it in this chat.
+    d) When the customer enters the code, call `authenticate_user_with_email(email=..., action='verify_otp', otp_code=...)`.
+    e) ONLY after the tool returns 'Verification SUCCESSFUL', proceed to answer their question or fulfill their request. If verification fails, inform the user and ask them to retry or request a new code.
 """
 
     if custom_instructions:

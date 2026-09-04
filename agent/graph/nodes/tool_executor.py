@@ -37,6 +37,7 @@ async def tool_executor_node(state: AgentState) -> dict:
             agent_instance_id=agent_instance_id,
             tool_name=tool_name,
             arguments=arguments,
+            conversation_id=state.get("conversation_id", ""),
         )
         
         print(f"[TOOL EXECUTOR] Executed '{tool_name}' with args {arguments} | Result: {result_str}")

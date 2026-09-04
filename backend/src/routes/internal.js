@@ -1064,4 +1064,166 @@ router.patch('/support-tickets/:ticketId', async (req, res) => {
   }
 });
 
+// ── POST /internal/otp/generate ──
+// Generate and store an email OTP for tenant customer support agent
+router.post('/otp/generate', async (req, res) => {
+  const { tenantId, email, conversationId, expiresInMinutes = 10 } = req.body;
+  if (!tenantId || !email) {
+    return res.status(400).json({ error: 'tenantId and email are required.' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    // Generate secure 6-digit numeric OTP
+    const otpCode = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
+
+    // Invalidate previous unverified OTPs for this tenant & email
+    await query(
+      `UPDATE tenant_email_otps 
+       SET expires_at = NOW() 
+       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE AND expires_at > NOW()`,
+      [tenantId, normalizedEmail],
+      tenantId
+    );
+
+    // Insert new OTP record
+    const result = await query(
+      `INSERT INTO tenant_email_otps (tenant_id, conversation_id, email, otp_code, expires_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, expires_at`,
+      [tenantId, conversationId || null, normalizedEmail, otpCode, expiresAt],
+      tenantId
+    );
+
+    res.json({
+      success: true,
+      otpCode,
+      expiresAt: result.rows[0].expires_at,
+      otpId: result.rows[0].id,
+    });
+  } catch (error) {
+    console.error('Error generating OTP:', error);
+    res.status(500).json({ error: 'Failed to generate OTP.' });
+  }
+});
+
+// ── POST /internal/otp/verify ──
+// Verify an email OTP code for customer support agent
+router.post('/otp/verify', async (req, res) => {
+  const { tenantId, email, otpCode, conversationId } = req.body;
+  if (!tenantId || !email || !otpCode) {
+    return res.status(400).json({ error: 'tenantId, email, and otpCode are required.' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const cleanOtp = otpCode.trim();
+
+  try {
+    // Fetch latest active OTP record
+    const result = await query(
+      `SELECT * FROM tenant_email_otps
+       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId, normalizedEmail],
+      tenantId
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        verified: false,
+        message: 'No pending verification code found for this email. Please request a new code.',
+        remainingAttempts: 0,
+      });
+    }
+
+    const otpRecord = result.rows[0];
+
+    // Check expiration
+    if (new Date(otpRecord.expires_at) < new Date()) {
+      return res.json({
+        verified: false,
+        message: 'Verification code has expired. Please request a new code.',
+        remainingAttempts: 0,
+      });
+    }
+
+    // Check max attempts
+    if (otpRecord.attempts >= otpRecord.max_attempts) {
+      return res.json({
+        verified: false,
+        message: 'Maximum verification attempts exceeded. Please request a new code.',
+        remainingAttempts: 0,
+      });
+    }
+
+    // Check code match
+    if (otpRecord.otp_code !== cleanOtp) {
+      const newAttempts = otpRecord.attempts + 1;
+      await query(
+        `UPDATE tenant_email_otps SET attempts = $1, updated_at = NOW() WHERE id = $2`,
+        [newAttempts, otpRecord.id],
+        tenantId
+      );
+      const remaining = Math.max(0, otpRecord.max_attempts - newAttempts);
+      return res.json({
+        verified: false,
+        message: `Incorrect code. ${remaining} attempt(s) remaining.`,
+        remainingAttempts: remaining,
+      });
+    }
+
+    // Success! Mark as verified
+    await query(
+      `UPDATE tenant_email_otps 
+       SET verified = TRUE, verified_at = NOW(), updated_at = NOW() 
+       WHERE id = $1`,
+      [otpRecord.id],
+      tenantId
+    );
+
+    res.json({
+      verified: true,
+      message: 'Email successfully verified.',
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    res.status(500).json({ error: 'Failed to verify OTP.' });
+  }
+});
+
+// ── GET /internal/otp/status ──
+// Check if user email has been verified recently (within last 30 minutes)
+router.get('/otp/status', async (req, res) => {
+  const { tenantId, email } = req.query;
+  if (!tenantId || !email) {
+    return res.status(400).json({ error: 'tenantId and email are required.' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  try {
+    const result = await query(
+      `SELECT * FROM tenant_email_otps
+       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = TRUE
+         AND verified_at > NOW() - INTERVAL '30 minutes'
+       ORDER BY verified_at DESC
+       LIMIT 1`,
+      [tenantId, normalizedEmail],
+      tenantId
+    );
+
+    res.json({
+      verified: result.rows.length > 0,
+      lastVerifiedAt: result.rows[0]?.verified_at || null,
+    });
+  } catch (error) {
+    console.error('Error checking OTP status:', error);
+    res.status(500).json({ error: 'Failed to check OTP status.' });
+  }
+});
+
 module.exports = router;

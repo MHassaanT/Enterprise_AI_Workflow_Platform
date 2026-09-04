@@ -27,6 +27,10 @@ from tool_gateway.tools.platform_primitives import (
     get_platform_status_impl, GetPlatformStatusInput,
     escalate_to_human_impl, EscalateToHumanInput,
 )
+from tool_gateway.tools.authenticate_user_with_email import (
+    authenticate_user_with_email_impl,
+    AuthenticateUserWithEmailInput,
+)
 from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import get_agent_tool_bindings
 
@@ -87,6 +91,11 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Hand off to a human support agent with full conversation context. "
         "Use this when you cannot resolve the issue, the user is frustrated, or they explicitly ask for a human."
     ),
+    "authenticate_user_with_email": (
+        "Send and verify a 6-digit OTP code to a customer's email address. "
+        "Use action='send_otp' when a user asks a question requiring identity verification (such as account details, orders, refunds, or personal data). "
+        "Use action='verify_otp' with otp_code when the user provides the code in chat."
+    ),
     # Legacy tools
     "check_order_status": _check_order_desc,
     "check_order_details": _check_order_desc,
@@ -111,6 +120,7 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "send_notification": send_notification_impl,
     "get_platform_status": get_platform_status_impl,
     "escalate_to_human": escalate_to_human_impl,
+    "authenticate_user_with_email": authenticate_user_with_email_impl,
     # Legacy tools (backward compatible)
     "check_order_status": check_order_status_impl,
     "check_order_details": check_order_status_impl,
@@ -133,6 +143,7 @@ TOOL_INPUT_MODELS: Dict[str, type] = {
     "send_notification": SendNotificationInput,
     "get_platform_status": GetPlatformStatusInput,
     "escalate_to_human": EscalateToHumanInput,
+    "authenticate_user_with_email": AuthenticateUserWithEmailInput,
     # Legacy tools
     "check_order_status": CheckOrderStatusInput,
     "check_order_details": CheckOrderStatusInput,
@@ -247,6 +258,12 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         name="get_platform_status",
         description=TOOL_DESCRIPTIONS["get_platform_status"],
         args_schema=GetPlatformStatusInput,
+    ),
+    "authenticate_user_with_email": StructuredTool.from_function(
+        coroutine=authenticate_user_with_email_impl,
+        name="authenticate_user_with_email",
+        description=TOOL_DESCRIPTIONS["authenticate_user_with_email"],
+        args_schema=AuthenticateUserWithEmailInput,
     ),
 }
 
@@ -487,5 +504,9 @@ async def get_tools_for_agent(agent_instance_id: str, tenant_context: dict = Non
     # Add dynamic entity-specific tools from tenant context
     if tenant_context:
         tools.extend(_build_entity_tools(tenant_context))
+
+    # Always ensure email authentication is available for customer support
+    if not any(t.name == "authenticate_user_with_email" for t in tools):
+        tools.append(BUILTIN_LANGCHAIN_TOOLS["authenticate_user_with_email"])
 
     return tools

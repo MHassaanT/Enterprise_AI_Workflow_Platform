@@ -34,6 +34,13 @@ def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
             return b
         if "refund" in b_norm and "refund" in norm_req:
             return b
+    if norm_req in [
+        "authenticate_user_with_email", "get_current_user", "get_user_by_email",
+        "search_entities", "get_entity_by_id", "create_support_ticket",
+        "get_support_tickets", "add_ticket_note", "send_notification",
+        "get_platform_status", "escalate_to_human",
+    ]:
+        return {"tool_name": norm_req, "connector_type": "builtin", "is_high_risk": False, "is_enabled": True}
     return None
 
 
@@ -61,6 +68,7 @@ async def execute_mcp_tool(
     agent_instance_id: str,
     tool_name: str,
     arguments: Dict[str, Any],
+    conversation_id: str = "",
 ) -> str:
     """
     Centralized router for executing vendor, built-in, and dynamic MCP tools.
@@ -131,7 +139,7 @@ async def execute_mcp_tool(
                     tenant_id=tenant_id,
                     binding_id=binding_id,
                     credentials=credentials,
-                    conversation_id=arguments.get("conversation_id", ""),
+                    conversation_id=conversation_id or arguments.get("conversation_id", ""),
                 )
                 return str(res)
             else:
