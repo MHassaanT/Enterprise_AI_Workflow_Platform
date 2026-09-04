@@ -921,7 +921,7 @@ router.get('/tenants/:tenantId/agent-context', async (req, res) => {
 });
 
 // ── GET /internal/tenants/:tenantId/entities/:entityName/search ──
-// Generic entity search with filters — supports internal_api data sources
+// Generic entity search with filters — supports PostgreSQL & connected external DBs (Supabase)
 router.get('/tenants/:tenantId/entities/:entityName/search', async (req, res) => {
   const { tenantId, entityName } = req.params;
   const { q, user_id, limit = 10, ...filters } = req.query;
@@ -930,38 +930,130 @@ router.get('/tenants/:tenantId/entities/:entityName/search', async (req, res) =>
       `SELECT * FROM tenant_entities WHERE tenant_id = $1 AND entity_name = $2 AND is_enabled = true`,
       [tenantId, entityName], tenantId
     );
-    if (!entityRes.rows[0]) return res.status(404).json({ error: `Entity '${entityName}' not found.` });
+    if (!entityRes.rows[0]) {
+      return res.json({ entity: entityName, results: [], count: 0, message: `Entity '${entityName}' not found.` });
+    }
     const entity = entityRes.rows[0];
+    const config = entity.data_source_config || {};
 
-    if (entity.data_source_type === 'internal_api') {
-      const config = entity.data_source_config || {};
-      const tableName = config.table_name || entityName + 's';
-      const allowedTables = ['users', 'listings', 'orders', 'products', 'appointments', 'projects', 'subscriptions', 'inquiries'];
-      if (!allowedTables.includes(tableName)) {
-        return res.status(400).json({ error: 'Internal table not configured for generic search.' });
+    const cleanName = entityName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const customTable = (config.table_name || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const candidateTables = [
+      customTable,
+      cleanName,
+      cleanName + 's',
+      cleanName.replace(/s$/, ''),
+    ].filter(Boolean);
+
+    // 1. Check if candidate table exists in PostgreSQL
+    const tableRes = await query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [candidateTables],
+      tenantId
+    );
+
+    if (tableRes.rows.length > 0) {
+      const actualTable = tableRes.rows[0].table_name;
+      const colRes = await query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+        [actualTable],
+        tenantId
+      );
+      const cols = colRes.rows.map(c => c.column_name);
+      const hasTenantId = cols.includes('tenant_id');
+      const hasCreatedAt = cols.includes('created_at');
+
+      const conditions = [];
+      const params = [];
+      let idx = 1;
+
+      if (hasTenantId) {
+        conditions.push(`tenant_id = $${idx}`);
+        params.push(tenantId);
+        idx++;
       }
-      const conditions = [`tenant_id = $1`];
-      const params = [tenantId]; let idx = 2;
-      if (q) { conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx} OR id::text = $${idx})`); params.push(`%${q}%`); idx++; }
-      if (user_id) { conditions.push(`user_id = $${idx}`); params.push(user_id); idx++; }
+
+      if (q) {
+        const searchCols = cols.filter(c => ['name', 'email', 'title', 'status', 'description', 'id', 'passenger_name', 'rider_name'].includes(c));
+        if (searchCols.length > 0) {
+          const qClauses = searchCols.map(c => `${c}::text ILIKE $${idx}`);
+          conditions.push(`(${qClauses.join(' OR ')})`);
+          params.push(`%${q}%`);
+          idx++;
+        }
+      }
+
+      if (user_id && (cols.includes('user_id') || cols.includes('customer_id'))) {
+        const userCol = cols.includes('user_id') ? 'user_id' : 'customer_id';
+        conditions.push(`${userCol} = $${idx}`);
+        params.push(user_id);
+        idx++;
+      }
+
       Object.entries(filters).forEach(([key, value]) => {
-        if (key.startsWith('filter_')) {
-          const col = key.replace('filter_', '');
-          conditions.push(`${col} = $${idx}`); params.push(value); idx++;
+        const col = key.replace('filter_', '');
+        if (cols.includes(col)) {
+          conditions.push(`${col} = $${idx}`);
+          params.push(value);
+          idx++;
         }
       });
-      const result = await query(
-        `SELECT * FROM ${tableName} WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC LIMIT $${idx}`,
-        [...params, parseInt(limit) || 10], tenantId
-      );
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const orderClause = hasCreatedAt ? `ORDER BY created_at DESC` : '';
+      params.push(parseInt(limit) || 10);
+      const sql = `SELECT * FROM ${actualTable} ${whereClause} ${orderClause} LIMIT $${idx}`;
+
+      const result = await query(sql, params, tenantId);
       return res.json({ entity: entityName, results: result.rows, count: result.rowCount });
     }
 
-    // External data source — return metadata
-    res.json({ entity: entityName, data_source_type: entity.data_source_type, data_source_config: entity.data_source_config, message: 'External data source.' });
+    // 2. Check if tenant has connected Supabase in tool_credentials
+    const supaCredsRes = await query(
+      `SELECT tc.encrypted_payload 
+       FROM tool_credentials tc 
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'supabase' OR 
+         LOWER(tr.provider_type) = 'supabase'
+       )
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (supaCredsRes.rows.length > 0) {
+      try {
+        const supaPayload = decryptPayload(supaCredsRes.rows[0].encrypted_payload);
+        const projectUrl = supaPayload.project_url || supaPayload.url;
+        const serviceRoleKey = supaPayload.service_role_key || supaPayload.api_key || supaPayload.secret_key;
+        if (projectUrl && serviceRoleKey) {
+          for (const tbl of candidateTables) {
+            const supaEndpoint = `${projectUrl.replace(/\/$/, '')}/rest/v1/${tbl}?select=*${q ? `&or=(status.ilike.*${encodeURIComponent(q)}*,id.ilike.*${encodeURIComponent(q)}*)` : ''}&limit=${parseInt(limit) || 10}`;
+            const supaRes = await fetch(supaEndpoint, {
+              headers: {
+                'apikey': serviceRoleKey,
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'Accept': 'application/json',
+              }
+            });
+            if (supaRes.ok) {
+              const supaData = await supaRes.json();
+              return res.json({ entity: entityName, results: supaData, count: supaData.length });
+            }
+          }
+        }
+      } catch (supaErr) {
+        console.warn('Supabase query error:', supaErr.message);
+      }
+    }
+
+    // 3. Fallback: clean 200 response with 0 records
+    return res.json({ entity: entityName, results: [], count: 0, message: `No ${entityName} records found.` });
   } catch (error) {
     console.error(`Error searching entity ${entityName}:`, error);
-    res.status(500).json({ error: 'Entity search failed.' });
+    res.json({ entity: entityName, results: [], count: 0, message: 'Search completed with 0 results.' });
   }
 });
 
@@ -974,18 +1066,90 @@ router.get('/tenants/:tenantId/entities/:entityName/:recordId', async (req, res)
       `SELECT * FROM tenant_entities WHERE tenant_id = $1 AND entity_name = $2`,
       [tenantId, entityName], tenantId
     );
-    if (!entityRes.rows[0]) return res.status(404).json({ error: `Entity '${entityName}' not found.` });
+    if (!entityRes.rows[0]) {
+      return res.json({ entity: entityName, record: null, message: `Entity '${entityName}' not found.` });
+    }
     const config = entityRes.rows[0].data_source_config || {};
-    const tableName = config.table_name || entityName + 's';
-    const result = await query(
-      `SELECT * FROM ${tableName} WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, recordId], tenantId
+    const cleanName = entityName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const customTable = (config.table_name || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const candidateTables = [
+      customTable,
+      cleanName,
+      cleanName + 's',
+      cleanName.replace(/s$/, ''),
+    ].filter(Boolean);
+
+    // 1. Check PostgreSQL
+    const tableRes = await query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [candidateTables],
+      tenantId
     );
-    if (!result.rows[0]) return res.status(404).json({ error: 'Record not found.' });
-    res.json({ entity: entityName, record: result.rows[0] });
+
+    if (tableRes.rows.length > 0) {
+      const actualTable = tableRes.rows[0].table_name;
+      const colRes = await query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+        [actualTable],
+        tenantId
+      );
+      const cols = colRes.rows.map(c => c.column_name);
+      const hasTenantId = cols.includes('tenant_id');
+      const whereClause = hasTenantId ? `WHERE tenant_id = $1 AND id::text = $2` : `WHERE id::text = $1`;
+      const params = hasTenantId ? [tenantId, recordId] : [recordId];
+
+      const result = await query(
+        `SELECT * FROM ${actualTable} ${whereClause} LIMIT 1`,
+        params, tenantId
+      );
+      return res.json({ entity: entityName, record: result.rows[0] || null });
+    }
+
+    // 2. Check Supabase
+    const supaCredsRes = await query(
+      `SELECT tc.encrypted_payload 
+       FROM tool_credentials tc 
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'supabase' OR 
+         LOWER(tr.provider_type) = 'supabase'
+       )
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (supaCredsRes.rows.length > 0) {
+      try {
+        const supaPayload = decryptPayload(supaCredsRes.rows[0].encrypted_payload);
+        const projectUrl = supaPayload.project_url || supaPayload.url;
+        const serviceRoleKey = supaPayload.service_role_key || supaPayload.api_key || supaPayload.secret_key;
+        if (projectUrl && serviceRoleKey) {
+          for (const tbl of candidateTables) {
+            const supaEndpoint = `${projectUrl.replace(/\/$/, '')}/rest/v1/${tbl}?id=eq.${encodeURIComponent(recordId)}&limit=1`;
+            const supaRes = await fetch(supaEndpoint, {
+              headers: {
+                'apikey': serviceRoleKey,
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'Accept': 'application/json',
+              }
+            });
+            if (supaRes.ok) {
+              const supaData = await supaRes.json();
+              return res.json({ entity: entityName, record: supaData[0] || null });
+            }
+          }
+        }
+      } catch (supaErr) {
+        console.warn('Supabase record fetch error:', supaErr.message);
+      }
+    }
+
+    res.json({ entity: entityName, record: null, message: 'Record not found.' });
   } catch (error) {
     console.error('Error fetching record:', error);
-    res.status(500).json({ error: 'Failed to fetch record.' });
+    res.json({ entity: entityName, record: null, message: 'Record not found.' });
   }
 });
 

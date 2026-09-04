@@ -39,7 +39,7 @@ def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
         "search_entities", "get_entity_by_id", "create_support_ticket",
         "get_support_tickets", "add_ticket_note", "send_notification",
         "get_platform_status", "escalate_to_human",
-    ]:
+    ] or norm_req.startswith("search_") or norm_req.startswith("get_"):
         return {"tool_name": norm_req, "connector_type": "builtin", "is_high_risk": False, "is_enabled": True}
     return None
 
@@ -119,7 +119,7 @@ async def execute_mcp_tool(
             return await execute_google_docs_tool(tool_name, arguments, credentials)
         elif provider_type == "google_sheets" or "google_sheets" in tool_name.lower() or "google_sheet" in tool_name.lower() or "sheets" in tool_name.lower():
             return await execute_google_sheets_tool(tool_name, arguments, credentials)
-        elif provider_type == "builtin" or tool_name in TOOL_REGISTRY or "order" in tool_name.lower() or "escalat" in tool_name.lower():
+        elif provider_type == "builtin" or tool_name in TOOL_REGISTRY or "order" in tool_name.lower() or "escalat" in tool_name.lower() or tool_name.startswith("search_") or tool_name.startswith("get_"):
             norm_name = tool_name.lower().replace("-", "_").replace(" ", "_")
             tool_fn = TOOL_REGISTRY.get(norm_name) or TOOL_REGISTRY.get(tool_name)
             if not tool_fn and "order" in norm_name:
@@ -128,6 +128,14 @@ async def execute_mcp_tool(
                 tool_fn = TOOL_REGISTRY.get("escalate_to_human")
             elif not tool_fn and "refund" in norm_name:
                 tool_fn = TOOL_REGISTRY.get("submit_refund_request")
+            elif not tool_fn and norm_name.startswith("search_"):
+                tool_fn = TOOL_REGISTRY.get("search_entities")
+                entity_name = norm_name[len("search_"):]
+                arguments.setdefault("entity_type", entity_name)
+            elif not tool_fn and norm_name.startswith("get_") and norm_name.endswith("_by_id"):
+                tool_fn = TOOL_REGISTRY.get("get_entity_by_id")
+                entity_name = norm_name[len("get_"):-len("_by_id")]
+                arguments.setdefault("entity_type", entity_name)
 
             if tool_fn:
                 if ("order" in norm_name or tool_name == "check_order_details") and not (credentials.get("access_token") or credentials.get("api_key") or credentials.get("bearer_token") or credentials.get("token")):

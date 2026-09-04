@@ -388,6 +388,29 @@ def _make_mcp_executor(tool_name: str, tenant_id: str, agent_instance_id: str):
     return executor
 
 
+class DynamicSearchInput(BaseModel):
+    query: Optional[str] = Field(default=None, description="Free-text search query or status filter.")
+    user_id: Optional[str] = Field(default=None, description="Filter by user or customer ID.")
+    filters: Optional[dict] = Field(default=None, description="Additional field filters.")
+    limit: int = Field(default=10, description="Max results.")
+
+
+class DynamicGetByIdInput(BaseModel):
+    record_id: str = Field(description="The unique ID of the record to fetch.")
+
+
+def _make_entity_search_func(entity_name: str):
+    async def search_func(query: Optional[str] = None, user_id: Optional[str] = None, filters: Optional[dict] = None, limit: int = 10, **kwargs):
+        return await search_entities_impl(entity_type=entity_name, query=query, user_id=user_id, filters=filters, limit=limit, **kwargs)
+    return search_func
+
+
+def _make_entity_get_func(entity_name: str):
+    async def get_func(record_id: str, **kwargs):
+        return await get_entity_by_id_impl(record_id=record_id, entity_type=entity_name, **kwargs)
+    return get_func
+
+
 def _build_entity_tools(tenant_context: dict) -> List[StructuredTool]:
     """
     Generate per-entity search and get tools from the tenant's configured entities.
@@ -416,8 +439,8 @@ def _build_entity_tools(tenant_context: dict) -> List[StructuredTool]:
                     f"Use this when the user mentions {display.lower()} or asks about their {name}s. "
                     f"Fields: {field_descs}."
                 ),
-                args_schema=SearchEntitiesInput,
-                coroutine=search_entities_impl,
+                args_schema=DynamicSearchInput,
+                coroutine=_make_entity_search_func(name),
             )
             tools.append(search_tool)
 
@@ -428,8 +451,8 @@ def _build_entity_tools(tenant_context: dict) -> List[StructuredTool]:
                     f"Fetch a specific {display} record by its ID. "
                     f"Use after search to get full details."
                 ),
-                args_schema=GetEntityByIdInput,
-                coroutine=get_entity_by_id_impl,
+                args_schema=DynamicGetByIdInput,
+                coroutine=_make_entity_get_func(name),
             )
             tools.append(get_tool)
 

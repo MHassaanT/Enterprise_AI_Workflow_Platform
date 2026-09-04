@@ -107,7 +107,7 @@ async def get_user_by_email_impl(email: str, tenant_id: str = None, **kwargs) ->
 
 
 async def search_entities_impl(
-    entity_type: str,
+    entity_type: Optional[str] = None,
     query: Optional[str] = None,
     user_id: Optional[str] = None,
     filters: Optional[dict] = None,
@@ -116,6 +116,7 @@ async def search_entities_impl(
     **kwargs,
 ) -> str:
     """Search for records across the platform by entity type."""
+    resolved_entity = entity_type or kwargs.get("entity") or kwargs.get("entity_name") or "record"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             params = {"q": query or "", "limit": limit}
@@ -126,7 +127,7 @@ async def search_entities_impl(
                     params[f"filter_{k}"] = v
 
             response = await client.get(
-                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/entities/{entity_type}/search",
+                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/entities/{resolved_entity}/search",
                 params=params,
                 headers=_HEADERS(),
             )
@@ -134,31 +135,35 @@ async def search_entities_impl(
                 data = response.json()
                 results = data.get("results", [])
                 if results:
-                    return f"Found {data.get('count', 0)} {entity_type}(s): {results}"
-                return f"No {entity_type} records found."
-            return f"Error searching {entity_type}: {response.status_code}"
+                    return f"Found {data.get('count', 0)} {resolved_entity}(s): {results}"
+                return f"No {resolved_entity} records found matching '{query or 'all'}'."
+            return f"No {resolved_entity} records found or data source not accessible (HTTP {response.status_code})."
     except Exception as e:
-        return f"Error: {e}"
+        return f"Unable to query {resolved_entity} data source: {e}"
 
 
 async def get_entity_by_id_impl(
-    entity_type: str,
     record_id: str,
+    entity_type: Optional[str] = None,
     tenant_id: str = None,
     **kwargs,
 ) -> str:
     """Fetch a specific record by its ID and entity type."""
+    resolved_entity = entity_type or kwargs.get("entity") or kwargs.get("entity_name") or "record"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
-                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/entities/{entity_type}/{record_id}",
+                f"{settings.BACKEND_URL}/internal/tenants/{tenant_id}/entities/{resolved_entity}/{record_id}",
                 headers=_HEADERS(),
             )
             if response.status_code == 200:
-                return f"{entity_type} record: {response.json().get('record', {})}"
-            return f"{entity_type} record not found."
+                data = response.json()
+                if data.get("record"):
+                    return f"{resolved_entity} record: {data.get('record')}"
+                return f"{resolved_entity} record #{record_id} not found."
+            return f"{resolved_entity} record #{record_id} not found."
     except Exception as e:
-        return f"Error: {e}"
+        return f"Unable to fetch {resolved_entity} record: {e}"
 
 
 async def create_support_ticket_impl(
