@@ -8,7 +8,7 @@ Central registry mapping tool names to:
   - Dynamic MCP connector tool generator via Postgres ToolBinding allowlist per agent_instance_id
   - Dynamic entity-specific tool generator from tenant context
 """
-from typing import Callable, List, Dict, Any
+from typing import Callable, List, Dict, Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, create_model
 
