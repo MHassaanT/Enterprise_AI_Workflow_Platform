@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 
 const API = '';
-const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : null;
 const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` });
 
 const FIELD_TYPES = ['string','number','boolean','enum','date','datetime','reference','json','email','url'];
@@ -168,8 +168,6 @@ export default function EntitiesPage() {
 
   const tabs = [
     { id:'entities', label:'Entities', icon:'database' },
-    { id:'context', label:'Agent Context', icon:'smart_toy' },
-    { id:'integrations', label:'Integrations', icon:'hub' },
   ];
 
   return (
