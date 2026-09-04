@@ -239,11 +239,11 @@ export async function uploadDocument(file) {
   return res.json();
 }
 
-export async function uploadLink(url) {
+export async function uploadLink(url, crawlEntireSite = false, maxPages = 30) {
   const res = await fetch('/api/documents/link', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, crawlEntireSite, maxPages }),
   });
   handleUnauthorized(res);
   if (!res.ok) {

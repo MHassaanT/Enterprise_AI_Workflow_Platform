@@ -1,9 +1,15 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
+from typing import List, Optional
 import asyncio
 import logging
 import httpx
 from bs4 import BeautifulSoup
+from services.sitemap_crawler import (
+    discover_sitemap_urls,
+    curate_urls_with_llm,
+    batch_scrape_urls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +22,24 @@ router = APIRouter()
 
 class ScrapeRequest(BaseModel):
     url: HttpUrl
+
+class ScrapedPageItem(BaseModel):
+    url: str
+    title: str = ""
+    markdown: str
+    method: str = "none"
+    success: bool = True
+
+class ScrapeSiteRequest(BaseModel):
+    url: HttpUrl
+    max_pages: int = Field(default=30, ge=1, le=100)
+
+class ScrapeSiteResponse(BaseModel):
+    base_url: str
+    total_discovered: int
+    total_curated: int
+    total_scraped: int
+    pages: List[ScrapedPageItem]
 
 def html_to_markdown(html_content: str, url_str: str) -> str:
     """Fallback parser to extract structured markdown/text from raw HTML."""
@@ -100,5 +124,46 @@ async def scrape_url(request: ScrapeRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Scraping failed: {str(e)}"
+        )
+
+
+@router.post("/scrape-site", response_model=ScrapeSiteResponse)
+async def scrape_site(request: ScrapeSiteRequest):
+    url_str = str(request.url)
+    max_pages = request.max_pages
+
+    try:
+        # 1. Discover all canonical URLs from sitemap and robots.txt
+        logger.info(f"[Site Scrape] Discovering sitemap URLs for {url_str}...")
+        discovered_urls = await discover_sitemap_urls(url_str, max_discovery=1000)
+        logger.info(f"[Site Scrape] Discovered {len(discovered_urls)} candidate URLs for {url_str}")
+
+        # 2. Curate highest-value URLs using Gemini LLM
+        curated_urls = await curate_urls_with_llm(
+            urls=discovered_urls,
+            base_url=url_str,
+            max_curated=max_pages
+        )
+        logger.info(f"[Site Scrape] LLM curated {len(curated_urls)} high-value pages for {url_str}")
+
+        # 3. Batch scrape the curated URLs
+        scraped_pages = await batch_scrape_urls(curated_urls, max_concurrency=5)
+        successful_pages = [p for p in scraped_pages if p.get("success")]
+
+        # If none succeeded via standard threshold, keep whatever was scraped
+        final_pages = successful_pages if successful_pages else scraped_pages
+
+        return ScrapeSiteResponse(
+            base_url=url_str,
+            total_discovered=len(discovered_urls),
+            total_curated=len(curated_urls),
+            total_scraped=len(final_pages),
+            pages=[ScrapedPageItem(**p) for p in final_pages]
+        )
+    except Exception as e:
+        logger.error(f"[Site Scrape Error] Failed scraping site {url_str}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Intelligent site scraping failed: {str(e)}"
         )
 

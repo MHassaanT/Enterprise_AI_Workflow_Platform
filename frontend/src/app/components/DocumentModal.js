@@ -11,6 +11,10 @@ export default function DocumentModal({ isOpen, onClose }) {
   const [user, setUser] = useState(null);
   const [uploadMode, setUploadMode] = useState('file'); // 'file' | 'link'
   const [linkUrl, setLinkUrl] = useState('');
+  const [crawlEntireSite, setCrawlEntireSite] = useState(true);
+  const [maxPages, setMaxPages] = useState(30);
+  const [uploadProgressText, setUploadProgressText] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -21,18 +25,31 @@ export default function DocumentModal({ isOpen, onClose }) {
 
   const isAdmin = user?.role === 'admin';
 
-  const loadDocuments = async () => {
+  const loadDocuments = async (showLoadingSpinner = true) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) setLoading(true);
       setError('');
       const docs = await fetchDocuments();
-      setDocuments(docs);
+      setDocuments(docs || []);
     } catch (err) {
-      setError(err.message || 'Failed to load documents.');
+      if (showLoadingSpinner) setError(err.message || 'Failed to load documents.');
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) setLoading(false);
     }
   };
+
+  // Reactive polling: While any document has status === 'processing', poll every 3s
+  useEffect(() => {
+    if (!isOpen) return;
+    const hasProcessing = documents.some((d) => d.status === 'processing');
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      loadDocuments(false);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, documents]);
 
   const handleFileUpload = async (file) => {
     if (!isAdmin) return;
@@ -63,13 +80,28 @@ export default function DocumentModal({ isOpen, onClose }) {
     try {
       setUploading(true);
       setError('');
-      await uploadLink(linkUrl.trim());
+      setSuccessMessage('');
+      setUploadProgressText(
+        crawlEntireSite
+          ? 'Discovering sitemap URLs & curating high-value pages with AI...'
+          : 'Scraping URL, Chunking & Indexing...'
+      );
+
+      const res = await uploadLink(linkUrl.trim(), crawlEntireSite, Number(maxPages) || 30);
       setLinkUrl('');
-      await loadDocuments();
+      if (res?.site) {
+        setSuccessMessage(
+          '🌐 Website crawl started in background! Status is marked "In Progress" below and subpages will appear live as they are indexed.'
+        );
+      } else {
+        setSuccessMessage('✅ URL successfully ingested and indexed into Knowledge Base.');
+      }
+      await loadDocuments(false);
     } catch (err) {
       setError(err.message || 'Failed to ingest link.');
     } finally {
       setUploading(false);
+      setUploadProgressText('');
     }
   };
 
@@ -162,15 +194,27 @@ export default function DocumentModal({ isOpen, onClose }) {
               {uploadMode === 'link' && (
                 <div className="p-xl flex flex-col items-center justify-center">
                   {uploading ? (
-                    <div className="flex flex-col items-center gap-md text-primary font-semibold">
+                    <div className="flex flex-col items-center gap-md text-primary font-semibold text-center">
                       <div className="w-8 h-8 border-4 border-outline-variant border-t-primary rounded-full animate-spin"></div>
-                      <p className="font-body-md">Scraping URL, Chunking & Indexing...</p>
+                      <p className="font-body-md text-on-surface">{uploadProgressText || 'Scraping URL, Chunking & Indexing...'}</p>
+                      {crawlEntireSite && (
+                        <p className="text-xs text-on-surface-variant max-w-md">
+                          AI is analyzing sitemaps, ranking priority pages (pricing, products, docs, policies), and indexing them into the vector database.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="w-full space-y-md">
                       <p className="font-body-md text-on-surface-variant text-center">
-                        Provide a public website URL. We will scrape its contents and index it into the Knowledge Base.
+                        Provide a public website URL to index into your Knowledge Base.
                       </p>
+
+                      {successMessage && (
+                        <div className="p-md rounded-lg bg-emerald-950/40 text-emerald-400 border border-emerald-800/50 text-xs font-mono">
+                          {successMessage}
+                        </div>
+                      )}
+
                       <div className="flex gap-md">
                         <input 
                           type="url" 
@@ -184,8 +228,42 @@ export default function DocumentModal({ isOpen, onClose }) {
                           disabled={!linkUrl.trim()}
                           className="px-lg py-md bg-primary text-on-primary font-label-md font-semibold rounded-lg hover:bg-primary-container transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Ingest
+                          {crawlEntireSite ? 'Crawl Website' : 'Ingest Link'}
                         </button>
+                      </div>
+
+                      {/* Smart Sitemap Crawl Option (Strategy B) */}
+                      <div className="bg-surface-container p-md rounded-lg border border-outline-variant space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={crawlEntireSite}
+                            onChange={(e) => setCrawlEntireSite(e.target.checked)}
+                            className="w-4 h-4 rounded text-primary focus:ring-primary border-outline"
+                          />
+                          <span className="font-label-md text-on-surface font-semibold flex items-center gap-1.5">
+                            <span>🌐</span> Smart Sitemap Crawl (Strategy B: LLM-Curated)
+                          </span>
+                        </label>
+                        <p className="text-xs text-on-surface-variant pl-6">
+                          Inspects robots.txt and sitemap.xml, uses Gemini AI to select top high-value pages (products, pricing, policies, docs), and indexes each subpage individually.
+                        </p>
+
+                        {crawlEntireSite && (
+                          <div className="pt-1 pl-6 flex items-center gap-3">
+                            <span className="text-xs font-medium text-on-surface">Max Curated Pages:</span>
+                            <select
+                              value={maxPages}
+                              onChange={(e) => setMaxPages(Number(e.target.value))}
+                              className="bg-surface border border-outline text-xs rounded px-2 py-1 text-on-surface outline-none"
+                            >
+                              <option value={10}>10 pages (Fast)</option>
+                              <option value={20}>20 pages (Recommended)</option>
+                              <option value={30}>30 pages (Deep)</option>
+                              <option value={50}>50 pages (Comprehensive)</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -195,6 +273,17 @@ export default function DocumentModal({ isOpen, onClose }) {
           ) : (
             <div className="p-md rounded-lg bg-tertiary-container/10 border border-tertiary/20 text-tertiary font-body-md">
               🔒 <b>Reviewer Access Notice:</b> Document uploading and deletion are restricted to Tenant Admins. Reviewers have read-only access to knowledge base documents.
+            </div>
+          )}
+
+          {/* Active Background Crawl / Ingestion Banner */}
+          {documents.some((d) => d.status === 'processing') && (
+            <div className="p-md rounded-lg bg-amber-950/30 border border-amber-800/40 text-amber-300 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                <span><b>Site Crawl In Progress:</b> Subpages are being discovered and indexed into the Knowledge Base in the background.</span>
+              </div>
+              <span className="font-mono text-amber-400/80 text-[10px] uppercase tracking-wider">Auto-refreshing</span>
             </div>
           )}
 
@@ -216,9 +305,20 @@ export default function DocumentModal({ isOpen, onClose }) {
                     <div className="space-y-1">
                       <div className="font-body-md text-on-surface font-semibold break-all">{doc.filename}</div>
                       <div className="flex items-center gap-md font-label-md text-label-md">
-                        <span className={`px-2 py-0.5 rounded font-mono ${doc.status === 'ready' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : doc.status === 'failed' ? 'bg-error-container/20 text-error border border-error/30' : 'bg-tertiary-container/20 text-tertiary border border-tertiary/30'}`}>
-                          {doc.status === 'ready' ? '✅ Ready' : doc.status === 'failed' ? '❌ Failed' : '⏳ Processing'}
-                        </span>
+                        {doc.status === 'ready' ? (
+                          <span className="px-2 py-0.5 rounded font-mono bg-emerald-950/40 text-emerald-400 border border-emerald-800/50">
+                            ✅ Ready
+                          </span>
+                        ) : doc.status === 'failed' ? (
+                          <span className="px-2 py-0.5 rounded font-mono bg-error-container/20 text-error border border-error/30" title={doc.error_message || 'Ingestion failed'}>
+                            ❌ Failed
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded font-mono bg-amber-950/40 text-amber-400 border border-amber-800/50 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                            ⏳ In Progress
+                          </span>
+                        )}
                         {doc.chunk_count > 0 && <span className="text-on-surface-variant bg-surface-container px-2 py-0.5 rounded border border-outline-variant font-mono">{doc.chunk_count} vector chunks</span>}
                         <span className="text-on-surface-variant">{new Date(doc.created_at).toLocaleDateString()}</span>
                       </div>

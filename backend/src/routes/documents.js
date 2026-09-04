@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const { randomUUID } = require('crypto');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
-const { ingestDocument, ingestLink } = require('../services/ingestion');
+const { ingestDocument, ingestLink, ingestSite } = require('../services/ingestion');
 
 // ── MULTER CONFIG ──
 // Store file in memory so we can pass the buffer directly to the ingestion pipeline.
@@ -69,32 +70,84 @@ router.post(
   }
 );
 
-// ── INGEST A LINK ──
+// ── INGEST A LINK OR ENTIRE SITE VIA SITEMAP ──
 router.post(
   '/link',
   authenticate,
   authorize('admin'),
   async (req, res) => {
-    const { url } = req.body;
+    const { url, crawlEntireSite, maxPages } = req.body;
     if (!url) {
       return res.status(400).json({ error: 'No URL provided.' });
     }
 
     const { tenantId } = req.user;
 
-    const result = await ingestLink({
-      url,
-      tenantId,
-    });
+    try {
+      if (crawlEntireSite) {
+        const rootDocumentId = randomUUID();
 
-    await query(
-      `INSERT INTO audit_logs (tenant_id, event_type, payload)
-       VALUES ($1, 'link_ingested', $2)`,
-      [tenantId, JSON.stringify({ documentId: result.documentId, url })],
-      tenantId
-    );
+        // 1. Create root document record immediately with status 'processing'
+        await query(
+          `INSERT INTO documents (id, tenant_id, filename, mime_type, status)
+           VALUES ($1, $2, $3, $4, 'processing')`,
+          [rootDocumentId, tenantId, `${url} (Site Crawl)`, 'text/html'],
+          tenantId
+        );
 
-    res.status(201).json({ document: result });
+        // 2. Audit log crawl initiation
+        await query(
+          `INSERT INTO audit_logs (tenant_id, event_type, payload)
+           VALUES ($1, 'site_crawl_initiated', $2)`,
+          [
+            tenantId,
+            JSON.stringify({
+              documentId: rootDocumentId,
+              url,
+              maxPages: Number(maxPages) || 30,
+            }),
+          ],
+          tenantId
+        );
+
+        // 3. Dispatch crawl in background without blocking HTTP response
+        setImmediate(() => {
+          ingestSite({
+            rootDocumentId,
+            url,
+            tenantId,
+            maxPages: Number(maxPages) || 30,
+          }).catch((bgErr) => {
+            console.error(`[Background Site Crawl Failure] ${url}:`, bgErr);
+          });
+        });
+
+        // 4. Return 202 Accepted immediately
+        return res.status(202).json({
+          site: true,
+          status: 'processing',
+          documentId: rootDocumentId,
+          message: 'Website crawl started in background. Status will update dynamically.',
+        });
+      }
+
+      const result = await ingestLink({
+        url,
+        tenantId,
+      });
+
+      await query(
+        `INSERT INTO audit_logs (tenant_id, event_type, payload)
+         VALUES ($1, 'link_ingested', $2)`,
+        [tenantId, JSON.stringify({ documentId: result.documentId, url })],
+        tenantId
+      );
+
+      res.status(201).json({ document: result });
+    } catch (err) {
+      console.error(`[Link Ingestion Route Error] ${url}:`, err);
+      res.status(400).json({ error: err.message || 'Failed to ingest link or website.' });
+    }
   }
 );
 
