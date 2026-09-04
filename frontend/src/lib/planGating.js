@@ -28,6 +28,8 @@ export const ALWAYS_ACCESSIBLE_ROUTES = [
   '/billing',
   '/subscribe',
   '/attendance',
+  '/terms',
+  '/privacy',
 ];
 
 /**
@@ -64,7 +66,7 @@ export function getAccessibleAgents(plan) {
  */
 export function canAccessRoute(plan, pathname) {
   // Public pages always accessible
-  if (pathname === '/' || pathname === '/login' || pathname === '/signup') return true;
+  if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/terms' || pathname === '/privacy') return true;
 
   // Always-accessible infrastructure routes
   if (ALWAYS_ACCESSIBLE_ROUTES.some(route => pathname.startsWith(route))) return true;

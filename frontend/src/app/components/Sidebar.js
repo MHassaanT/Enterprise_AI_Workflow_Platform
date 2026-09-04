@@ -17,7 +17,16 @@ export default function Sidebar() {
     setUser(getUser());
   }, []);
 
-  if (pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/attendance') || pathname === '/subscribe' || pathname === '/verify-email') {
+  if (
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/terms' ||
+    pathname === '/privacy' ||
+    pathname === '/subscribe' ||
+    pathname === '/verify-email' ||
+    pathname.startsWith('/attendance')
+  ) {
     return null;
   }
 

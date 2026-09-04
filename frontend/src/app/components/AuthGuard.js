@@ -4,6 +4,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getToken, getUser } from '@/lib/api';
 import { canAccessRoute } from '@/lib/planGating';
 
+const isPublicRoute = (path) =>
+  path === '/' ||
+  path === '/login' ||
+  path === '/signup' ||
+  path === '/subscribe' ||
+  path === '/verify-email' ||
+  path === '/terms' ||
+  path === '/privacy' ||
+  path?.startsWith('/attendance');
+
 export default function AuthGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -11,15 +21,7 @@ export default function AuthGuard({ children }) {
 
   useEffect(() => {
     // Exclude public pages from protection check
-    const isPublic =
-      pathname === '/' ||
-      pathname === '/login' ||
-      pathname === '/signup' ||
-      pathname === '/subscribe' ||
-      pathname === '/verify-email' ||
-      pathname.startsWith('/attendance');
-
-    if (isPublic) {
+    if (isPublicRoute(pathname)) {
       setAuthorized(true);
       return;
     }
@@ -62,13 +64,7 @@ export default function AuthGuard({ children }) {
     setAuthorized(true);
   }, [pathname, router]);
 
-  const isPublicPage =
-    pathname === '/' ||
-    pathname === '/login' ||
-    pathname === '/signup' ||
-    pathname === '/subscribe' ||
-    pathname === '/verify-email' ||
-    pathname.startsWith('/attendance');
+  const isPublicPage = isPublicRoute(pathname);
 
   if (!authorized && !isPublicPage) {
     return (
