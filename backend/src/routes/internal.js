@@ -1773,6 +1773,148 @@ router.post('/appointments/cancel', async (req, res) => {
   }
 });
 
+// ── POST /internal/appointments/edit ──
+// Universal edit endpoint for AI agent (reschedule, change name, change email, phone, notes, status)
+router.post('/appointments/edit', async (req, res) => {
+  const {
+    tenantId,
+    appointment_id,
+    customer_email,
+    new_name,
+    new_email,
+    new_phone,
+    new_date,
+    new_time,
+    duration_minutes,
+    notes,
+    status,
+  } = req.body;
+
+  if (!tenantId || (!appointment_id && !customer_email)) {
+    return res.status(400).json({
+      error: 'tenantId and (appointment_id or customer_email) are required.',
+    });
+  }
+
+  try {
+    let existing;
+    if (appointment_id) {
+      const findRes = await query(
+        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
+        [appointment_id, tenantId],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    } else {
+      const findRes = await query(
+        `SELECT * FROM appointments 
+         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
+         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
+        [tenantId, customer_email.trim().toLowerCase()],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    }
+
+    if (!existing) {
+      return res.status(404).json({
+        error: 'No active scheduled appointment found to edit.',
+      });
+    }
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+    let auditNotes = [];
+
+    if (new_name && new_name.trim()) {
+      updates.push(`customer_name = $${idx}`);
+      params.push(new_name.trim());
+      auditNotes.push(`Name updated to ${new_name.trim()}`);
+      idx++;
+    }
+
+    if (new_email && new_email.trim()) {
+      updates.push(`customer_email = $${idx}`);
+      params.push(new_email.trim().toLowerCase());
+      auditNotes.push(`Email updated to ${new_email.trim().toLowerCase()}`);
+      idx++;
+    }
+
+    if (new_phone !== undefined && new_phone !== null) {
+      updates.push(`customer_phone = $${idx}`);
+      params.push(new_phone.trim());
+      auditNotes.push(`Phone updated to ${new_phone.trim()}`);
+      idx++;
+    }
+
+    if (new_date && new_date.trim()) {
+      updates.push(`appointment_date = $${idx}`);
+      params.push(new_date.trim());
+      auditNotes.push(`Date updated to ${new_date.trim()}`);
+      idx++;
+    }
+
+    if (new_time && new_time.trim()) {
+      updates.push(`appointment_time = $${idx}`);
+      params.push(new_time.trim());
+      auditNotes.push(`Time updated to ${new_time.trim()}`);
+      idx++;
+    }
+
+    if (duration_minutes) {
+      updates.push(`duration_minutes = $${idx}`);
+      params.push(parseInt(duration_minutes));
+      idx++;
+    }
+
+    if (status && status.trim()) {
+      updates.push(`status = $${idx}`);
+      params.push(status.trim().toLowerCase());
+      auditNotes.push(`Status updated to ${status.trim().toLowerCase()}`);
+      idx++;
+    }
+
+    if (notes && notes.trim()) {
+      auditNotes.push(`Notes: ${notes.trim()}`);
+    }
+
+    if (auditNotes.length > 0) {
+      const appendStr = `\n[Edited ${new Date().toISOString().split('T')[0]}]: ${auditNotes.join(', ')}`;
+      updates.push(`notes = COALESCE(notes, '') || $${idx}`);
+      params.push(appendStr);
+      idx++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update.' });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    params.push(existing.id);
+    params.push(tenantId);
+
+    const updateRes = await query(
+      `UPDATE appointments
+       SET ${updates.join(', ')}
+       WHERE id = $${idx} AND tenant_id = $${idx + 1}
+       RETURNING *`,
+      params,
+      tenantId
+    );
+
+    res.json({
+      success: true,
+      appointment: updateRes.rows[0],
+      appointment_id: updateRes.rows[0].id,
+      message: 'Appointment edited successfully.',
+    });
+  } catch (error) {
+    console.error('Error editing appointment:', error);
+    res.status(500).json({ error: 'Failed to edit appointment.' });
+  }
+});
+
 // ── PATCH /internal/appointments/:id ──
 // General update endpoint for appointment
 router.patch('/appointments/:id', async (req, res) => {

@@ -97,6 +97,49 @@ class CancelAppointmentInput(BaseModel):
     )
 
 
+class EditAppointmentInput(BaseModel):
+    appointment_id: Optional[str] = Field(
+        None,
+        description="The unique ID of the appointment to edit (if known)."
+    )
+    customer_email: Optional[str] = Field(
+        None,
+        description="The customer's current email address to locate their scheduled appointment if appointment_id is not provided."
+    )
+    new_name: Optional[str] = Field(
+        None,
+        description="New full name of the customer (use when customer wants to change their name on the appointment)."
+    )
+    new_email: Optional[str] = Field(
+        None,
+        description="New email address of the customer (use when customer wants to change their contact email on the appointment)."
+    )
+    new_phone: Optional[str] = Field(
+        None,
+        description="New phone number of the customer (use when customer wants to update their phone)."
+    )
+    new_date: Optional[str] = Field(
+        None,
+        description="New appointment date in YYYY-MM-DD format (use when rescheduling/changing date)."
+    )
+    new_time: Optional[str] = Field(
+        None,
+        description="New appointment time e.g. '14:00' or '2:30 PM' (use when rescheduling/changing time)."
+    )
+    duration_minutes: Optional[int] = Field(
+        None,
+        description="New duration in minutes (default: 60)."
+    )
+    notes: Optional[str] = Field(
+        None,
+        description="Updated agenda, discussion topics, or reason for modification."
+    )
+    status: Optional[str] = Field(
+        None,
+        description="Updated appointment status ('scheduled', 'cancelled', 'completed')."
+    )
+
+
 _HEADERS = lambda: {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
 
 
@@ -332,4 +375,74 @@ async def cancel_appointment_impl(
             return f"Failed to cancel appointment: {err_msg}"
     except Exception as e:
         return f"System error cancelling appointment: {str(e)}"
+
+
+async def edit_appointment_impl(
+    appointment_id: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    new_name: Optional[str] = None,
+    new_email: Optional[str] = None,
+    new_phone: Optional[str] = None,
+    new_date: Optional[str] = None,
+    new_time: Optional[str] = None,
+    duration_minutes: Optional[int] = None,
+    notes: Optional[str] = None,
+    status: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    **kwargs: Any,
+) -> str:
+    """
+    Universally edits an existing appointment (change name, email, phone, reschedule date/time, update notes, or cancel/change status).
+    """
+    if not tenant_id:
+        return "Error: tenant_id is required to edit an appointment."
+
+    clean_id = (appointment_id or "").strip() if appointment_id else None
+    clean_email = (customer_email or "").strip().lower() if customer_email else None
+
+    if not clean_id and not clean_email:
+        return "Error: Please provide either the appointment_id or the customer_email to locate the appointment."
+
+    payload = {
+        "tenantId": tenant_id,
+        "appointment_id": clean_id,
+        "customer_email": clean_email,
+        "new_name": (new_name or "").strip() if new_name else None,
+        "new_email": (new_email or "").strip().lower() if new_email else None,
+        "new_phone": (new_phone or "").strip() if new_phone else None,
+        "new_date": (new_date or "").strip() if new_date else None,
+        "new_time": (new_time or "").strip() if new_time else None,
+        "duration_minutes": duration_minutes,
+        "notes": (notes or "").strip() if notes else None,
+        "status": (status or "").strip().lower() if status else None,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{settings.BACKEND_URL}/internal/appointments/edit",
+                headers=_HEADERS(),
+                json=payload,
+            )
+
+        if res.status_code == 200:
+            data = res.json()
+            appt = data.get("appointment", {})
+            appt_id = data.get("appointment_id", appt.get("id", "N/A"))
+            date_str = str(appt.get("appointment_date", ""))[:10]
+            return (
+                f"Appointment successfully updated!\n"
+                f"- Appointment ID: {appt_id}\n"
+                f"- Customer Name: {appt.get('customer_name', 'N/A')}\n"
+                f"- Customer Email: {appt.get('customer_email', 'N/A')}\n"
+                f"- Service: {appt.get('service_type', 'Consultation')}\n"
+                f"- Date & Time: {date_str} at {appt.get('appointment_time', 'N/A')}\n"
+                f"- Status: {appt.get('status', 'scheduled').capitalize()}"
+            )
+        else:
+            err_msg = res.json().get("error", res.text) if res.headers.get("content-type", "").startswith("application/json") else res.text
+            return f"Failed to edit appointment: {err_msg}"
+    except Exception as e:
+        return f"System error editing appointment: {str(e)}"
+
 

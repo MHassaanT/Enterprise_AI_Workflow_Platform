@@ -81,3 +81,58 @@ ON CONFLICT (canonical_name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     provider_type = EXCLUDED.provider_type,
     schema_json = EXCLUDED.schema_json;
+
+-- Register edit_appointment tool in tool_registry
+INSERT INTO tool_registry (canonical_name, display_name, provider_type, is_high_risk, schema_json)
+VALUES (
+    'edit_appointment',
+    'Edit / Reschedule Appointment',
+    'builtin',
+    false,
+    '{
+        "type": "object",
+        "properties": {
+            "appointment_id": {
+                "type": "string",
+                "description": "ID of the appointment to edit (if known)"
+            },
+            "customer_email": {
+                "type": "string",
+                "description": "Current email of customer to locate appointment"
+            },
+            "new_name": {
+                "type": "string",
+                "description": "New customer name"
+            },
+            "new_email": {
+                "type": "string",
+                "description": "New customer email"
+            },
+            "new_phone": {
+                "type": "string",
+                "description": "New customer phone"
+            },
+            "new_date": {
+                "type": "string",
+                "description": "New appointment date (YYYY-MM-DD)"
+            },
+            "new_time": {
+                "type": "string",
+                "description": "New appointment time"
+            },
+            "notes": {
+                "type": "string",
+                "description": "Updated notes or agenda"
+            },
+            "status": {
+                "type": "string",
+                "description": "Updated status (scheduled, cancelled, completed)"
+            }
+        }
+    }'::jsonb
+)
+ON CONFLICT (canonical_name) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    provider_type = EXCLUDED.provider_type,
+    schema_json = EXCLUDED.schema_json;
+

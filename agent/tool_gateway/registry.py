@@ -40,6 +40,8 @@ from tool_gateway.tools.appointment_tool import (
     RescheduleAppointmentInput,
     cancel_appointment_impl,
     CancelAppointmentInput,
+    edit_appointment_impl,
+    EditAppointmentInput,
 )
 from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import get_agent_tool_bindings
@@ -127,6 +129,11 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Requires either appointment_id or customer_email, and optional reason. "
         "CRITICAL: Always use this tool when a customer asks to cancel an appointment; NEVER use create_appointment."
     ),
+    "edit_appointment": (
+        "Edit or update any details of an existing appointment or meeting (change customer name, change email, change phone, reschedule date/time, update notes, or cancel/change status). "
+        "Requires either appointment_id or customer_email. "
+        "CRITICAL: Always use this tool when a customer asks to modify their appointment (change name, email, phone, or reschedule date/time); NEVER use create_appointment."
+    ),
     # Legacy tools
     "check_order_status": _check_order_desc,
     "check_order_details": _check_order_desc,
@@ -156,6 +163,7 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "get_appointments": get_appointments_impl,
     "reschedule_appointment": reschedule_appointment_impl,
     "cancel_appointment": cancel_appointment_impl,
+    "edit_appointment": edit_appointment_impl,
     # Legacy tools (backward compatible)
     "check_order_status": check_order_status_impl,
     "check_order_details": check_order_status_impl,
@@ -183,6 +191,7 @@ TOOL_INPUT_MODELS: Dict[str, type] = {
     "get_appointments": GetAppointmentsInput,
     "reschedule_appointment": RescheduleAppointmentInput,
     "cancel_appointment": CancelAppointmentInput,
+    "edit_appointment": EditAppointmentInput,
     # Legacy tools
     "check_order_status": CheckOrderStatusInput,
     "check_order_details": CheckOrderStatusInput,
@@ -327,6 +336,12 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         name="cancel_appointment",
         description=TOOL_DESCRIPTIONS["cancel_appointment"],
         args_schema=CancelAppointmentInput,
+    ),
+    "edit_appointment": StructuredTool.from_function(
+        coroutine=edit_appointment_impl,
+        name="edit_appointment",
+        description=TOOL_DESCRIPTIONS["edit_appointment"],
+        args_schema=EditAppointmentInput,
     ),
 }
 
@@ -604,5 +619,7 @@ async def get_tools_for_agent(agent_instance_id: str, tenant_context: dict = Non
         tools.append(BUILTIN_LANGCHAIN_TOOLS["reschedule_appointment"])
     if not any(t.name == "cancel_appointment" for t in tools):
         tools.append(BUILTIN_LANGCHAIN_TOOLS["cancel_appointment"])
+    if not any(t.name == "edit_appointment" for t in tools):
+        tools.append(BUILTIN_LANGCHAIN_TOOLS["edit_appointment"])
 
     return tools
