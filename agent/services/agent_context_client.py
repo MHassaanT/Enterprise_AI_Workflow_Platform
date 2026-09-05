@@ -191,7 +191,11 @@ CRITICAL GUIDELINES:
      Step 2: Look up their scheduled appointment using `get_appointments(customer_email=...)`.
      Step 3: CALL `cancel_appointment(appointment_id=..., customer_email=..., reason=...)` or `edit_appointment(appointment_id=..., status='cancelled')`.
              CRITICAL RULE: NEVER just say "your appointment is cancelled" without executing the tool! You must call the tool so the platform database updates the status to 'cancelled'.
-     Step 4: Confirm to the customer that their appointment has been cancelled.
+             MULTI-CANCELLATION: If the customer asks to cancel multiple appointments (e.g. "I would like to cancel the both with time 14:30 PM", or "cancel all my appointments"), call `cancel_appointment` or `edit_appointment` for each matching appointment so that each one is properly cancelled in the database.
+     Step 4: Confirm to the customer that the requested appointment(s) have been cancelled.
+
+8. ANTI-RAW-SCRAPED-TEXT RULE:
+   - NEVER output raw website buttons, navigation links, or scraped web header text (such as "Clock Pickup now Chevron down small Pickup location Dropoff location..."). Always reply in natural, concise, professional customer service language.
 """
 
     if custom_instructions:

@@ -74,9 +74,10 @@ def build_graph():
     # ReAct loop — tool result feeds back into reasoning
     builder.add_edge("tool_executor", "reasoning")
 
-    memory = MemorySaver()
-    return builder.compile(checkpointer=memory)
+    return builder.compile(checkpointer=graph_memory)
 
 
-# Compiled once at import time with checkpointer
+# Shared checkpointer and compiled graph instance
+graph_memory = MemorySaver()
 customer_support_graph = build_graph()
+

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
 
 from config import settings
-from graph.graph import customer_support_graph
+from graph.graph import customer_support_graph, graph_memory
 from graph.state import AgentState
 from services.agent_context_client import get_tenant_agent_context
 
@@ -105,6 +105,43 @@ async def run_agent(
 
     config = {"configurable": {"thread_id": request.conversation_id}}
 
+    # Check if there is an active pending approval for this thread
+    existing_state = None
+    try:
+        existing_state = await customer_support_graph.aget_state(config)
+    except Exception:
+        existing_state = None
+
+    is_pending_approval = (
+        existing_state
+        and existing_state.values
+        and existing_state.values.get("approval_status") == "pending"
+    )
+
+    # If this is a normal turn (not waiting on reviewer approval), clear stale
+    # in-memory checkpointer history for this thread. The Node.js gateway provides
+    # the authoritative PostgreSQL history via request.history. This prevents
+    # checkpointer memory from compounding messages across turns and accumulating
+    # stale or unfulfilled tool calls.
+    if not is_pending_approval and graph_memory:
+        try:
+            if hasattr(graph_memory, "storage") and isinstance(graph_memory.storage, dict):
+                keys_to_del = [
+                    k for k in list(graph_memory.storage.keys())
+                    if k == request.conversation_id or (isinstance(k, tuple) and k and k[0] == request.conversation_id)
+                ]
+                for k in keys_to_del:
+                    del graph_memory.storage[k]
+            if hasattr(graph_memory, "writes") and isinstance(graph_memory.writes, dict):
+                writes_to_del = [
+                    k for k in list(graph_memory.writes.keys())
+                    if k == request.conversation_id or (isinstance(k, tuple) and k and k[0] == request.conversation_id)
+                ]
+                for k in writes_to_del:
+                    del graph_memory.writes[k]
+        except Exception as clear_err:
+            print(f"[AGENT] Warning clearing checkpoint memory: {clear_err}")
+
     try:
         final_state = await customer_support_graph.ainvoke(initial_state, config=config)
 
@@ -131,19 +168,47 @@ async def run_agent(
         print(f"[AGENT FATAL] Graph execution failed: {e}")
         traceback.print_exc()
 
-        # RAG-only fallback — try to answer from documents
-        from services.rag_client import query_rag
-        rag_result = await query_rag(request.question, request.tenant_id)
-        chunks = rag_result.get("chunks", [])
-        if chunks:
-            top_text = chunks[0].get("text", "").replace("\n", " ").strip()
-            answer = top_text[:300] + ("..." if len(top_text) > 300 else "")
-        else:
-            answer = "I'm not sure how to help with that. Could you provide more details about your issue?"
+        answer = (
+            "I apologize, but I encountered an unexpected technical issue while processing your request. "
+            "Please try again or let me know if you would like me to connect you with a team member."
+        )
+        citations = []
+
+        # Safe fallback: attempt clean LLM completion using retrieved RAG context without tools
+        try:
+            from services.rag_client import query_rag
+            from services.llm_gateway import get_llm
+            from langchain_core.messages import HumanMessage, SystemMessage
+
+            rag_result = await query_rag(request.question, request.tenant_id)
+            chunks = rag_result.get("chunks", [])
+            citations = rag_result.get("citations", [])
+            if chunks:
+                rag_context = "\n\n".join(
+                    f"[{i+1}] (Source: {c.get('documentName', 'Unknown')})\n{c.get('text', '')}"
+                    for i, c in enumerate(chunks[:3])
+                )
+                llm = get_llm()
+                fallback_prompt = (
+                    "You are a helpful AI customer support assistant. Answer the user's question concisely "
+                    "using ONLY the provided document excerpts. If the information is not in the excerpts, "
+                    "politely apologize and offer to assist. NEVER output raw website buttons, navigation links, "
+                    f"or header URLs.\n\nDOCUMENT EXCERPTS:\n{rag_context}"
+                )
+                llm_res = await llm.ainvoke([
+                    SystemMessage(content=fallback_prompt),
+                    HumanMessage(content=request.question),
+                ])
+                if hasattr(llm_res, "content") and llm_res.content and isinstance(llm_res.content, str):
+                    clean_res = llm_res.content.strip()
+                    if clean_res:
+                        answer = clean_res
+        except Exception as fb_err:
+            print(f"[AGENT FALLBACK ERROR] Fallback generation failed: {fb_err}")
 
         return AgentRunResponse(
             answer=answer,
-            citations=rag_result.get("citations", []),
+            citations=citations,
             tool_used=None,
             approval_pending=False,
             approval_id=None,

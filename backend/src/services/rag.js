@@ -91,10 +91,8 @@ const answerWithRAG = async (question, tenantId, { limit = 5 } = {}) => {
       answer = res.text || '';
     }
   } catch (err) {
-    console.warn('RAG generation error, producing concise snippet:', err.message);
-    const topChunk = chunks[0]?.text || '';
-    const cleanText = topChunk.replace(/\n+/g, ' ').trim();
-    answer = cleanText.length > 250 ? cleanText.slice(0, 250) + '...' : cleanText;
+    console.warn('RAG generation error:', err.message);
+    answer = 'I am currently unable to answer that from our knowledge base. Please contact customer support for further assistance.';
   }
 
   const citations = chunks.map((chunk, i) => ({

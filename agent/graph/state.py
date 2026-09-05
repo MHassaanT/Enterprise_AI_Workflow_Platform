@@ -17,7 +17,8 @@ class AgentState(TypedDict):
     next_step: str            # "tool_call" | "respond" | ""
 
     # Tool invocation payload
-    pending_tool_call: Optional[dict]   # {name, arguments}
+    pending_tool_call: Optional[dict]   # {name, arguments, id} - single call backward-compat
+    pending_tool_calls: Optional[list[dict]]  # list of {name, arguments, id} for parallel tool calls
     tool_result: Optional[str]          # raw result from last tool execution
     is_high_risk: bool                  # whether pending tool requires human approval
     tool_retry_count: int               # circuit breaker: counts consecutive tool failures
