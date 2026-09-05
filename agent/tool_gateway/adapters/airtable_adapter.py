@@ -31,9 +31,10 @@ async def _auto_discover_base_id(token: str) -> str | None:
     return None
 
 
-async def _get_table_fields(base_id: str, table_name: str, token: str) -> list:
+async def _resolve_table_metadata(base_id: str, table_name: str, token: str) -> tuple:
     """
-    Fallback: fetch actual field names for table_name from Meta API so formula search uses existing columns.
+    Fetch actual table name (exact casing or table ID) and field names from Meta API.
+    Handles fuzzy matches, singular/plural, and case sensitivity.
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -43,12 +44,36 @@ async def _get_table_fields(base_id: str, table_name: str, token: str) -> list:
             )
             if res.is_success:
                 tables = res.json().get("tables", [])
+                t_lower = (table_name or "").lower().strip()
+                # 1. Exact match
                 for t in tables:
-                    if t.get("name", "").lower() == table_name.lower():
-                        return [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                    if t.get("name", "").lower() == t_lower or t.get("id") == table_name:
+                        fields = [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                        return t.get("name"), fields
+                # 2. Fuzzy match (e.g. 'rides' -> 'Rides', 'ride' -> 'Rides')
+                for t in tables:
+                    name_clean = t.get("name", "").lower().replace(" ", "_")
+                    if name_clean == t_lower or name_clean.rstrip("s") == t_lower.rstrip("s"):
+                        fields = [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                        return t.get("name"), fields
+                # 3. Substring match
+                for t in tables:
+                    if t_lower and (t_lower in t.get("name", "").lower() or t.get("name", "").lower() in t_lower):
+                        fields = [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                        return t.get("name"), fields
+                # 4. If table_name is generic placeholder, and base has tables, use first table
+                if len(tables) == 1:
+                    t = tables[0]
+                    fields = [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                    return t.get("name"), fields
     except Exception as e:
-        print(f"[AIRTABLE ADAPTER] Meta API table schema fetch error: {e}")
-    return []
+        print(f"[AIRTABLE ADAPTER] Meta API table schema resolution error: {e}")
+    return table_name, []
+
+
+async def _get_table_fields(base_id: str, table_name: str, token: str) -> list:
+    _, fields = await _resolve_table_metadata(base_id, table_name, token)
+    return fields
 
 
 async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], credentials: Dict[str, Any]) -> str:
@@ -81,15 +106,35 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
 
     print(f"[AIRTABLE ADAPTER] Executing action='{action}' | base_id={base_id} | table={table_name}")
 
+    # Self-healing: auto-resolve real table name from Meta API
+    resolved_table_name, resolved_fields = await _resolve_table_metadata(base_id, table_name, token)
+    if resolved_table_name != table_name:
+        print(f"[AIRTABLE ADAPTER] Auto-resolved table '{table_name}' -> '{resolved_table_name}'")
+        table_name = resolved_table_name
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
-    url = f"https://api.airtable.com/v0/{base_id}/{table_name}"
+    from urllib.parse import quote
+    encoded_table = quote(str(table_name), safe="")
+    url = f"https://api.airtable.com/v0/{base_id}/{encoded_table}"
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
+            # 0. SCHEMA / LIST TABLES ACTION
+            if any(k in action for k in ("schema", "tables", "metadata", "list_tables", "get_schema")):
+                meta_res = await client.get(f"https://api.airtable.com/v0/meta/bases/{base_id}/tables", headers=headers)
+                if meta_res.is_success:
+                    tables = meta_res.json().get("tables", [])
+                    summary = []
+                    for t in tables:
+                        cols = [f.get("name") for f in t.get("fields", []) if f.get("name")]
+                        summary.append(f"• Table: '{t.get('name')}' (ID: {t.get('id')}) | Columns: {', '.join(cols[:12])}")
+                    return f"Airtable Base '{base_id}' Schema ({len(tables)} tables):\n" + "\n".join(summary)
+                return f"Failed to fetch Airtable schema ({meta_res.status_code}): {meta_res.text[:300]}"
+
             # 1. READ / SEARCH / GET RECORDS
             if any(k in action for k in ("search", "get", "check", "order", "list", "read", "find")):
                 query_str = arguments.get("query") or arguments.get("order_id") or arguments.get("email") or arguments.get("customer_email") or ""
@@ -112,7 +157,7 @@ async def execute_airtable_tool(tool_name: str, arguments: Dict[str, Any], crede
                     if search_field:
                         formula = f"SEARCH('{query_str}', {{{search_field}}})"
                     else:
-                        table_fields = await _get_table_fields(base_id, table_name, token)
+                        table_fields = resolved_fields or await _get_table_fields(base_id, table_name, token)
                         if table_fields:
                             search_clauses = [f"SEARCH('{query_str}', {{{f}}})" for f in table_fields[:10]]
                             formula = f"OR({', '.join(search_clauses)})"

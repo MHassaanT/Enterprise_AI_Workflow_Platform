@@ -82,12 +82,12 @@ async def _poll_app_integration(workflow_id: str, node: Dict[str, Any], tenant_i
         
         if response_str.startswith("Security Error") or "Error" in response_str:
             print(f"[POLLING] Adapter error: {response_str}")
-            if "UNAUTHORIZED" in response_str or "Invalid authentication token" in response_str:
+            if any(k in response_str for k in ("UNAUTHORIZED", "Invalid authentication token", "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND", "403")):
                 try:
                     pool = await get_db_pool()
                     async with pool.acquire() as conn:
                         await conn.execute("UPDATE workflows SET status = 'draft' WHERE workflow_id = $1", workflow_id)
-                    print(f"[POLLING] System Health: Workflow {workflow_id[:8]} disabled (set to draft) due to invalid credentials.")
+                    print(f"[POLLING] System Health: Workflow {workflow_id[:8]} disabled (set to draft) due to invalid credentials or base/table permissions.")
                 except Exception as e:
                     print(f"[POLLING] Failed to disable workflow {workflow_id[:8]}: {e}")
             return

@@ -1049,7 +1049,61 @@ router.get('/tenants/:tenantId/entities/:entityName/search', async (req, res) =>
       }
     }
 
-    // 3. Fallback: clean 200 response with 0 records
+    // 3. Check if tenant has connected Airtable in tool_credentials
+    const airtableCredsRes = await query(
+      `SELECT tc.encrypted_payload 
+       FROM tool_credentials tc 
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'airtable' OR 
+         LOWER(tr.provider_type) = 'airtable'
+       )
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (airtableCredsRes.rows.length > 0) {
+      try {
+        const atPayload = decryptPayload(airtableCredsRes.rows[0].encrypted_payload);
+        const atToken = atPayload.access_token || atPayload.api_key || atPayload.token;
+        const atBaseId = config.base_id || atPayload.base_id || atPayload.default_base_id;
+        if (atToken && atBaseId) {
+          for (const tbl of candidateTables) {
+            try {
+              const encodedTbl = encodeURIComponent(tbl);
+              const atUrl = `https://api.airtable.com/v0/${atBaseId}/${encodedTbl}?maxRecords=${parseInt(limit) || 10}`;
+              const atRes = await fetch(atUrl, {
+                headers: {
+                  'Authorization': `Bearer ${atToken}`,
+                  'Content-Type': 'application/json',
+                }
+              });
+              if (atRes.ok) {
+                const atData = await atRes.json();
+                let records = (atData.records || []).map(r => ({ id: r.id, ...r.fields }));
+                if (q) {
+                  const qLower = String(q).toLowerCase();
+                  const filtered = records.filter(r =>
+                    Object.values(r).some(val => String(val).toLowerCase().includes(qLower))
+                  );
+                  if (filtered.length > 0) records = filtered;
+                }
+                if (records.length > 0) {
+                  return res.json({ entity: entityName, results: records, count: records.length });
+                }
+              }
+            } catch (tblErr) {
+              // try next candidate table
+            }
+          }
+        }
+      } catch (atErr) {
+        console.warn('Airtable entity query error:', atErr.message);
+      }
+    }
+
+    // 4. Fallback: clean 200 response with 0 records
     return res.json({ entity: entityName, results: [], count: 0, message: `No ${entityName} records found.` });
   } catch (error) {
     console.error(`Error searching entity ${entityName}:`, error);
@@ -1143,6 +1197,50 @@ router.get('/tenants/:tenantId/entities/:entityName/:recordId', async (req, res)
         }
       } catch (supaErr) {
         console.warn('Supabase record fetch error:', supaErr.message);
+      }
+    }
+
+    // 3. Check Airtable
+    const airtableCredsRes = await query(
+      `SELECT tc.encrypted_payload 
+       FROM tool_credentials tc 
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'airtable' OR 
+         LOWER(tr.provider_type) = 'airtable'
+       )
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (airtableCredsRes.rows.length > 0) {
+      try {
+        const atPayload = decryptPayload(airtableCredsRes.rows[0].encrypted_payload);
+        const atToken = atPayload.access_token || atPayload.api_key || atPayload.token;
+        const atBaseId = config.base_id || atPayload.base_id || atPayload.default_base_id;
+        if (atToken && atBaseId) {
+          for (const tbl of candidateTables) {
+            try {
+              const encodedTbl = encodeURIComponent(tbl);
+              const atUrl = `https://api.airtable.com/v0/${atBaseId}/${encodedTbl}/${encodeURIComponent(recordId)}`;
+              const atRes = await fetch(atUrl, {
+                headers: {
+                  'Authorization': `Bearer ${atToken}`,
+                  'Content-Type': 'application/json',
+                }
+              });
+              if (atRes.ok) {
+                const atRecord = await atRes.json();
+                return res.json({ entity: entityName, record: { id: atRecord.id, ...atRecord.fields } });
+              }
+            } catch (tblErr) {
+              // try next candidate table
+            }
+          }
+        }
+      } catch (atErr) {
+        console.warn('Airtable record fetch error:', atErr.message);
       }
     }
 

@@ -332,11 +332,33 @@ agent/.venv/bin/pytest agent/tests/test_company_crawler.py
 ### 5.3 Static Syntax Validation
 Verified Node.js syntax across all updated backend services:
 ```bash
-node -c backend/src/services/ingestion.js && node -c backend/src/routes/documents.js
+node -c backend/src/services/ingestion.js && node -c backend/src/routes/documents.js && node -c backend/src/services/embeddings.js
 ```
 ```
 Output: Backend Syntax OK
 ```
+
+### 5.4 Field Diagnostic: Programmatic SEO Routes & Gemini 429 Quota Stabilization
+
+During field testing on large-scale domains like `uber.com`, two critical failure modes were identified from runtime logs and immediately resolved:
+
+#### 1. Programmatic SEO Route Poisoning (Wrong URLs Discovered)
+- **Observed Behavior**: The crawler selected URLs such as `/r/routes/balch-springs-tx-us-to-at-t-stadium` and `/cities/aiton-cluj-ro` rather than core business pages (`/about`, `/business`, `/pricing`, `/legal`).
+- **Root Cause**: Uber's `sitemap.xml` index contains 1,585 child sitemaps. The first ones listed in the XML index happen to be programmatic SEO route generators (`dynamic_routes_route-sitemap.xml`) containing 50,000 stadium-to-town transit combinations. Because the crawler previously visited sitemaps in raw FIFO order and capped discovery at 1,000 URLs, the candidate pool was 100% flooded with transit routes before ever reaching corporate pages.
+- **Resolution Implemented**:
+  1. Added `IGNORED_PATH_PATTERNS` in `agent/services/sitemap_crawler.py` to permanently reject programmatic routes (`/r/routes/`, `/routes/`, `/cities/`, `/airports/`, `/taxi-stands/`, `/deliver/`, `/courier-services/`, `/trips/`).
+  2. Added `score_sitemap_target` to penalize dynamic sitemaps and prioritize corporate/English sitemaps (`us_en`, `pages`, `core`, `main`, `corporate`, `docs`, `legal`).
+  3. Enforced a diversity ceiling of at most 60 URLs per sub-sitemap.
+  4. Always harvest homepage HTML navigation links using standard browser headers (`Accept`, `Accept-Language`, `User-Agent`) to guarantee core corporate pages (`/about`, `/business`, `/safety`, `/newsroom`, `/legal`) are discovered first.
+
+#### 2. Gemini Embedding 429 Resource Exhaustion
+- **Observed Behavior**: The backend logged:
+  `Quota exceeded for metric: generativelanguage.googleapis.com/embed_content_free_tier_requests, limit: 100, model: gemini-embedding-1.0. Please retry in 35s... status: RESOURCE_EXHAUSTED`.
+- **Root Cause**: Previously, `embedDocumentChunks` iterated through every single text chunk sequentially, invoking `ai.models.embedContent` as an individual HTTP request per chunk with zero delay and no retry mechanism. Ingesting 30 pages (~180 chunks) fired ~180 API calls in under 10 seconds, immediately breaching Google's Free Tier threshold of 100 requests per minute.
+- **Resolution Implemented in `backend/src/services/embeddings.js`**:
+  1. **Native Array Batching**: Google GenAI `embedContent` natively accepts arrays of strings in `contents: [...]`. Chunks are now batched into groups of 15 (`BATCH_SIZE = 15`), reducing total API requests by **15x** (e.g. 180 chunks require only 12 requests instead of 180).
+  2. **Rate Pacing**: Added a 250ms polite pacing interval between batches.
+  3. **Exponential Backoff with 429 Retry (`embedWithRetry`)**: When Google returns a 429 `RESOURCE_EXHAUSTED` error, the system automatically detects the required cooldown period from the response (e.g. 35s), sleeps, and retries up to 3 times without crashing the ingestion job.
 
 ---
 

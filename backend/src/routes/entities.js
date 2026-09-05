@@ -4,6 +4,7 @@ const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const { generateEntitySchema } = require('../services/llmService');
+const { syncAirtableSchemaToTenantEntities } = require('../services/airtableSync');
 
 // ── GET /api/entities ──
 // List all entities with fields and operations for the current tenant
@@ -344,6 +345,22 @@ Generate a single entity based on the user request.`;
   } catch (error) {
     console.error('Generate entity error:', error);
     res.status(500).json({ error: 'Failed to generate entity.' });
+  }
+});
+
+// ── POST /api/entities/sync-airtable ──
+// Fetch schema from connected Airtable base and populate tenant entities & fields
+router.post('/sync-airtable', authenticate, authorize('admin'), async (req, res) => {
+  const { tenantId } = req.user;
+  const { base_id } = req.body;
+  try {
+    const result = await syncAirtableSchemaToTenantEntities(tenantId, base_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Airtable sync error:', error.message);
+    res.status(error.message.includes('Permission Error') ? 403 : 400).json({
+      error: error.message,
+    });
   }
 });
 

@@ -31,6 +31,36 @@ IGNORED_EXTENSIONS = {
     ".woff", ".woff2", ".ttf", ".eot", ".otf"
 }
 
+# Noisy programmatic SEO routes, dynamic endpoints, and authentication URLs
+IGNORED_PATH_PATTERNS = [
+    r"/r/routes/",
+    r"/routes/",
+    r"/r/cities/",
+    r"/cities/",
+    r"/airports?/",
+    r"/taxi-stands?/",
+    r"/pickup/",
+    r"/shuttle/",
+    r"/courier-services/",
+    r"/deliver/",
+    r"/directions/",
+    r"/trips/",
+    r"/login",
+    r"/logout",
+    r"/signin",
+    r"/signup",
+    r"/sign-up",
+    r"/auth/",
+    r"/wp-admin/",
+    r"/feed/",
+]
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+
 
 def sanitize_url(raw_url: str) -> str:
     url = raw_url.strip()
@@ -42,7 +72,7 @@ def sanitize_url(raw_url: str) -> str:
 def normalize_url(url: str, base_domain: str) -> Optional[str]:
     """
     Cleans, defragments, and verifies that the URL belongs strictly to base_domain.
-    Filters out static assets and non-HTTP schemes.
+    Filters out static assets, programmatic routes, and non-HTTP schemes.
     """
     try:
         url, _ = urldefrag(url)
@@ -59,6 +89,11 @@ def normalize_url(url: str, base_domain: str) -> Optional[str]:
         path_lower = parsed.path.lower()
         if any(path_lower.endswith(ext) for ext in IGNORED_EXTENSIONS):
             return None
+
+        # Programmatic/dynamic route patterns check
+        for pat in IGNORED_PATH_PATTERNS:
+            if re.search(pat, path_lower):
+                return None
 
         # Clean tracking query parameters
         clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
@@ -115,9 +150,26 @@ def html_to_markdown(html_content: str, url_str: str = "") -> str:
     return result
 
 
+def score_sitemap_target(sitemap_url: str) -> int:
+    sm_low = sitemap_url.lower()
+    score = 0
+    # Heavily penalize programmatic dynamic route/geo sitemaps
+    if any(k in sm_low for k in ["dynamic", "routes", "airports", "courier", "taxi", "deliver"]):
+        score -= 200
+    # Prioritize canonical English and core corporate sitemaps
+    if any(k in sm_low for k in ["us_en", "global_en", "-en-", "pages", "core", "main", "corporate", "docs", "legal"]):
+        score += 80
+    if "sitemap.xml" in sm_low:
+        score += 20
+    # Penalize non-English foreign locale sitemaps if multiple exist
+    if re.search(r"[-_](ar|cs|de|el|es|fr|it|ja|ko|nl|pl|pt|ru|sv|zh)[-_]", sm_low):
+        score -= 40
+    return score
+
+
 async def _fetch_sitemap_xml(client: httpx.AsyncClient, sitemap_url: str) -> Optional[str]:
     try:
-        resp = await client.get(sitemap_url, headers={"User-Agent": "EnterpriseAI-KnowledgeCrawler/1.0"})
+        resp = await client.get(sitemap_url, headers=BROWSER_HEADERS)
         if resp.status_code == 200 and ("xml" in resp.headers.get("content-type", "") or resp.text.strip().startswith("<?xml") or "<urlset" in resp.text or "<sitemapindex" in resp.text):
             return resp.text
     except Exception as e:
@@ -127,8 +179,8 @@ async def _fetch_sitemap_xml(client: httpx.AsyncClient, sitemap_url: str) -> Opt
 
 async def discover_sitemap_urls(base_url: str, max_discovery: int = 1000) -> List[str]:
     """
-    Discovers all canonical page URLs by inspecting robots.txt and standard sitemap paths.
-    Recursively expands sitemap indexes and falls back to anchor links if no sitemap exists.
+    Discovers all canonical page URLs by inspecting robots.txt, prioritizing core sitemaps,
+    and harvesting primary homepage navigation links.
     """
     clean_base = sanitize_url(base_url)
     parsed_base = urlparse(clean_base)
@@ -140,10 +192,25 @@ async def discover_sitemap_urls(base_url: str, max_discovery: int = 1000) -> Lis
 
     timeout = httpx.Timeout(12.0, connect=5.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        # 1. Check robots.txt for Sitemap directives
+        # 1. Harvest homepage primary navigation links first
+        try:
+            home_resp = await client.get(clean_base, headers=BROWSER_HEADERS)
+            if home_resp.status_code == 200:
+                soup = BeautifulSoup(home_resp.text, "html.parser")
+                for a_tag in soup.find_all("a", href=True):
+                    href = a_tag["href"]
+                    full = urljoin(clean_base, href)
+                    norm = normalize_url(full, base_domain)
+                    if norm:
+                        discovered_urls.add(norm)
+                logger.info(f"[Sitemap Discovery] Harvested {len(discovered_urls)} links from homepage {clean_base}")
+        except Exception as home_err:
+            logger.debug(f"Homepage link harvest failed for {clean_base}: {home_err}")
+
+        # 2. Check robots.txt for Sitemap directives
         robots_url = f"{scheme}://{base_domain}/robots.txt"
         try:
-            robots_resp = await client.get(robots_url, headers={"User-Agent": "EnterpriseAI-KnowledgeCrawler/1.0"})
+            robots_resp = await client.get(robots_url, headers=BROWSER_HEADERS)
             if robots_resp.status_code == 200:
                 for line in robots_resp.text.splitlines():
                     match = re.match(r"^\s*Sitemap:\s*(\S+)", line, re.IGNORECASE)
@@ -152,7 +219,7 @@ async def discover_sitemap_urls(base_url: str, max_discovery: int = 1000) -> Lis
         except Exception as e:
             logger.debug(f"robots.txt check failed for {base_domain}: {e}")
 
-        # 2. Add standard sitemap locations
+        # 3. Add standard sitemap locations
         standard_sitemaps = [
             f"{scheme}://{base_domain}/sitemap.xml",
             f"{scheme}://{base_domain}/sitemap_index.xml",
@@ -162,11 +229,13 @@ async def discover_sitemap_urls(base_url: str, max_discovery: int = 1000) -> Lis
             if sm not in sitemap_targets:
                 sitemap_targets.append(sm)
 
-        # 3. Process sitemaps
+        # 4. Sort sitemaps to prioritize core content over programmatic dynamic routes
+        sitemap_targets.sort(key=score_sitemap_target, reverse=True)
+
         sub_sitemaps_visited: set[str] = set()
         queue = list(sitemap_targets)
 
-        while queue and len(discovered_urls) < max_discovery and len(sub_sitemaps_visited) < 15:
+        while queue and len(discovered_urls) < max_discovery and len(sub_sitemaps_visited) < 20:
             current_sitemap = queue.pop(0)
             if current_sitemap in sub_sitemaps_visited:
                 continue
@@ -183,44 +252,60 @@ async def discover_sitemap_urls(base_url: str, max_discovery: int = 1000) -> Lis
 
                 # Check if it's a sitemap index (<sitemapindex><sitemap><loc>...)
                 sitemap_nodes = root.findall(".//sitemap/loc")
+                new_sub_maps = []
                 for node in sitemap_nodes:
                     if node.text and node.text.strip() not in sub_sitemaps_visited:
-                        queue.append(node.text.strip())
+                        new_sub_maps.append(node.text.strip())
+
+                if new_sub_maps:
+                    # Prioritize sub-sitemaps
+                    new_sub_maps.sort(key=score_sitemap_target, reverse=True)
+                    queue.extend(new_sub_maps)
 
                 # Check for URLs (<urlset><url><loc>...)
                 url_nodes = root.findall(".//url/loc")
+                per_sitemap_count = 0
                 for node in url_nodes:
                     if node.text:
                         norm = normalize_url(node.text.strip(), base_domain)
-                        if norm:
+                        if norm and norm not in discovered_urls:
                             discovered_urls.add(norm)
+                            per_sitemap_count += 1
+                            if per_sitemap_count >= 60:
+                                break
                             if len(discovered_urls) >= max_discovery:
                                 break
             except Exception as parse_err:
                 logger.debug(f"XML parse error for sitemap {current_sitemap}: {parse_err}")
-
-        # 4. Fallback: If no URLs discovered via sitemap, scrape anchor links on the seed page
-        if not discovered_urls:
-            try:
-                resp = await client.get(clean_base, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-                if resp.status_code == 200:
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                    for a_tag in soup.find_all("a", href=True):
-                        href = a_tag["href"]
-                        full = urljoin(clean_base, href)
-                        norm = normalize_url(full, base_domain)
-                        if norm:
-                            discovered_urls.add(norm)
-                            if len(discovered_urls) >= max_discovery:
-                                break
-            except Exception as fb_err:
-                logger.warning(f"Fallback anchor link discovery failed: {fb_err}")
 
     # Always ensure the root base_url is included
     root_norm = normalize_url(clean_base, base_domain) or clean_base
     discovered_urls.add(root_norm)
 
     return sorted(list(discovered_urls))
+
+
+def score_url_relevance(u: str, clean_base: str) -> int:
+    priority_keywords = [
+        "about", "product", "platform", "solution", "feature", "pricing", "plan",
+        "docs", "doc", "api", "developer", "guide", "help", "faq", "support",
+        "terms", "privacy", "security", "policy", "compliance", "legal", "contact",
+        "newsroom", "company", "overview", "business", "safety"
+    ]
+    score = 0
+    u_low = u.lower()
+    if u == clean_base or u == clean_base + "/":
+        score += 100
+    for kw in priority_keywords:
+        if kw in u_low:
+            score += 15
+    # Penalize non-English locale subpaths if general
+    if re.search(r"/(ar|cs|de|el|es|fr|it|ja|ko|nl|pl|pt|ru|sv|zh)/", u_low):
+        score -= 30
+    # Penalize blog archives and dates
+    if re.search(r"/\d{4}/\d{2}/", u_low) or "page=" in u_low or "/tag/" in u_low:
+        score -= 20
+    return score
 
 
 async def curate_urls_with_llm(
@@ -237,9 +322,12 @@ async def curate_urls_with_llm(
     if len(urls) <= max_curated:
         return urls
 
+    # Sort discovered URLs by relevance heuristic so the top candidates are presented to LLM
+    sorted_candidates = sorted(urls, key=lambda u: score_url_relevance(u, clean_base), reverse=True)
+
     llm = get_llm()
 
-    sample_urls = urls[:600] # Cap input sample to stay well within token limits
+    sample_urls = sorted_candidates[:500]
     url_list_str = "\n".join(f"- {u}" for u in sample_urls)
 
     system_prompt = (
@@ -250,12 +338,12 @@ async def curate_urls_with_llm(
         "1. Core platform, products, features, solutions, and service overviews\n"
         "2. Pricing, subscription plans, tier comparison, and billing policies\n"
         "3. Technical documentation, developer guides, API references, architecture, and FAQs\n"
-        "4. Company overview, about us, mission, leadership, and contact\n"
-        "5. Compliance, terms of service, privacy policy, security, and refund policy\n\n"
+        "4. Company overview, about us, mission, leadership, safety, and contact\n"
+        "5. Compliance, terms of service, privacy policy, security, and legal\n\n"
         "PRUNE NOISE & LOW-VALUE PAGES:\n"
         "- Exclude localized/regional duplicates (e.g., /fr/, /de/, /es/, /ja/ - keep only primary canonical/English version)\n"
         "- Exclude individual job postings (/careers/apply/123), news archive pagination, tag lists\n"
-        "- Exclude dynamic city landing pages (/cities/austin, /cities/boston)\n"
+        "- Exclude dynamic city/route landing pages (/cities/*, /routes/*)\n"
         "- Exclude login, signup, cart, checkout, or account settings\n\n"
         "Return ONLY a valid JSON array of strings containing the selected URLs, like:\n"
         "[\"https://.../about\", \"https://.../pricing\", ...]\n"
@@ -283,27 +371,8 @@ async def curate_urls_with_llm(
     except Exception as e:
         logger.warning(f"LLM URL curation failed ({e}). Falling back to heuristic scoring.")
 
-    # Heuristic fallback if LLM parsing encounters an error
-    priority_keywords = [
-        "about", "product", "feature", "pricing", "plan", "docs", "doc", "api",
-        "guide", "help", "faq", "terms", "privacy", "security", "policy", "contact"
-    ]
-
-    def score_url(u: str) -> int:
-        score = 0
-        u_low = u.lower()
-        if u == clean_base or u == clean_base + "/":
-            score += 100
-        for kw in priority_keywords:
-            if kw in u_low:
-                score += 10
-        # Penalize pagination, tags, dates
-        if re.search(r"/\d{4}/\d{2}/", u_low) or "page=" in u_low or "/tag/" in u_low:
-            score -= 20
-        return score
-
-    sorted_urls = sorted(urls, key=score_url, reverse=True)
-    return sorted_urls[:max_curated]
+    # Heuristic fallback if LLM encounters an error
+    return sorted_candidates[:max_curated]
 
 
 async def _scrape_single_url(

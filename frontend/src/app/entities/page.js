@@ -30,6 +30,27 @@ export default function EntitiesPage() {
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [magicPrompt, setMagicPrompt] = useState('');
   const [isMagicGenerating, setIsMagicGenerating] = useState(false);
+  const [isSyncingAirtable, setIsSyncingAirtable] = useState(false);
+
+  const syncFromAirtable = async () => {
+    setIsSyncingAirtable(true);
+    try {
+      const res = await fetch(`${API}/api/entities/sync-airtable`, {
+        method: 'POST',
+        headers: headers(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to sync Airtable schema');
+      }
+      showToast(`⚡ Synced ${data.tables_synced} table(s) from Airtable!`);
+      fetchEntities();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSyncingAirtable(false);
+    }
+  };
 
   const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
@@ -242,9 +263,34 @@ export default function EntitiesPage() {
 
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
                     <h2 style={{ fontSize:18, fontWeight:700, color:'#e5e7eb' }}>Business Entities ({entities.length})</h2>
-                    <button onClick={()=>setShowNewEntity(!showNewEntity)} style={{ padding:'8px 18px', borderRadius:10, border:'1px solid rgba(59,130,246,0.3)', background:'rgba(59,130,246,0.1)', color:'#60a5fa', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize:16 }}>add</span> New Entity
-                    </button>
+                    <div style={{ display:'flex', gap:10 }}>
+                      <button
+                        onClick={syncFromAirtable}
+                        disabled={isSyncingAirtable}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: 10,
+                          border: '1px solid rgba(245,158,11,0.4)',
+                          background: 'rgba(245,158,11,0.12)',
+                          color: '#fbbf24',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: isSyncingAirtable ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, animation: isSyncingAirtable ? 'spin 1s linear infinite' : 'none' }}>
+                          {isSyncingAirtable ? 'refresh' : 'sync'}
+                        </span>
+                        {isSyncingAirtable ? 'Syncing...' : 'Sync from Airtable'}
+                      </button>
+                      <button onClick={()=>setShowNewEntity(!showNewEntity)} style={{ padding:'8px 18px', borderRadius:10, border:'1px solid rgba(59,130,246,0.3)', background:'rgba(59,130,246,0.1)', color:'#60a5fa', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize:16 }}>add</span> New Entity
+                      </button>
+                    </div>
                   </div>
 
                   {/* New Entity Form */}

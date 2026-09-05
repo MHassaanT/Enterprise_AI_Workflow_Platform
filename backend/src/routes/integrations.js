@@ -523,6 +523,16 @@ router.get(['/callback', '/callback/'], async (req, res) => {
       );
     }
 
+    // Auto-sync Airtable schema directly into tenant entities if Airtable connected
+    if (provider === 'airtable') {
+      try {
+        const { syncAirtableSchemaToTenantEntities } = require('../services/airtableSync');
+        syncAirtableSchemaToTenantEntities(tenantId).catch(err => console.warn('[AIRTABLE AUTO-SYNC] Notice:', err.message));
+      } catch (syncErr) {
+        console.warn('[AIRTABLE AUTO-SYNC] Init error:', syncErr.message);
+      }
+    }
+
     // Return HTML page with script to notify opener window and close popup
     res.send(`
       <!DOCTYPE html>
