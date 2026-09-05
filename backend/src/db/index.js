@@ -47,8 +47,25 @@ pool.connect((err, client, release) => {
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(tenant_id, step_id)
       );`),
+      client.query(`CREATE TABLE IF NOT EXISTS appointments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        conversation_id VARCHAR(255),
+        customer_name VARCHAR(255) NOT NULL,
+        customer_email VARCHAR(255) NOT NULL,
+        customer_phone VARCHAR(50),
+        service_type VARCHAR(255) NOT NULL,
+        appointment_date DATE NOT NULL,
+        appointment_time VARCHAR(50) NOT NULL,
+        duration_minutes INT DEFAULT 60,
+        notes TEXT,
+        status VARCHAR(50) DEFAULT 'scheduled',
+        created_by VARCHAR(50) DEFAULT 'ai_agent',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );`),
     ])
-      .then(() => console.log('✅ HR, SafePay & Onboarding database columns verified'))
+      .then(() => console.log('✅ HR, SafePay, Onboarding & Appointments database tables verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }

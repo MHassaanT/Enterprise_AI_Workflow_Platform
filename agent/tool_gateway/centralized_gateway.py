@@ -39,6 +39,7 @@ def _find_matching_binding(bindings: list, tool_name: str) -> dict | None:
         "search_entities", "get_entity_by_id", "create_support_ticket",
         "get_support_tickets", "add_ticket_note", "send_notification",
         "get_platform_status", "escalate_to_human",
+        "create_appointment", "get_appointments",
     ] or norm_req.startswith("search_") or norm_req.startswith("get_"):
         return {"tool_name": norm_req, "connector_type": "builtin", "is_high_risk": False, "is_enabled": True}
     return None

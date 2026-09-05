@@ -1551,4 +1551,104 @@ router.get('/otp/status', async (req, res) => {
   }
 });
 
+// ── POST /internal/appointments ──
+// Called by the AI Customer Support Agent to book a service appointment
+router.post('/appointments', async (req, res) => {
+  const {
+    tenantId,
+    conversationId,
+    customer_name,
+    customer_email,
+    customer_phone,
+    service_type,
+    appointment_date,
+    appointment_time,
+    duration_minutes = 60,
+    notes = '',
+  } = req.body;
+
+  if (!tenantId || !customer_name || !customer_email || !service_type || !appointment_date || !appointment_time) {
+    return res.status(400).json({
+      error: 'tenantId, customer_name, customer_email, service_type, appointment_date, and appointment_time are required.'
+    });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO appointments (
+        tenant_id, conversation_id, customer_name, customer_email, customer_phone,
+        service_type, appointment_date, appointment_time,
+        duration_minutes, notes, status, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', 'ai_agent')
+      RETURNING *`,
+      [
+        tenantId,
+        conversationId || null,
+        customer_name.trim(),
+        customer_email.trim().toLowerCase(),
+        customer_phone ? customer_phone.trim() : null,
+        service_type.trim(),
+        appointment_date,
+        appointment_time.trim(),
+        parseInt(duration_minutes) || 60,
+        notes || ''
+      ],
+      tenantId
+    );
+
+    res.status(201).json({
+      success: true,
+      appointment: result.rows[0],
+      appointment_id: result.rows[0].id,
+    });
+  } catch (error) {
+    console.error('Error creating internal appointment:', error);
+    res.status(500).json({ error: 'Failed to create appointment.' });
+  }
+});
+
+// ── GET /internal/appointments ──
+// Called by the AI agent to check existing appointments or availability
+router.get('/appointments', async (req, res) => {
+  const { tenantId, email, date, status } = req.query;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  try {
+    let sql = 'SELECT * FROM appointments WHERE tenant_id = $1';
+    const params = [tenantId];
+    let idx = 2;
+
+    if (email) {
+      sql += ` AND LOWER(customer_email) = $${idx}`;
+      params.push(email.trim().toLowerCase());
+      idx++;
+    }
+
+    if (date) {
+      sql += ` AND appointment_date = $${idx}`;
+      params.push(date);
+      idx++;
+    }
+
+    if (status) {
+      sql += ` AND status = $${idx}`;
+      params.push(status.toLowerCase());
+      idx++;
+    }
+
+    sql += ' ORDER BY appointment_date ASC, appointment_time ASC LIMIT 20';
+    const result = await query(sql, params, tenantId);
+
+    res.json({
+      appointments: result.rows,
+      count: result.rowCount
+    });
+  } catch (error) {
+    console.error('Error querying internal appointments:', error);
+    res.status(500).json({ error: 'Failed to query appointments.' });
+  }
+});
+
 module.exports = router;

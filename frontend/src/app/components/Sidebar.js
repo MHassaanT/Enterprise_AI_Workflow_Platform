@@ -46,7 +46,7 @@ export default function Sidebar() {
     { label: 'Analytics Agent', href: '/analytics', icon: 'analytics', isAgent: true },
     { label: 'Coding Agent', href: '/coding', icon: 'code', isAgent: true },
     { label: 'PM Agent', href: '/pm', icon: 'account_tree', isAgent: true },
-    { label: 'Approvals Hub', href: '/approvals', icon: 'gavel', isAgent: false },
+    { label: 'Approvals and Appointments', href: '/approvals', icon: 'event_available', isAgent: false },
     { label: 'Workflows', href: '/admin/workflows', icon: 'account_tree', isAgent: true },
     { label: 'Widget Setup', href: '/widget-setup', icon: 'extension', isAgent: false },
     { label: 'MCP Tools', href: '/mcp', icon: 'hub', isAgent: false },

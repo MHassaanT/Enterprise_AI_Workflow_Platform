@@ -1077,3 +1077,77 @@ export async function toggleOnboardingStep(stepId, completed) {
   if (!res.ok) throw new Error('Failed to update onboarding step');
   return res.json();
 }
+
+// ── SERVICE APPOINTMENTS ──
+
+export async function fetchAppointments(params = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.append('status', params.status);
+  if (params.date) query.append('date', params.date);
+  if (params.search) query.append('search', params.search);
+
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`/api/appointments${queryString}`, {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch appointments');
+  }
+  return res.json();
+}
+
+export async function fetchAppointmentById(id) {
+  const res = await fetch(`/api/appointments/${id}`, {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch appointment details');
+  }
+  return res.json();
+}
+
+export async function createAppointment(data) {
+  const res = await fetch('/api/appointments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(data),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create appointment');
+  }
+  return res.json();
+}
+
+export async function updateAppointment(id, data) {
+  const res = await fetch(`/api/appointments/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(data),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update appointment');
+  }
+  return res.json();
+}
+
+export async function deleteAppointment(id) {
+  const res = await fetch(`/api/appointments/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete appointment');
+  }
+  return res.json();
+}
+

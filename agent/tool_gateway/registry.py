@@ -31,6 +31,12 @@ from tool_gateway.tools.authenticate_user_with_email import (
     authenticate_user_with_email_impl,
     AuthenticateUserWithEmailInput,
 )
+from tool_gateway.tools.appointment_tool import (
+    create_appointment_impl,
+    CreateAppointmentInput,
+    get_appointments_impl,
+    GetAppointmentsInput,
+)
 from tool_gateway.mcp_client import execute_remote_mcp_tool
 from services.db_client import get_agent_tool_bindings
 
@@ -98,6 +104,13 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Use action='send_otp' when a customer requests user-specific sensitive actions or private account access (such as refunds, account modifications, or private personal data). "
         "Use action='verify_otp' with otp_code when the user provides the code in chat. Do NOT use for general or public inquiries."
     ),
+    "create_appointment": (
+        "Book an appointment or consultation for service businesses (software development, home cleaning, maintenance, consulting, etc.). "
+        "Requires customer_name, customer_email, service_type, appointment_date (YYYY-MM-DD), and appointment_time."
+    ),
+    "get_appointments": (
+        "Query or check existing appointments for a date, customer email, or status to verify availability or bookings."
+    ),
     # Legacy tools
     "check_order_status": _check_order_desc,
     "check_order_details": _check_order_desc,
@@ -123,6 +136,8 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "get_platform_status": get_platform_status_impl,
     "escalate_to_human": escalate_to_human_impl,
     "authenticate_user_with_email": authenticate_user_with_email_impl,
+    "create_appointment": create_appointment_impl,
+    "get_appointments": get_appointments_impl,
     # Legacy tools (backward compatible)
     "check_order_status": check_order_status_impl,
     "check_order_details": check_order_status_impl,
@@ -146,6 +161,8 @@ TOOL_INPUT_MODELS: Dict[str, type] = {
     "get_platform_status": GetPlatformStatusInput,
     "escalate_to_human": EscalateToHumanInput,
     "authenticate_user_with_email": AuthenticateUserWithEmailInput,
+    "create_appointment": CreateAppointmentInput,
+    "get_appointments": GetAppointmentsInput,
     # Legacy tools
     "check_order_status": CheckOrderStatusInput,
     "check_order_details": CheckOrderStatusInput,
@@ -266,6 +283,18 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         name="authenticate_user_with_email",
         description=TOOL_DESCRIPTIONS["authenticate_user_with_email"],
         args_schema=AuthenticateUserWithEmailInput,
+    ),
+    "create_appointment": StructuredTool.from_function(
+        coroutine=create_appointment_impl,
+        name="create_appointment",
+        description=TOOL_DESCRIPTIONS["create_appointment"],
+        args_schema=CreateAppointmentInput,
+    ),
+    "get_appointments": StructuredTool.from_function(
+        coroutine=get_appointments_impl,
+        name="get_appointments",
+        description=TOOL_DESCRIPTIONS["get_appointments"],
+        args_schema=GetAppointmentsInput,
     ),
 }
 
@@ -532,8 +561,12 @@ async def get_tools_for_agent(agent_instance_id: str, tenant_context: dict = Non
     if tenant_context:
         tools.extend(_build_entity_tools(tenant_context))
 
-    # Always ensure email authentication is available for customer support
+    # Always ensure email authentication and appointment tools are available for customer support
     if not any(t.name == "authenticate_user_with_email" for t in tools):
         tools.append(BUILTIN_LANGCHAIN_TOOLS["authenticate_user_with_email"])
+    if not any(t.name == "create_appointment" for t in tools):
+        tools.append(BUILTIN_LANGCHAIN_TOOLS["create_appointment"])
+    if not any(t.name == "get_appointments" for t in tools):
+        tools.append(BUILTIN_LANGCHAIN_TOOLS["get_appointments"])
 
     return tools
