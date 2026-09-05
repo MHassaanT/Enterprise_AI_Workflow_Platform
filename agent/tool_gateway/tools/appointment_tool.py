@@ -70,11 +70,11 @@ class RescheduleAppointmentInput(BaseModel):
     )
     appointment_id: Optional[str] = Field(
         None,
-        description="The unique ID of the appointment to reschedule (if known)."
+        description="The unique ID (UUID) or list index (e.g. '1', '2') of the appointment to reschedule (from get_appointments)."
     )
     customer_email: Optional[str] = Field(
         None,
-        description="The customer's email address to find their scheduled appointment if appointment_id is not provided."
+        description="The customer's email address to locate their scheduled appointment."
     )
     notes: Optional[str] = Field(
         "",
@@ -85,11 +85,11 @@ class RescheduleAppointmentInput(BaseModel):
 class CancelAppointmentInput(BaseModel):
     appointment_id: Optional[str] = Field(
         None,
-        description="The unique ID of the appointment to cancel (if known)."
+        description="The unique ID (UUID) or list index (e.g. '1', '2') of the appointment to cancel from get_appointments, or 'all' to cancel all active bookings."
     )
     customer_email: Optional[str] = Field(
         None,
-        description="The customer's email address to find their scheduled appointment if appointment_id is not provided."
+        description="The customer's email address to locate their scheduled appointment(s)."
     )
     reason: Optional[str] = Field(
         "",
@@ -100,11 +100,11 @@ class CancelAppointmentInput(BaseModel):
 class EditAppointmentInput(BaseModel):
     appointment_id: Optional[str] = Field(
         None,
-        description="The unique ID of the appointment to edit (if known)."
+        description="The unique ID (UUID) or list index (e.g. '1', '2') of the appointment to edit (from get_appointments)."
     )
     customer_email: Optional[str] = Field(
         None,
-        description="The customer's current email address to locate their scheduled appointment if appointment_id is not provided."
+        description="The customer's current email address to locate their scheduled appointment."
     )
     new_name: Optional[str] = Field(
         None,
@@ -250,10 +250,10 @@ async def get_appointments_impl(
                 return "No existing appointments found matching the query criteria."
 
             lines = [f"Found {len(appts)} appointment(s):"]
-            for a in appts:
+            for idx, a in enumerate(appts, 1):
                 appt_date = str(a.get("appointment_date", ""))[:10]
                 lines.append(
-                    f"• [{a.get('status', 'scheduled').upper()}] {appt_date} at {a.get('appointment_time')} - "
+                    f"{idx}. [ID: {a.get('id')}] [{a.get('status', 'scheduled').upper()}] {appt_date} at {a.get('appointment_time')} - "
                     f"{a.get('service_type')} for {a.get('customer_name')} ({a.get('customer_email')})"
                 )
             return "\n".join(lines)
@@ -363,10 +363,17 @@ async def cancel_appointment_impl(
             data = res.json()
             appt = data.get("appointment", {})
             appt_id = data.get("appointment_id", appt.get("id", "N/A"))
+            count = data.get("cancelled_count")
+            if count and count > 1:
+                return (
+                    f"All {count} active appointments cancelled successfully!\n"
+                    f"- Customer: {clean_email or appt.get('customer_email', '')}\n"
+                    f"- Status: Cancelled"
+                )
             return (
                 f"Appointment cancelled successfully!\n"
                 f"- Appointment ID: {appt_id}\n"
-                f"- Customer: {appt.get('customer_name', 'N/A')} ({appt.get('customer_email', '')})\n"
+                f"- Customer: {appt.get('customer_name', 'N/A')} ({appt.get('customer_email', clean_email or '')})\n"
                 f"- Service: {appt.get('service_type', 'Consultation')}\n"
                 f"- Status: Cancelled"
             )

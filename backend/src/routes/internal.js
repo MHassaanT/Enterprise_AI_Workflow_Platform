@@ -1651,6 +1651,77 @@ router.get('/appointments', async (req, res) => {
   }
 });
 
+// ── APPOINTMENT RESOLUTION HELPERS ──
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUUID = (str) => typeof str === 'string' && UUID_REGEX.test(str.trim());
+
+/**
+ * Resolves an appointment record from flexible inputs:
+ * 1. Valid UUID string (direct id lookup)
+ * 2. Numeric / ordinal index ("1", "2", "#1", "#3") mirroring the GET /internal/appointments list
+ * 3. Customer email lookup (finding active scheduled appointment, or latest appointment)
+ */
+async function resolveAppointment(tenantId, appointment_id, customer_email, statusFilter = 'scheduled') {
+  const cleanId = appointment_id ? String(appointment_id).trim() : null;
+  const cleanEmail = customer_email ? String(customer_email).trim().toLowerCase() : null;
+
+  // 1. Direct UUID lookup
+  if (cleanId && isUUID(cleanId)) {
+    const res = await query(
+      `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
+      [cleanId, tenantId],
+      tenantId
+    );
+    if (res.rows[0]) return res.rows[0];
+  }
+
+  // 2. Numeric / ordinal index lookup (e.g. "1", "2", "#1", "#3")
+  if (cleanId) {
+    const numMatch = cleanId.match(/^#?(\d+)$/);
+    if (numMatch) {
+      const targetIndex = parseInt(numMatch[1], 10) - 1; // 1-indexed to 0-indexed
+      let indexSql = `SELECT * FROM appointments WHERE tenant_id = $1`;
+      const indexParams = [tenantId];
+      if (cleanEmail) {
+        indexSql += ` AND LOWER(customer_email) = $2`;
+        indexParams.push(cleanEmail);
+      }
+      indexSql += ` ORDER BY appointment_date ASC, appointment_time ASC LIMIT 25`;
+
+      const listRes = await query(indexSql, indexParams, tenantId);
+      if (targetIndex >= 0 && targetIndex < listRes.rows.length) {
+        return listRes.rows[targetIndex];
+      }
+    }
+  }
+
+  // 3. Customer email lookup
+  if (cleanEmail) {
+    let emailSql = `SELECT * FROM appointments WHERE tenant_id = $1 AND LOWER(customer_email) = $2`;
+    const emailParams = [tenantId, cleanEmail];
+    if (statusFilter) {
+      emailSql += ` AND status = $3`;
+      emailParams.push(statusFilter);
+    }
+    emailSql += ` ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`;
+
+    const emailRes = await query(emailSql, emailParams, tenantId);
+    if (emailRes.rows[0]) return emailRes.rows[0];
+
+    // Fallback if statusFilter was set but none found: check any status
+    if (statusFilter) {
+      const fallbackRes = await query(
+        `SELECT * FROM appointments WHERE tenant_id = $1 AND LOWER(customer_email) = $2 ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
+        [tenantId, cleanEmail],
+        tenantId
+      );
+      if (fallbackRes.rows[0]) return fallbackRes.rows[0];
+    }
+  }
+
+  return null;
+}
+
 // ── POST /internal/appointments/reschedule ──
 // Called by AI agent to reschedule an existing appointment
 router.post('/appointments/reschedule', async (req, res) => {
@@ -1662,24 +1733,7 @@ router.post('/appointments/reschedule', async (req, res) => {
   }
 
   try {
-    let existing;
-    if (appointment_id) {
-      const findRes = await query(
-        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
-        [appointment_id, tenantId],
-        tenantId
-      );
-      existing = findRes.rows[0];
-    } else {
-      const findRes = await query(
-        `SELECT * FROM appointments 
-         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
-         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
-        [tenantId, customer_email.trim().toLowerCase()],
-        tenantId
-      );
-      existing = findRes.rows[0];
-    }
+    const existing = await resolveAppointment(tenantId, appointment_id, customer_email, 'scheduled');
 
     if (!existing) {
       return res.status(404).json({
@@ -1724,24 +1778,44 @@ router.post('/appointments/cancel', async (req, res) => {
   }
 
   try {
-    let existing;
-    if (appointment_id) {
-      const findRes = await query(
-        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
-        [appointment_id, tenantId],
+    const rawId = appointment_id ? String(appointment_id).trim().toLowerCase() : '';
+    const isCancelAll =
+      rawId === 'all' ||
+      rawId === '*' ||
+      rawId === 'both' ||
+      rawId.includes('all') ||
+      (typeof reason === 'string' && reason.toLowerCase().includes('cancel all'));
+
+    // Handle "cancel all" active appointments for this customer
+    if (isCancelAll && customer_email) {
+      const noteAppend = reason ? `\n[Cancelled all by customer]: ${reason}` : `\n[Cancelled all by customer]`;
+      const updateRes = await query(
+        `UPDATE appointments
+         SET status = 'cancelled',
+             notes = COALESCE(notes, '') || $1,
+             updated_at = NOW()
+         WHERE tenant_id = $2 AND LOWER(customer_email) = $3 AND status = 'scheduled'
+         RETURNING *`,
+        [noteAppend, tenantId, customer_email.trim().toLowerCase()],
         tenantId
       );
-      existing = findRes.rows[0];
-    } else {
-      const findRes = await query(
-        `SELECT * FROM appointments 
-         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
-         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
-        [tenantId, customer_email.trim().toLowerCase()],
-        tenantId
-      );
-      existing = findRes.rows[0];
+
+      if (updateRes.rows.length === 0) {
+        return res.status(404).json({
+          error: 'No active scheduled appointments found to cancel for this customer.',
+        });
+      }
+
+      return res.json({
+        success: true,
+        appointments: updateRes.rows,
+        cancelled_count: updateRes.rowCount,
+        appointment_id: updateRes.rows[0].id,
+        message: `Successfully cancelled ${updateRes.rowCount} active appointment(s).`,
+      });
     }
+
+    const existing = await resolveAppointment(tenantId, appointment_id, customer_email, 'scheduled');
 
     if (!existing) {
       return res.status(404).json({
@@ -1797,28 +1871,11 @@ router.post('/appointments/edit', async (req, res) => {
   }
 
   try {
-    let existing;
-    if (appointment_id) {
-      const findRes = await query(
-        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
-        [appointment_id, tenantId],
-        tenantId
-      );
-      existing = findRes.rows[0];
-    } else {
-      const findRes = await query(
-        `SELECT * FROM appointments 
-         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
-         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
-        [tenantId, customer_email.trim().toLowerCase()],
-        tenantId
-      );
-      existing = findRes.rows[0];
-    }
+    const existing = await resolveAppointment(tenantId, appointment_id, customer_email, status ? null : 'scheduled');
 
     if (!existing) {
       return res.status(404).json({
-        error: 'No active scheduled appointment found to edit.',
+        error: 'No active appointment found to edit.',
       });
     }
 
@@ -1923,6 +1980,10 @@ router.patch('/appointments/:id', async (req, res) => {
 
   if (!tenantId) {
     return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  if (!isUUID(id)) {
+    return res.status(400).json({ error: 'Invalid appointment ID format (UUID required).' });
   }
 
   try {
