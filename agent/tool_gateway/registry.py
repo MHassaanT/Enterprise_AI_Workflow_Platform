@@ -105,7 +105,9 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Use action='verify_otp' with otp_code when the user provides the code in chat. Do NOT use for general or public inquiries."
     ),
     "create_appointment": (
-        "Book an appointment or consultation for service businesses (software development, home cleaning, maintenance, consulting, etc.). "
+        "Book an appointment, discovery call, consultation, or meeting for a customer with the company/team. "
+        "Use this whenever a user wants to discuss partnerships, business development, services, enterprise inquiries, "
+        "or whenever a scheduled meeting is the best way to address the user's need or resolve an issue. "
         "Requires customer_name, customer_email, service_type, appointment_date (YYYY-MM-DD), and appointment_time."
     ),
     "get_appointments": (

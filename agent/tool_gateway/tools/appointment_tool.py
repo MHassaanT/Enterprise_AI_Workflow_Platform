@@ -24,7 +24,7 @@ class CreateAppointmentInput(BaseModel):
     )
     service_type: str = Field(
         ...,
-        description="Type of service requested (e.g., 'Software Development Consultation', 'Full House Deep Cleaning', 'IT Architecture Review')."
+        description="Type of service, meeting, or appointment requested (e.g., 'Partnership & Business Development Discussion', 'Software Consultation', 'Cleaning Service', 'Enterprise Demo', 'Technical Scoping Meeting')."
     )
     appointment_date: str = Field(
         ...,
@@ -40,7 +40,7 @@ class CreateAppointmentInput(BaseModel):
     )
     notes: Optional[str] = Field(
         "",
-        description="Specific project requirements, customer expectations, service address, or scope notes."
+        description="Meeting agenda, discussion topics, partnership proposal details, project requirements, or service notes."
     )
 
 
