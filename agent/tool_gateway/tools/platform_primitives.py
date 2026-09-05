@@ -74,18 +74,18 @@ class EscalateToHumanInput(BaseModel):
 # ═══════════════════════════════════════════════════════
 
 async def get_current_user_impl(tenant_id: str = None, **kwargs) -> str:
-    """Get the currently authenticated user."""
+    """Identify the currently authenticated user in this session."""
+    user_id = kwargs.get("user_id") or ""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.BACKEND_URL}/internal/users/me",
-                headers={**_HEADERS(), "X-Tenant-Id": tenant_id or ""},
-            )
+            headers = {**_HEADERS(), "X-Tenant-Id": tenant_id or ""}
+            url = f"{settings.BACKEND_URL}/internal/users/{user_id}" if user_id and user_id != "anonymous" else f"{settings.BACKEND_URL}/internal/users/me"
+            response = await client.get(url, headers=headers)
             if response.status_code == 200:
                 return f"Current user: {response.json()}"
-            return "Unable to identify current user."
+            return "Unable to automatically identify current user. Please ask the customer for their name, email, or phone number."
     except Exception as e:
-        return f"Error fetching user: {e}"
+        return "Unable to automatically identify current user. Please ask the customer for their name, email, or phone number."
 
 
 async def get_user_by_email_impl(email: str, tenant_id: str = None, **kwargs) -> str:
@@ -94,7 +94,7 @@ async def get_user_by_email_impl(email: str, tenant_id: str = None, **kwargs) ->
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 f"{settings.BACKEND_URL}/internal/users/search?email={email}",
-                headers=_HEADERS(),
+                headers={**_HEADERS(), "X-Tenant-Id": tenant_id or ""},
             )
             if response.status_code == 200:
                 data = response.json()
@@ -135,7 +135,15 @@ async def search_entities_impl(
                 data = response.json()
                 results = data.get("results", [])
                 if results:
-                    return f"Found {data.get('count', 0)} {resolved_entity}(s): {results}"
+                    count = data.get("count", len(results))
+                    if count > 1:
+                        return (
+                            f"Found {count} {resolved_entity} record(s): {results}. "
+                            f"\n[IMPORTANT SYSTEM NOTICE TO AGENT: Multiple {resolved_entity} records were found! "
+                            f"Do NOT arbitrarily pick the first record or assume it belongs to this customer. "
+                            f"Ask the user to clarify or verify their specific {resolved_entity} ID, customer/passenger name, date/time, or phone/email to identify the correct record.]"
+                        )
+                    return f"Found 1 {resolved_entity}: {results}"
                 return f"No {resolved_entity} records found matching '{query or 'all'}'."
             return f"No {resolved_entity} records found or data source not accessible (HTTP {response.status_code})."
     except Exception as e:

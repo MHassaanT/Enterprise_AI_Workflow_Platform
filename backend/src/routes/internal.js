@@ -95,6 +95,69 @@ router.get('/tenants/:tenantId/company-context', async (req, res) => {
   }
 });
 
+// ── GET /internal/users/search ──
+router.get('/users/search', async (req, res) => {
+  const { email, phone, name } = req.query;
+  const tenantId = req.headers['x-tenant-id'] || req.query.tenantId;
+
+  try {
+    let sql = 'SELECT id, email, full_name, role FROM users WHERE 1=1';
+    const params = [];
+    let idx = 1;
+
+    if (tenantId) {
+      sql += ` AND tenant_id = $${idx}`;
+      params.push(tenantId);
+      idx++;
+    }
+
+    if (email) {
+      sql += ` AND LOWER(email) = LOWER($${idx})`;
+      params.push(email.trim());
+      idx++;
+    } else if (name) {
+      sql += ` AND full_name ILIKE $${idx}`;
+      params.push(`%${name.trim()}%`);
+      idx++;
+    }
+
+    sql += ' LIMIT 5';
+    const result = await query(sql, params, tenantId || undefined);
+    if (result.rows.length > 0) {
+      return res.json({ user: result.rows[0], users: result.rows });
+    }
+    return res.json({ user: null, users: [] });
+  } catch (err) {
+    console.error('Internal user search error:', err.message);
+    res.status(500).json({ error: 'Failed to search users.' });
+  }
+});
+
+// ── GET /internal/users/:userId ──
+router.get('/users/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const tenantId = req.headers['x-tenant-id'];
+
+  if (userId === 'me' || !userId) {
+    return res.status(404).json({ error: 'User identifier not provided.' });
+  }
+
+  try {
+    const result = await query(
+      'SELECT id, email, full_name, role FROM users WHERE id = $1',
+      [userId],
+      tenantId || undefined
+    );
+    if (result.rows.length > 0) {
+      return res.json({ user: result.rows[0] });
+    }
+    return res.status(404).json({ error: 'User not found.' });
+  } catch (err) {
+    console.error('Internal user get error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch user.' });
+  }
+});
+
 // ── GET /internal/agents/:agentInstanceId/tools ──
 // Returns the allowed tool bindings & MCP server endpoints for an agent instance
 router.get('/agents/:agentInstanceId/tools', async (req, res) => {

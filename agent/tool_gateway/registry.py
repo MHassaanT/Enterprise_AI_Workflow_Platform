@@ -65,7 +65,9 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     ),
     "search_entities": (
         "Search for records across the platform by entity type. "
-        "Use this when the user mentions any business object type."
+        "CRITICAL: Always provide a specific identifier (such as record ID, customer name, phone, or email) in query. "
+        "DO NOT search blindly without customer identifiers. If the customer has not provided their identifying information, ask them first. "
+        "If multiple records are returned, ask the customer to clarify which one is theirs; NEVER guess or pick the first record."
     ),
     "get_entity_by_id": (
         "Fetch a specific record by its ID and entity type. Use after search_entities to get full details."
@@ -389,9 +391,9 @@ def _make_mcp_executor(tool_name: str, tenant_id: str, agent_instance_id: str):
 
 
 class DynamicSearchInput(BaseModel):
-    query: Optional[str] = Field(default=None, description="Free-text search query or status filter.")
+    query: Optional[str] = Field(default=None, description="Specific identifier to search for: record ID, customer name, phone number, or email address.")
     user_id: Optional[str] = Field(default=None, description="Filter by user or customer ID.")
-    filters: Optional[dict] = Field(default=None, description="Additional field filters.")
+    filters: Optional[dict] = Field(default=None, description="Additional field filters (e.g. {'status': 'cancelled'}).")
     limit: int = Field(default=10, description="Max results.")
 
 
@@ -436,7 +438,9 @@ def _build_entity_tools(tenant_context: dict) -> List[StructuredTool]:
                 name=f"search_{name}",
                 description=(
                     f"Search for {display} records on the platform. "
-                    f"Use this when the user mentions {display.lower()} or asks about their {name}s. "
+                    f"CRITICAL: Always specify a specific customer identifier (such as {name}_id, customer name, phone, or email) in query. "
+                    f"If the user has not provided their identifying information or record ID, ask them for it first before calling this tool. "
+                    f"If multiple records are returned, NEVER pick one arbitrarily—ask the customer to clarify which record is theirs. "
                     f"Fields: {field_descs}."
                 ),
                 args_schema=DynamicSearchInput,

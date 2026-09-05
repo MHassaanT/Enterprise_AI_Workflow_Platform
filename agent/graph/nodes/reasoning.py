@@ -85,7 +85,12 @@ async def reasoning_node(state: AgentState) -> dict:
 
     # Build the dynamic system prompt from tenant configuration
     system_prompt = build_dynamic_system_prompt(
-        agent_config, entities, company, tool_descriptions, rag_context
+        agent_config,
+        entities,
+        company,
+        tool_descriptions,
+        rag_context,
+        user_id=state.get("user_id") or "anonymous",
     )
 
     # Bind tools to LLM if available
