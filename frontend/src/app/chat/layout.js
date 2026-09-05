@@ -12,9 +12,9 @@ export default function ChatLayout({ children }) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden flex-col md:flex-row bg-background text-on-surface font-body-md antialiased">
+    <div className="flex h-full md:h-screen max-h-screen overflow-hidden flex-col md:flex-row bg-background text-on-surface font-body-md antialiased">
       <ConversationList activeId={conversationId} onSelect={handleSelect} />
-      <main className="flex-1 flex flex-col bg-surface-container-low h-full overflow-hidden">
+      <main className="flex-1 flex flex-col bg-surface-container-low h-full min-h-0 overflow-hidden">
         {children}
       </main>
     </div>

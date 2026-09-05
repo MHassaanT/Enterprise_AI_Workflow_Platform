@@ -98,13 +98,13 @@ export default function Sidebar() {
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed md:sticky left-0 top-0 h-screen bg-surface border-r border-outline-variant flex flex-col justify-between p-md z-50 transition-all duration-300 ease-in-out shrink-0 ${
+        className={`fixed md:sticky left-0 top-0 h-screen max-h-screen bg-surface border-r border-outline-variant flex flex-col justify-between p-md z-50 transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         } ${isCollapsed ? 'w-20' : 'w-64'}`}
       >
-        <div className="space-y-lg">
+        <div className="flex flex-col min-h-0 flex-1 space-y-3">
           {/* Logo & Header */}
-          <div className={`px-sm pt-xs flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          <div className={`shrink-0 px-sm pt-xs flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
             <Link href="/dashboard" className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} group`} onClick={() => setIsOpenMobile(false)}>
               <div className="h-10 w-10 rounded-xl bg-primary-container/20 flex items-center justify-center shrink-0 border border-primary/30 group-hover:border-primary/60 transition-colors">
                 <span className="material-symbols-outlined text-primary text-xl">hexagon</span>
@@ -123,7 +123,7 @@ export default function Sidebar() {
             )}
           </div>
           {isCollapsed && (
-             <div className="hidden md:flex justify-center mt-2">
+             <div className="shrink-0 hidden md:flex justify-center mt-2">
                <button onClick={() => setIsCollapsed(false)} className="p-1 rounded hover:bg-surface-container text-on-surface-variant">
                  <span className="material-symbols-outlined text-sm">keyboard_double_arrow_right</span>
                </button>
@@ -132,13 +132,13 @@ export default function Sidebar() {
 
           {/* Plan Badge */}
           {planBadge && !isCollapsed && (
-            <div className="mx-sm px-3 py-1.5 rounded-lg bg-primary-container/10 border border-primary/20 text-center">
+            <div className="shrink-0 mx-sm px-3 py-1.5 rounded-lg bg-primary-container/10 border border-primary/20 text-center">
               <span className="font-label-md text-label-md text-primary font-bold">{planBadge} Plan</span>
             </div>
           )}
 
           {/* Navigation Links */}
-          <nav className="space-y-1">
+          <nav className="space-y-1 flex-1 min-h-0 overflow-y-auto pr-1">
             {navItems.map((item) => {
               const active = isActive(item.href);
               return (
@@ -174,7 +174,7 @@ export default function Sidebar() {
         </div>
 
         {/* Bottom Section */}
-        <div className="space-y-md border-t border-outline-variant pt-md px-xs">
+        <div className="shrink-0 space-y-md border-t border-outline-variant pt-md px-xs mt-2">
           {/* Agent Status Badge */}
           <div className={`flex items-center ${isCollapsed ? 'justify-center py-2' : 'justify-between px-3 py-2'} rounded-lg bg-emerald-950/40 border border-emerald-800/50`} title={isCollapsed ? "Agent Active" : undefined}>
             <div className="flex items-center gap-2">

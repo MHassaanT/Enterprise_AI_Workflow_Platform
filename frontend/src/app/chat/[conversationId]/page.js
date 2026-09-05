@@ -13,10 +13,15 @@ export default function ConversationPage({ params }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior = 'smooth') => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior
+      });
+    }
   };
 
   useEffect(() => {
@@ -37,7 +42,9 @@ export default function ConversationPage({ params }) {
   }, [conversationId]);
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToBottom('smooth');
+    const timer = setTimeout(() => scrollToBottom('smooth'), 50);
+    return () => clearTimeout(timer);
   }, [messages, sending]);
 
   const handleSend = async (e) => {
@@ -104,15 +111,18 @@ export default function ConversationPage({ params }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface-container-low overflow-hidden">
-      <header className="p-md bg-surface border-b border-outline-variant flex items-center justify-between">
+    <div className="flex flex-col h-full min-h-0 bg-surface-container-low overflow-hidden">
+      <header className="shrink-0 p-md bg-surface border-b border-outline-variant flex items-center justify-between">
         <div>
           <span className="font-mono-sm text-mono-sm text-on-surface-variant bg-surface-container px-2 py-0.5 rounded border border-outline-variant">ID: {conversationId}</span>
           <h2 className="font-headline-md text-headline-md text-on-surface font-bold mt-1">Customer Support Assistant</h2>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-lg space-y-md">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto p-lg space-y-md"
+      >
         {loading ? (
           <div className="p-xl text-center">
             <LoadingSpinner text="Fetching message history..." />
@@ -146,10 +156,9 @@ export default function ConversationPage({ params }) {
             <LoadingSpinner text="Agent is thinking & executing tools..." />
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
-      <form className="p-md bg-surface border-t border-outline-variant flex gap-md items-center" onSubmit={handleSend}>
+      <form className="shrink-0 p-md bg-surface border-t border-outline-variant flex gap-md items-center" onSubmit={handleSend}>
         <textarea
           className="flex-1 p-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary resize-none font-body-md"
           rows={1}

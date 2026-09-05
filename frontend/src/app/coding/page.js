@@ -33,7 +33,7 @@ export default function CodingAgentPage() {
   const [modifiedFiles, setModifiedFiles] = useState([]);
   const [prInfo, setPrInfo] = useState(null);
   const [activeRightTab, setActiveRightTab] = useState('code'); // 'code' | 'diff'
-  const chatBottomRef = useRef(null);
+  const chatMessagesRef = useRef(null);
 
   const API_BASE = '/api/v1/coding';
 
@@ -51,7 +51,12 @@ export default function CodingAgentPage() {
 
   // Scroll chat to bottom on new message
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatMessagesRef.current) {
+      chatMessagesRef.current.scrollTo({
+        top: chatMessagesRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [messages, activePlan]);
 
   const fetchRepositories = async () => {
@@ -368,7 +373,7 @@ export default function CodingAgentPage() {
             </div>
 
             {/* Conversation Log Stream */}
-            <div className="flex-1 overflow-y-auto p-md space-y-md">
+            <div ref={chatMessagesRef} className="flex-1 min-h-0 overflow-y-auto p-md space-y-md">
               {messages.map(msg => (
                 <div
                   key={msg.id}
@@ -456,8 +461,6 @@ export default function CodingAgentPage() {
                   <span>Agent is analyzing repo, building plan, and executing edits...</span>
                 </div>
               )}
-
-              <div ref={chatBottomRef} />
             </div>
 
             {/* Bottom Message Input Box */}
