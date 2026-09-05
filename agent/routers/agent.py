@@ -7,7 +7,7 @@ Authenticated via X-Internal-Token header (shared secret).
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 
 from config import settings
 from graph.graph import customer_support_graph, graph_memory
@@ -178,7 +178,6 @@ async def run_agent(
         try:
             from services.rag_client import query_rag
             from services.llm_gateway import get_llm
-            from langchain_core.messages import HumanMessage, SystemMessage
 
             rag_result = await query_rag(request.question, request.tenant_id)
             chunks = rag_result.get("chunks", [])
