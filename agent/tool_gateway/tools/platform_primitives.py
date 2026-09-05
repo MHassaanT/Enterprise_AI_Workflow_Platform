@@ -143,7 +143,10 @@ async def search_entities_impl(
                             f"Do NOT arbitrarily pick the first record or assume it belongs to this customer. "
                             f"Ask the user to clarify or verify their specific {resolved_entity} ID, customer/passenger name, date/time, or phone/email to identify the correct record.]"
                         )
-                    return f"Found 1 {resolved_entity}: {results}"
+                    return (
+                        f"Found 1 {resolved_entity}: {results}. "
+                        f"\n[SECURITY NOTICE TO AGENT: Verify customer identity via authenticate_user_with_email if this record belongs to a specific customer's email and they have not completed OTP verification yet.]"
+                    )
                 return f"No {resolved_entity} records found matching '{query or 'all'}'."
             return f"No {resolved_entity} records found or data source not accessible (HTTP {response.status_code})."
     except Exception as e:
