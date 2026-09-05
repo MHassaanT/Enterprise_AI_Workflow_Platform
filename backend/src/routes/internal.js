@@ -1651,4 +1651,195 @@ router.get('/appointments', async (req, res) => {
   }
 });
 
+// ── POST /internal/appointments/reschedule ──
+// Called by AI agent to reschedule an existing appointment
+router.post('/appointments/reschedule', async (req, res) => {
+  const { tenantId, appointment_id, customer_email, new_date, new_time, notes } = req.body;
+  if (!tenantId || (!appointment_id && !customer_email) || !new_date || !new_time) {
+    return res.status(400).json({
+      error: 'tenantId, (appointment_id or customer_email), new_date, and new_time are required.',
+    });
+  }
+
+  try {
+    let existing;
+    if (appointment_id) {
+      const findRes = await query(
+        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
+        [appointment_id, tenantId],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    } else {
+      const findRes = await query(
+        `SELECT * FROM appointments 
+         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
+         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
+        [tenantId, customer_email.trim().toLowerCase()],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    }
+
+    if (!existing) {
+      return res.status(404).json({
+        error: 'No active scheduled appointment found to reschedule.',
+      });
+    }
+
+    const noteAppend = notes ? `\n[Rescheduled to ${new_date} ${new_time}]: ${notes}` : `\n[Rescheduled to ${new_date} ${new_time}]`;
+    const updateRes = await query(
+      `UPDATE appointments
+       SET appointment_date = $1,
+           appointment_time = $2,
+           notes = COALESCE(notes, '') || $3,
+           status = 'scheduled',
+           updated_at = NOW()
+       WHERE id = $4 AND tenant_id = $5
+       RETURNING *`,
+      [new_date, new_time.trim(), noteAppend, existing.id, tenantId],
+      tenantId
+    );
+
+    res.json({
+      success: true,
+      appointment: updateRes.rows[0],
+      appointment_id: updateRes.rows[0].id,
+      message: `Appointment rescheduled to ${new_date} at ${new_time}.`,
+    });
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    res.status(500).json({ error: 'Failed to reschedule appointment.' });
+  }
+});
+
+// ── POST /internal/appointments/cancel ──
+// Called by AI agent to cancel an existing appointment
+router.post('/appointments/cancel', async (req, res) => {
+  const { tenantId, appointment_id, customer_email, reason } = req.body;
+  if (!tenantId || (!appointment_id && !customer_email)) {
+    return res.status(400).json({
+      error: 'tenantId and (appointment_id or customer_email) are required.',
+    });
+  }
+
+  try {
+    let existing;
+    if (appointment_id) {
+      const findRes = await query(
+        `SELECT * FROM appointments WHERE id = $1 AND tenant_id = $2`,
+        [appointment_id, tenantId],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    } else {
+      const findRes = await query(
+        `SELECT * FROM appointments 
+         WHERE tenant_id = $1 AND LOWER(customer_email) = $2 AND status = 'scheduled'
+         ORDER BY appointment_date ASC, appointment_time ASC LIMIT 1`,
+        [tenantId, customer_email.trim().toLowerCase()],
+        tenantId
+      );
+      existing = findRes.rows[0];
+    }
+
+    if (!existing) {
+      return res.status(404).json({
+        error: 'No active scheduled appointment found to cancel.',
+      });
+    }
+
+    const noteAppend = reason ? `\n[Cancelled by customer]: ${reason}` : `\n[Cancelled by customer]`;
+    const updateRes = await query(
+      `UPDATE appointments
+       SET status = 'cancelled',
+           notes = COALESCE(notes, '') || $1,
+           updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3
+       RETURNING *`,
+      [noteAppend, existing.id, tenantId],
+      tenantId
+    );
+
+    res.json({
+      success: true,
+      appointment: updateRes.rows[0],
+      appointment_id: updateRes.rows[0].id,
+      message: 'Appointment cancelled successfully.',
+    });
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({ error: 'Failed to cancel appointment.' });
+  }
+});
+
+// ── PATCH /internal/appointments/:id ──
+// General update endpoint for appointment
+router.patch('/appointments/:id', async (req, res) => {
+  const { id } = req.params;
+  const { tenantId, appointment_date, appointment_time, duration_minutes, notes, status } = req.body;
+
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  try {
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (appointment_date) {
+      updates.push(`appointment_date = $${idx}`);
+      params.push(appointment_date);
+      idx++;
+    }
+    if (appointment_time) {
+      updates.push(`appointment_time = $${idx}`);
+      params.push(appointment_time);
+      idx++;
+    }
+    if (duration_minutes) {
+      updates.push(`duration_minutes = $${idx}`);
+      params.push(parseInt(duration_minutes));
+      idx++;
+    }
+    if (notes !== undefined) {
+      updates.push(`notes = $${idx}`);
+      params.push(notes);
+      idx++;
+    }
+    if (status) {
+      updates.push(`status = $${idx}`);
+      params.push(status.toLowerCase());
+      idx++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No update fields provided.' });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    params.push(id);
+    params.push(tenantId);
+
+    const updateRes = await query(
+      `UPDATE appointments
+       SET ${updates.join(', ')}
+       WHERE id = $${idx} AND tenant_id = $${idx + 1}
+       RETURNING *`,
+      params,
+      tenantId
+    );
+
+    if (!updateRes.rows[0]) {
+      return res.status(404).json({ error: 'Appointment not found.' });
+    }
+
+    res.json({ success: true, appointment: updateRes.rows[0] });
+  } catch (error) {
+    console.error('Error updating appointment:', error);
+    res.status(500).json({ error: 'Failed to update appointment.' });
+  }
+});
+
 module.exports = router;

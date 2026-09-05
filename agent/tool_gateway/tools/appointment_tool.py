@@ -59,6 +59,44 @@ class GetAppointmentsInput(BaseModel):
     )
 
 
+class RescheduleAppointmentInput(BaseModel):
+    new_date: str = Field(
+        ...,
+        description="The new preferred date for the appointment in YYYY-MM-DD format (e.g. '2026-09-08')."
+    )
+    new_time: str = Field(
+        ...,
+        description="The new preferred time for the appointment (e.g. '14:00', '2:30 PM', '10:00 AM')."
+    )
+    appointment_id: Optional[str] = Field(
+        None,
+        description="The unique ID of the appointment to reschedule (if known)."
+    )
+    customer_email: Optional[str] = Field(
+        None,
+        description="The customer's email address to find their scheduled appointment if appointment_id is not provided."
+    )
+    notes: Optional[str] = Field(
+        "",
+        description="Optional reason for rescheduling or updated agenda/notes."
+    )
+
+
+class CancelAppointmentInput(BaseModel):
+    appointment_id: Optional[str] = Field(
+        None,
+        description="The unique ID of the appointment to cancel (if known)."
+    )
+    customer_email: Optional[str] = Field(
+        None,
+        description="The customer's email address to find their scheduled appointment if appointment_id is not provided."
+    )
+    reason: Optional[str] = Field(
+        "",
+        description="Reason for cancellation provided by the customer."
+    )
+
+
 _HEADERS = lambda: {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
 
 
@@ -180,3 +218,118 @@ async def get_appointments_impl(
             return f"Error retrieving appointments: {res.text}"
     except Exception as e:
         return f"System error retrieving appointments: {str(e)}"
+
+
+async def reschedule_appointment_impl(
+    new_date: str,
+    new_time: str,
+    appointment_id: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    notes: Optional[str] = "",
+    tenant_id: Optional[str] = None,
+    **kwargs: Any,
+) -> str:
+    """
+    Reschedules an existing scheduled appointment to a new date and time.
+    """
+    if not tenant_id:
+        return "Error: tenant_id is required to reschedule an appointment."
+
+    clean_date = (new_date or "").strip()
+    clean_time = (new_time or "").strip()
+    clean_id = (appointment_id or "").strip() if appointment_id else None
+    clean_email = (customer_email or "").strip().lower() if customer_email else None
+
+    if not clean_date or not clean_time:
+        return "Error: Both new_date (YYYY-MM-DD) and new_time are required to reschedule."
+
+    if not clean_id and not clean_email:
+        return "Error: Please provide either the appointment_id or the customer_email to locate the appointment."
+
+    payload = {
+        "tenantId": tenant_id,
+        "appointment_id": clean_id,
+        "customer_email": clean_email,
+        "new_date": clean_date,
+        "new_time": clean_time,
+        "notes": (notes or "").strip(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{settings.BACKEND_URL}/internal/appointments/reschedule",
+                headers=_HEADERS(),
+                json=payload,
+            )
+
+        if res.status_code == 200:
+            data = res.json()
+            appt = data.get("appointment", {})
+            appt_id = data.get("appointment_id", appt.get("id", "N/A"))
+            return (
+                f"Appointment rescheduled successfully!\n"
+                f"- Appointment ID: {appt_id}\n"
+                f"- Customer: {appt.get('customer_name', 'N/A')} ({appt.get('customer_email', '')})\n"
+                f"- Service: {appt.get('service_type', 'Consultation')}\n"
+                f"- New Date & Time: {clean_date} at {clean_time}\n"
+                f"- Status: Scheduled"
+            )
+        else:
+            err_msg = res.json().get("error", res.text) if res.headers.get("content-type", "").startswith("application/json") else res.text
+            return f"Failed to reschedule appointment: {err_msg}"
+    except Exception as e:
+        return f"System error rescheduling appointment: {str(e)}"
+
+
+async def cancel_appointment_impl(
+    appointment_id: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    reason: Optional[str] = "",
+    tenant_id: Optional[str] = None,
+    **kwargs: Any,
+) -> str:
+    """
+    Cancels an existing scheduled appointment.
+    """
+    if not tenant_id:
+        return "Error: tenant_id is required to cancel an appointment."
+
+    clean_id = (appointment_id or "").strip() if appointment_id else None
+    clean_email = (customer_email or "").strip().lower() if customer_email else None
+
+    if not clean_id and not clean_email:
+        return "Error: Please provide either the appointment_id or the customer_email to cancel."
+
+    payload = {
+        "tenantId": tenant_id,
+        "appointment_id": clean_id,
+        "customer_email": clean_email,
+        "reason": (reason or "").strip(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{settings.BACKEND_URL}/internal/appointments/cancel",
+                headers=_HEADERS(),
+                json=payload,
+            )
+
+        if res.status_code == 200:
+            data = res.json()
+            appt = data.get("appointment", {})
+            appt_id = data.get("appointment_id", appt.get("id", "N/A"))
+            return (
+                f"Appointment cancelled successfully!\n"
+                f"- Appointment ID: {appt_id}\n"
+                f"- Customer: {appt.get('customer_name', 'N/A')} ({appt.get('customer_email', '')})\n"
+                f"- Service: {appt.get('service_type', 'Consultation')}\n"
+                f"- Status: Cancelled"
+            )
+        else:
+            err_msg = res.json().get("error", res.text) if res.headers.get("content-type", "").startswith("application/json") else res.text
+            return f"Failed to cancel appointment: {err_msg}"
+    except Exception as e:
+        return f"System error cancelling appointment: {str(e)}"
+
