@@ -7,7 +7,7 @@ Produces: either a final answer (next_step="respond") or a tool call (next_step=
 Uses the LLM gateway abstraction — Gemini or Ollama, env-switched.
 Uses dynamic system prompt built from tenant entity schema and agent configuration.
 """
-from langchain_core.messages import SystemMessage, AIMessage, ToolMessage, HumanMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, ToolMessage, HumanMessage
 from graph.state import AgentState
 from services.llm_gateway import get_llm
 from services.agent_context_client import build_dynamic_system_prompt
