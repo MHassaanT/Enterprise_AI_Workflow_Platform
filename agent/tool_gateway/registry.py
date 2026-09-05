@@ -95,8 +95,8 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     ),
     "authenticate_user_with_email": (
         "Send and verify a 6-digit OTP code to a customer's email address. "
-        "MANDATORY: Use action='send_otp' whenever a user asks about their personal records, rides, trip cancellation reasons, orders, refunds, or account data. "
-        "Use action='verify_otp' with otp_code when the user provides the code in chat. Only proceed with record lookup after verification succeeds."
+        "Use action='send_otp' when a customer requests user-specific sensitive actions or private account access (such as refunds, account modifications, or private personal data). "
+        "Use action='verify_otp' with otp_code when the user provides the code in chat. Do NOT use for general or public inquiries."
     ),
     # Legacy tools
     "check_order_status": _check_order_desc,
