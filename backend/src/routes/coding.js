@@ -201,4 +201,25 @@ router.post('/chat', async (req, res) => {
   }
 });
 
+// ── POST /api/v1/coding/investigate-issue ── Proxy to Coding Agent for issue investigation
+router.post('/investigate-issue', async (req, res) => {
+  try {
+    const headers = await getForwardHeaders(req);
+    const response = await axios.post(
+      `${AGENT_SERVICE_URL}/agent/coding/investigate-issue`,
+      req.body,
+      {
+        headers,
+        timeout: 120000, // 2 minute timeout for investigation
+      }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Coding Agent investigate proxy error:', err.response?.data || err.message);
+    return res.status(err.response?.status || 500).json({
+      error: err.response?.data?.detail || err.message || 'Investigation failed'
+    });
+  }
+});
+
 module.exports = router;

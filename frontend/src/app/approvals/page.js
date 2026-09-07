@@ -9,6 +9,9 @@ import {
   updateAppointment,
   createAppointment,
   deleteAppointment,
+  fetchReportedIssues,
+  updateReportedIssue,
+  triggerIssueInvestigation,
 } from '@/lib/api';
 
 export default function ApprovalsAndAppointmentsPage() {
@@ -29,6 +32,15 @@ export default function ApprovalsAndAppointmentsPage() {
   const [appointmentActionId, setAppointmentActionId] = useState(null);
   const [appointmentMessage, setAppointmentMessage] = useState('');
 
+  // ── Reported Issues State ──
+  const [issues, setIssues] = useState([]);
+  const [issuesLoading, setIssuesLoading] = useState(false);
+  const [issueStatusFilter, setIssueStatusFilter] = useState('all');
+  const [issueSeverityFilter, setIssueSeverityFilter] = useState('all');
+  const [issueSearch, setIssueSearch] = useState('');
+  const [issuesFeedback, setIssuesFeedback] = useState(null);
+  const [expandedIssue, setExpandedIssue] = useState(null);
+
   // ── Modal State (Manual Booking) ──
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submittingModal, setSubmittingModal] = useState(false);
@@ -46,6 +58,7 @@ export default function ApprovalsAndAppointmentsPage() {
   useEffect(() => {
     loadApprovals();
     loadAppointments();
+    loadIssues();
   }, []);
 
   // ── Approvals Load & Decision ──
@@ -168,6 +181,58 @@ export default function ApprovalsAndAppointmentsPage() {
     }
   };
 
+  const loadIssues = async () => {
+    setIssuesLoading(true);
+    try {
+      const params = {};
+      if (issueStatusFilter !== 'all') params.status = issueStatusFilter;
+      if (issueSeverityFilter !== 'all') params.severity = issueSeverityFilter;
+      if (issueSearch.trim()) params.search = issueSearch.trim();
+      const data = await fetchReportedIssues(params);
+      setIssues(data.issues || []);
+    } catch (err) {
+      console.error('Error loading issues:', err);
+    } finally {
+      setIssuesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIssues();
+  }, [issueStatusFilter, issueSeverityFilter]);
+
+  const handleResolveIssue = async (id, status, notes = '') => {
+    try {
+      await updateReportedIssue(id, { status, resolution_notes: notes, resolved_by: 'human' });
+      setIssuesFeedback({ type: 'success', message: `Issue ${status === 'resolved' ? 'resolved' : 'dismissed'} successfully.` });
+      loadIssues();
+      setTimeout(() => setIssuesFeedback(null), 3000);
+    } catch (err) {
+      setIssuesFeedback({ type: 'error', message: err.message });
+    }
+  };
+
+  const handleToggleWidgetVisibility = async (id, currentValue) => {
+    try {
+      await updateReportedIssue(id, { show_in_widget: !currentValue });
+      loadIssues();
+    } catch (err) {
+      setIssuesFeedback({ type: 'error', message: err.message });
+    }
+  };
+
+  const handleTriggerInvestigation = async (id) => {
+    try {
+      setIssuesFeedback({ type: 'info', message: 'Triggering investigation...' });
+      await triggerIssueInvestigation(id);
+      setIssuesFeedback({ type: 'success', message: 'Investigation triggered. The Coding Agent is analyzing the issue.' });
+      loadIssues();
+      setTimeout(() => setIssuesFeedback(null), 5000);
+    } catch (err) {
+      setIssuesFeedback({ type: 'error', message: err.message });
+    }
+  };
+
   // ── Metrics Calculation ──
   const metrics = useMemo(() => {
     const total = appointments.length;
@@ -180,6 +245,14 @@ export default function ApprovalsAndAppointmentsPage() {
   const pendingApprovalsCount = useMemo(() => {
     return approvals.filter((a) => a.status === 'pending').length;
   }, [approvals]);
+
+  const issuesMetrics = useMemo(() => {
+    const open = issues.filter(i => i.status === 'open').length;
+    const investigating = issues.filter(i => i.status === 'investigating').length;
+    const awaiting_review = issues.filter(i => i.status === 'awaiting_review').length;
+    const resolved = issues.filter(i => ['resolved', 'dismissed', 'no_code_issue'].includes(i.status)).length;
+    return { open, investigating, awaiting_review, resolved };
+  }, [issues]);
 
   return (
     <AuthGuard>
@@ -219,7 +292,8 @@ export default function ApprovalsAndAppointmentsPage() {
             <button
               onClick={() => {
                 if (activeTab === 'approvals') loadApprovals();
-                else loadAppointments();
+                else if (activeTab === 'appointments') loadAppointments();
+                else loadIssues();
               }}
               className="px-md py-sm bg-surface-variant hover:bg-outline-variant rounded-md text-body-sm font-label-md transition-colors flex items-center gap-2"
             >
@@ -260,6 +334,31 @@ export default function ApprovalsAndAppointmentsPage() {
             {metrics.scheduled > 0 && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary-container text-primary">
                 {metrics.scheduled}
+              </span>
+            )}
+          </button>
+
+          {/* Reported Issues Tab */}
+          <button
+            onClick={() => setActiveTab('issues')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '12px 24px',
+              borderBottom: activeTab === 'issues' ? '3px solid #f59e0b' : '3px solid transparent',
+              color: activeTab === 'issues' ? '#f59e0b' : '#9ca3af',
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontWeight: activeTab === 'issues' ? '600' : '400',
+              fontSize: '15px', transition: 'all 0.2s',
+            }}
+          >
+            <span className="material-icons" style={{ fontSize: '20px' }}>bug_report</span>
+            Reported Issues
+            {issues.filter(i => ['open', 'investigating', 'awaiting_review'].includes(i.status)).length > 0 && (
+              <span style={{
+                background: '#f59e0b', color: 'white', borderRadius: '12px',
+                padding: '2px 8px', fontSize: '12px', fontWeight: '700',
+              }}>
+                {issues.filter(i => ['open', 'investigating', 'awaiting_review'].includes(i.status)).length}
               </span>
             )}
           </button>
@@ -316,28 +415,65 @@ export default function ApprovalsAndAppointmentsPage() {
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-md text-body-sm my-xs bg-background/50 p-sm rounded border border-outline-variant/40">
-                            <div>
-                              <span className="text-on-surface-variant font-label-md block">Requester Sub-Agent</span>
-                              <span className="font-bold text-primary">
-                                {item.requester_id || item.agent_instance_id || 'Customer Support Agent'}
-                              </span>
+                          {item.action_type === 'issue_investigation_review' ? (
+                            <div className="flex flex-col gap-2 my-xs bg-background/50 p-sm rounded border border-outline-variant/40 text-body-sm">
+                              <div className="grid grid-cols-3 gap-md">
+                                <div>
+                                  <span className="text-on-surface-variant font-label-md block">Agent</span>
+                                  <span className="font-bold text-primary flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[16px]">code</span> Coding Agent
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-on-surface-variant font-label-md block">Target Repository</span>
+                                  <span className="font-bold font-mono text-xs text-on-surface">
+                                    {details.investigation_repo || 'Connected Repository'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-on-surface-variant font-label-md block">Issue Reference</span>
+                                  <span className="font-bold font-mono text-xs text-on-surface-variant">
+                                    {details.issue_id ? String(details.issue_id).substring(0, 8) : 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+                              {details.issue_title && (
+                                <div className="mt-1">
+                                  <span className="text-xs font-bold text-on-surface-variant block">Reported Issue:</span>
+                                  <span className="text-sm font-semibold text-on-surface">{details.issue_title}</span>
+                                </div>
+                              )}
+                              {details.root_cause && (
+                                <div className="mt-1 bg-surface p-2 rounded border border-outline-variant/30">
+                                  <span className="text-xs font-bold text-amber-400 block mb-0.5">Root Cause Assessment:</span>
+                                  <p className="text-xs text-on-surface whitespace-pre-wrap m-0">{details.root_cause}</p>
+                                </div>
+                              )}
                             </div>
-                            <div>
-                              <span className="text-on-surface-variant font-label-md block">Amount / Reference</span>
-                              <span className="font-bold">
-                                {details.amount
-                                  ? `$${parseFloat(details.amount).toLocaleString()}`
-                                  : details.order_id || details.orderId || details.bid_reference || details.invoice_number || 'N/A'}
-                              </span>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-md text-body-sm my-xs bg-background/50 p-sm rounded border border-outline-variant/40">
+                              <div>
+                                <span className="text-on-surface-variant font-label-md block">Requester Sub-Agent</span>
+                                <span className="font-bold text-primary">
+                                  {item.requester_id || item.agent_instance_id || 'Customer Support Agent'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-on-surface-variant font-label-md block">Amount / Reference</span>
+                                <span className="font-bold">
+                                  {details.amount
+                                    ? `$${parseFloat(details.amount).toLocaleString()}`
+                                    : details.order_id || details.orderId || details.bid_reference || details.invoice_number || 'N/A'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-on-surface-variant font-label-md block">Vendor / Customer</span>
+                                <span className="font-bold">
+                                  {details.customer_name || details.customer_email || details.vendor_name || details.vendor_email || 'N/A'}
+                                </span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-on-surface-variant font-label-md block">Vendor / Customer</span>
-                              <span className="font-bold">
-                                {details.customer_name || details.customer_email || details.vendor_name || details.vendor_email || 'N/A'}
-                              </span>
-                            </div>
-                          </div>
+                          )}
 
                           {item.status === 'pending' && (
                             <div className="flex items-center justify-end gap-md mt-xs">
@@ -638,6 +774,325 @@ export default function ApprovalsAndAppointmentsPage() {
                                 title="Delete Record"
                               >
                                 <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════ */}
+          {/* TAB 3: REPORTED ISSUES                              */}
+          {/* ═══════════════════════════════════════════════════ */}
+          {activeTab === 'issues' && (
+            <div className="flex flex-col gap-md">
+              {issuesFeedback && (
+                <div className={`p-md border rounded-md text-body-sm flex items-center justify-between ${
+                  issuesFeedback.type === 'error' ? 'bg-error/20 border-error text-error' :
+                  issuesFeedback.type === 'success' ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' :
+                  'bg-surface-variant border-outline text-on-surface'
+                }`}>
+                  <span>{issuesFeedback.message}</span>
+                  <button onClick={() => setIssuesFeedback(null)} className="opacity-70 hover:opacity-100">
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Metrics Summary Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-md">
+                <div className="bg-surface border border-outline-variant p-md rounded-lg flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase font-bold text-on-surface-variant mb-1">Open</p>
+                    <p className="text-2xl font-bold text-rose-400">{issuesMetrics.open}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-rose-950/40 flex items-center justify-center text-rose-400">
+                    <span className="material-symbols-outlined text-[22px]">new_releases</span>
+                  </div>
+                </div>
+
+                <div className="bg-surface border border-outline-variant p-md rounded-lg flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase font-bold text-on-surface-variant mb-1">Investigating</p>
+                    <p className="text-2xl font-bold text-blue-400">{issuesMetrics.investigating}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-blue-950/40 flex items-center justify-center text-blue-400">
+                    <span className="material-symbols-outlined text-[22px]">search</span>
+                  </div>
+                </div>
+
+                <div className="bg-surface border border-outline-variant p-md rounded-lg flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase font-bold text-on-surface-variant mb-1">Awaiting Review</p>
+                    <p className="text-2xl font-bold text-yellow-400">{issuesMetrics.awaiting_review}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-yellow-950/40 flex items-center justify-center text-yellow-400">
+                    <span className="material-symbols-outlined text-[22px]">rate_review</span>
+                  </div>
+                </div>
+
+                <div className="bg-surface border border-outline-variant p-md rounded-lg flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase font-bold text-on-surface-variant mb-1">Resolved</p>
+                    <p className="text-2xl font-bold text-emerald-400">{issuesMetrics.resolved}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-emerald-950/40 flex items-center justify-center text-emerald-400">
+                    <span className="material-symbols-outlined text-[22px]">check_circle</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters & Search Control Bar */}
+              <div className="bg-surface border border-outline-variant rounded-lg p-md flex flex-wrap items-center justify-between gap-md">
+                <form onSubmit={(e) => { e.preventDefault(); loadIssues(); }} className="flex items-center gap-2 flex-1 max-w-md">
+                  <div className="relative flex-1">
+                    <span className="material-symbols-outlined absolute left-3 top-2.5 text-on-surface-variant text-[18px]">
+                      search
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search title, description..."
+                      value={issueSearch}
+                      onChange={(e) => setIssueSearch(e.target.value)}
+                      className="w-full bg-background border border-outline-variant rounded-md pl-9 pr-3 py-1.5 text-body-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-md py-1.5 bg-surface-variant hover:bg-outline-variant text-body-sm font-label-md rounded-md transition-colors"
+                  >
+                    Filter
+                  </button>
+                </form>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+                    <span className="material-symbols-outlined text-[18px]">filter_alt</span> Status:
+                    <select
+                      value={issueStatusFilter}
+                      onChange={(e) => setIssueStatusFilter(e.target.value)}
+                      className="bg-background border border-outline-variant rounded-md px-3 py-1.5 text-body-sm text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="all">All</option>
+                      <option value="open">Open</option>
+                      <option value="investigating">Investigating</option>
+                      <option value="awaiting_review">Awaiting Review</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="dismissed">Dismissed</option>
+                      <option value="no_code_issue">No Code Issue</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+                    <span className="material-symbols-outlined text-[18px]">warning</span> Severity:
+                    <select
+                      value={issueSeverityFilter}
+                      onChange={(e) => setIssueSeverityFilter(e.target.value)}
+                      className="bg-background border border-outline-variant rounded-md px-3 py-1.5 text-body-sm text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      <option value="all">All</option>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+
+                  {(issueStatusFilter !== 'all' || issueSeverityFilter !== 'all' || issueSearch) && (
+                    <button
+                      onClick={() => {
+                        setIssueStatusFilter('all');
+                        setIssueSeverityFilter('all');
+                        setIssueSearch('');
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Issues List */}
+              <div className="bg-surface border border-outline-variant rounded-lg p-md flex flex-col gap-md">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-title-md text-title-md text-on-surface flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">bug_report</span> Reported Issues
+                  </h2>
+                  <span className="text-body-sm text-on-surface-variant">
+                    Showing {issues.length} record{issues.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+
+                {issuesLoading ? (
+                  <p className="text-on-surface-variant font-body-sm italic p-md">Loading reported issues...</p>
+                ) : issues.length === 0 ? (
+                  <div className="p-xl text-center border border-dashed border-outline-variant rounded-md">
+                    <span className="material-symbols-outlined text-[48px] text-on-surface-variant mb-sm">bug_report</span>
+                    <p className="font-title-md text-on-surface">No Issues Found</p>
+                    <p className="font-body-sm text-on-surface-variant">
+                      No customer issues matching your filters.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-md">
+                    {issues.map((issue) => {
+                      const getSeverityColor = (sev) => {
+                        switch (sev) {
+                          case 'critical': return 'bg-rose-900/40 text-rose-300 border-rose-800/50';
+                          case 'high': return 'bg-orange-900/40 text-orange-300 border-orange-800/50';
+                          case 'medium': return 'bg-yellow-900/40 text-yellow-300 border-yellow-800/50';
+                          case 'low': return 'bg-green-900/40 text-green-300 border-green-800/50';
+                          default: return 'bg-surface-variant text-on-surface-variant border-outline-variant';
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={issue.id}
+                          className="p-md bg-surface-variant/40 border border-outline-variant rounded-lg flex flex-col gap-sm hover:border-primary/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex flex-col gap-1 w-full">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-base font-bold text-on-surface">{issue.title}</span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-bold border ${getSeverityColor(issue.severity)}`}>
+                                  {issue.severity.toUpperCase()}
+                                </span>
+                                <span className="px-2 py-0.5 rounded text-xs font-bold bg-surface border border-outline-variant">
+                                  {issue.status.toUpperCase()}
+                                </span>
+                                {issue.category && (
+                                  <span className="px-2 py-0.5 rounded text-xs bg-surface-variant text-on-surface-variant font-mono">
+                                    {issue.category}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-on-surface-variant font-mono">ID: {issue.id}</p>
+                            </div>
+                            
+                            <button
+                              onClick={() => handleToggleWidgetVisibility(issue.id, issue.show_in_widget)}
+                              className={`p-1.5 rounded-full flex items-center justify-center ${issue.show_in_widget ? 'bg-primary-container text-primary' : 'bg-surface-variant text-on-surface-variant hover:text-on-surface'}`}
+                              title={issue.show_in_widget ? "Visible in widget (click to hide)" : "Hidden from widget (click to show)"}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                {issue.show_in_widget ? 'visibility' : 'visibility_off'}
+                              </span>
+                            </button>
+                          </div>
+
+                          {/* Customer Message */}
+                          <div className="text-sm mt-1 bg-background/60 p-sm rounded-lg border border-outline-variant/40">
+                            <span className="text-xs font-bold text-on-surface-variant mb-1 block">Description</span>
+                            <div className="text-on-surface whitespace-pre-wrap">
+                              {expandedIssue === issue.id || issue.description.length <= 200 
+                                ? issue.description 
+                                : `${issue.description.substring(0, 200)}...`}
+                              {issue.description.length > 200 && (
+                                <button 
+                                  onClick={() => setExpandedIssue(expandedIssue === issue.id ? null : issue.id)}
+                                  className="text-primary text-xs ml-2 hover:underline inline"
+                                >
+                                  {expandedIssue === issue.id ? 'Show Less' : 'Read More'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Investigation Section */}
+                          {(issue.investigation_findings || issue.root_cause || (issue.investigated_files && issue.investigated_files.length > 0)) && (
+                            <div className="mt-2 text-sm bg-blue-950/20 p-sm rounded-lg border border-blue-900/40">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[16px]">psychology</span> Coding Agent Investigation
+                                </span>
+                                {issue.investigation_repo && (
+                                  <span className="text-[11px] font-mono text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
+                                    repo: {issue.investigation_repo} ({issue.investigation_branch || 'main'})
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {issue.root_cause && (
+                                <div className="mb-2 bg-surface/60 p-2 rounded border border-outline-variant/30">
+                                  <span className="text-xs text-amber-400 font-bold block mb-1">Root Cause Assessment:</span>
+                                  <p className="text-xs text-on-surface whitespace-pre-wrap m-0">{issue.root_cause}</p>
+                                </div>
+                              )}
+                              
+                              {issue.investigated_files && issue.investigated_files.length > 0 && (
+                                <div className="mb-2">
+                                  <span className="text-xs text-on-surface-variant font-bold block mb-1">Analyzed Files:</span>
+                                  <ul className="list-disc list-inside text-xs text-on-surface-variant space-y-0.5">
+                                    {issue.investigated_files.map((file, idx) => {
+                                      const path = typeof file === 'string' ? file : file.path;
+                                      const rel = typeof file === 'object' && file.relevance ? ` — ${file.relevance}` : '';
+                                      return (
+                                        <li key={idx} className="font-mono text-[11px]">
+                                          <span className="text-primary font-semibold">{path}</span>
+                                          <span className="text-on-surface-variant font-sans">{rel}</span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {issue.investigation_findings && (
+                                <div className="mt-2 pt-2 border-t border-blue-900/30">
+                                  <span className="text-xs text-on-surface-variant font-bold block mb-1">Findings Details:</span>
+                                  <div className="text-xs text-on-surface-variant font-mono whitespace-pre-wrap max-h-40 overflow-y-auto bg-background/50 p-2 rounded">
+                                    {issue.investigation_findings}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Actions Bar */}
+                          <div className="flex flex-wrap items-center justify-between pt-1 mt-2 border-t border-outline-variant/30 gap-2">
+                            <span className="text-xs text-on-surface-variant">
+                              Created {new Date(issue.created_at).toLocaleString()}
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              {issue.approval_id && (
+                                <Link
+                                  href="#"
+                                  onClick={(e) => { e.preventDefault(); setActiveTab('approvals'); }}
+                                  className="px-3 py-1 bg-surface-variant hover:bg-outline-variant text-on-surface font-label-md text-xs rounded-md transition-colors flex items-center gap-1"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">gavel</span> View Approval
+                                </Link>
+                              )}
+                              
+                              {['pending', 'skipped'].includes(issue.investigation_status) && (
+                                <button
+                                  onClick={() => handleTriggerInvestigation(issue.id)}
+                                  className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 font-label-md text-xs rounded-md transition-colors flex items-center gap-1"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span> Trigger Investigation
+                                </button>
+                              )}
+                              
+                              <button
+                                onClick={() => handleResolveIssue(issue.id, 'resolved', 'Resolved manually by human')}
+                                className="px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 font-label-md text-xs rounded-md transition-colors flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">check</span> Resolve
+                              </button>
+                              
+                              <button
+                                onClick={() => handleResolveIssue(issue.id, 'dismissed')}
+                                className="px-3 py-1 bg-surface-variant hover:bg-outline-variant text-on-surface-variant font-label-md text-xs rounded-md transition-colors flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">block</span> Dismiss
                               </button>
                             </div>
                           </div>

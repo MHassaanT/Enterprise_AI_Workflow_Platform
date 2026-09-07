@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
-import { getAuthHeader } from '../../lib/api';
+import { getAuthHeader, fetchReportedIssues, triggerIssueInvestigation } from '../../lib/api';
 
 export default function CodingAgentPage() {
   // Repository & GitHub State
@@ -32,15 +32,52 @@ export default function CodingAgentPage() {
   const [activePlan, setActivePlan] = useState(null);
   const [modifiedFiles, setModifiedFiles] = useState([]);
   const [prInfo, setPrInfo] = useState(null);
-  const [activeRightTab, setActiveRightTab] = useState('code'); // 'code' | 'diff'
+  const [activeRightTab, setActiveRightTab] = useState('code'); // 'code' | 'diff' | 'issues'
+  const [flaggedIssues, setFlaggedIssues] = useState([]);
+  const [flaggedIssuesLoading, setFlaggedIssuesLoading] = useState(false);
+  const [investigatingIssueId, setInvestigatingIssueId] = useState(null);
   const chatMessagesRef = useRef(null);
 
   const API_BASE = '/api/v1/coding';
 
-  // Load repositories on mount
+  // Load repositories and flagged issues on mount
   useEffect(() => {
     fetchRepositories();
+    loadFlaggedIssues();
   }, []);
+
+  const loadFlaggedIssues = async () => {
+    setFlaggedIssuesLoading(true);
+    try {
+      const data = await fetchReportedIssues();
+      setFlaggedIssues(data.issues || []);
+    } catch (err) {
+      console.error('Error loading flagged issues in coding page:', err);
+    } finally {
+      setFlaggedIssuesLoading(false);
+    }
+  };
+
+  const handleInvestigateFlaggedIssue = async (issue) => {
+    setInvestigatingIssueId(issue.id);
+    try {
+      await triggerIssueInvestigation(issue.id);
+      await loadFlaggedIssues();
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: 'assistant',
+          content: `🔍 Autonomous codebase investigation started for issue: "${issue.title}". Inspecting repo tree, reading candidate files, and analyzing root causes. A human approval request will be submitted upon completion.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } catch (err) {
+      console.error('Error triggering issue investigation from coding page:', err);
+    } finally {
+      setInvestigatingIssueId(null);
+    }
+  };
 
   // Fetch file tree when repo or branch changes
   useEffect(() => {
@@ -613,6 +650,22 @@ export default function CodingAgentPage() {
                         </span>
                       )}
                     </button>
+                    <button
+                      onClick={() => setActiveRightTab('issues')}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-colors flex items-center gap-1 ${
+                        activeRightTab === 'issues'
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">bug_report</span>
+                      Flagged Issues
+                      {flaggedIssues.filter(i => ['open', 'investigating', 'awaiting_review'].includes(i.status)).length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                          {flaggedIssues.filter(i => ['open', 'investigating', 'awaiting_review'].includes(i.status)).length}
+                        </span>
+                      )}
+                    </button>
                   </div>
 
                   <span className="text-xs font-mono text-on-surface-variant truncate max-w-[200px]">
@@ -661,6 +714,184 @@ export default function CodingAgentPage() {
                       <div className="h-full flex flex-col items-center justify-center text-on-surface-variant text-xs">
                         <span className="material-symbols-outlined text-3xl mb-2">code_off</span>
                         <span>No code edits have been committed by the agent yet.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Flagged Issues Tab */}
+                {activeRightTab === 'issues' && (
+                  <div className="flex-1 overflow-auto p-md space-y-md bg-[#0d1117] text-[#c9d1d9]">
+                    <div className="flex items-center justify-between pb-sm border-b border-[#30363d]">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-amber-400 text-lg">bug_report</span>
+                        <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                          Flagged Customer Issues ({flaggedIssues.length})
+                        </span>
+                      </div>
+                      <button
+                        onClick={loadFlaggedIssues}
+                        disabled={flaggedIssuesLoading}
+                        className="px-2.5 py-1 bg-[#21262d] hover:bg-[#30363d] text-xs text-[#c9d1d9] rounded border border-[#30363d] flex items-center gap-1 transition-colors"
+                      >
+                        <span className={`material-symbols-outlined text-[14px] ${flaggedIssuesLoading ? 'animate-spin' : ''}`}>refresh</span>
+                        Refresh
+                      </button>
+                    </div>
+
+                    {flaggedIssuesLoading ? (
+                      <div className="h-40 flex items-center justify-center text-on-surface-variant text-xs animate-pulse">
+                        Loading flagged issues...
+                      </div>
+                    ) : flaggedIssues.length === 0 ? (
+                      <div className="h-60 flex flex-col items-center justify-center text-on-surface-variant text-xs gap-2">
+                        <span className="material-symbols-outlined text-4xl text-amber-400/40">task_alt</span>
+                        <span className="font-semibold text-on-surface">No Flagged Issues</span>
+                        <span className="text-center max-w-sm text-[11px] text-on-surface-variant">
+                          When the Customer Support Agent cannot resolve an issue via the KB or database, it automatically flags it here for codebase investigation.
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="space-y-sm">
+                        {flaggedIssues.map((issue) => {
+                          const getSeverityBadge = (sev) => {
+                            switch (sev) {
+                              case 'critical': return 'bg-red-950 text-red-300 border-red-800';
+                              case 'high': return 'bg-orange-950 text-orange-300 border-orange-800';
+                              case 'medium': return 'bg-amber-950 text-amber-300 border-amber-800';
+                              default: return 'bg-emerald-950 text-emerald-300 border-emerald-800';
+                            }
+                          };
+
+                          const getStatusBadge = (st) => {
+                            switch (st) {
+                              case 'investigating': return 'bg-blue-950 text-blue-300 border-blue-800';
+                              case 'awaiting_review': return 'bg-purple-950 text-purple-300 border-purple-800';
+                              case 'resolved': return 'bg-emerald-950 text-emerald-300 border-emerald-800';
+                              case 'dismissed': return 'bg-zinc-800 text-zinc-400 border-zinc-700';
+                              default: return 'bg-amber-950 text-amber-300 border-amber-800';
+                            }
+                          };
+
+                          const isInvestigating = investigatingIssueId === issue.id || issue.investigation_status === 'investigating';
+
+                          return (
+                            <div key={issue.id} className="p-md bg-[#161b22] border border-[#30363d] rounded-xl space-y-sm">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-[#f0f6fc]">{issue.title}</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getSeverityBadge(issue.severity)}`}>
+                                      {issue.severity}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getStatusBadge(issue.status)}`}>
+                                      {issue.status}
+                                    </span>
+                                    {issue.category && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#21262d] text-zinc-400">
+                                        {issue.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-zinc-400 font-mono">
+                                    ID: {issue.id.substring(0, 8)} • Reported: {new Date(issue.created_at).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Customer Message Verbatim */}
+                              {issue.customer_message && (
+                                <div className="bg-[#0d1117] p-2.5 rounded-lg border border-[#21262d] text-xs">
+                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                                    Customer Complaint
+                                  </span>
+                                  <p className="text-zinc-200 m-0 leading-relaxed italic">
+                                    "{issue.customer_message}"
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Root Cause & Investigation Findings */}
+                              {issue.root_cause && (
+                                <div className="bg-[#1c2128] p-2.5 rounded-lg border border-amber-900/40 text-xs">
+                                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[14px]">psychology</span>
+                                    Root Cause Analysis
+                                  </span>
+                                  <p className="text-amber-100/90 m-0 whitespace-pre-wrap font-mono text-[11px]">
+                                    {issue.root_cause}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Investigated Files */}
+                              {issue.investigated_files && issue.investigated_files.length > 0 && (
+                                <div className="text-xs space-y-1">
+                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                                    Analyzed Files:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {issue.investigated_files.map((f, fIdx) => (
+                                      <span key={fIdx} className="px-2 py-0.5 rounded bg-[#21262d] text-blue-300 font-mono text-[11px] border border-[#30363d]">
+                                        {typeof f === 'string' ? f : f.path}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Actions Bar */}
+                              <div className="pt-2 border-t border-[#21262d] flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  {issue.investigation_status === 'completed' ? (
+                                    <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-semibold">
+                                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                      Investigated
+                                    </span>
+                                  ) : issue.investigation_status === 'skipped' ? (
+                                    <span className="text-[11px] text-amber-400 flex items-center gap-1">
+                                      <span className="material-symbols-outlined text-[14px]">info</span>
+                                      No repo connected
+                                    </span>
+                                  ) : isInvestigating ? (
+                                    <span className="text-[11px] text-blue-400 flex items-center gap-1 animate-pulse font-semibold">
+                                      <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                                      Analyzing codebase...
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-zinc-400 font-medium">
+                                      Awaiting investigation
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {issue.approval_id && (
+                                    <Link
+                                      href="/approvals"
+                                      className="px-2.5 py-1 bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-700/40 rounded text-xs font-semibold flex items-center gap-1 transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">gavel</span>
+                                      View Approval
+                                    </Link>
+                                  )}
+
+                                  {issue.status !== 'resolved' && (
+                                    <button
+                                      onClick={() => handleInvestigateFlaggedIssue(issue)}
+                                      disabled={isInvestigating}
+                                      className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 shadow"
+                                    >
+                                      <span className={`material-symbols-outlined text-[14px] ${isInvestigating ? 'animate-spin' : ''}`}>
+                                        {isInvestigating ? 'sync' : 'search'}
+                                      </span>
+                                      {isInvestigating ? 'Investigating...' : 'Investigate Codebase'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

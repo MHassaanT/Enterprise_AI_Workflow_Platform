@@ -1,5 +1,5 @@
 (function () {
-  'use me strict';
+  'use strict';
 
   if (window.EnterpriseChatWidget) return;
 
@@ -16,9 +16,12 @@
 
   var state = {
     isOpen: false,
+    activeTab: 'chat', // 'chat' | 'issues'
     conversationId: null,
     messages: [],
-    loading: false
+    loading: false,
+    issues: [],
+    issuesLoading: false
   };
 
   function injectStyles() {
@@ -90,7 +93,7 @@
       .ai-widget-header {
         background: #0f172a;
         color: #ffffff;
-        padding: 16px 20px;
+        padding: 16px 20px 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -119,6 +122,40 @@
       }
       .ai-widget-close-btn:hover {
         color: #ffffff;
+      }
+      .ai-widget-tabs {
+        display: flex;
+        background: #0f172a;
+        border-bottom: 1px solid #334155;
+        padding: 0 12px;
+      }
+      .ai-widget-tab-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #94a3b8;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.2s;
+      }
+      .ai-widget-tab-btn.active {
+        color: #ffffff;
+        border-bottom-color: #3b82f6;
+      }
+      .ai-widget-tab-badge {
+        background: #3b82f6;
+        color: #ffffff;
+        border-radius: 10px;
+        padding: 1px 6px;
+        font-size: 10px;
+        font-weight: 700;
       }
       .ai-widget-body {
         flex: 1;
@@ -215,6 +252,64 @@
         background: #94a3b8;
         cursor: not-allowed;
       }
+      .ai-widget-issues-panel {
+        flex: 1;
+        padding: 14px;
+        overflow-y: auto;
+        background: #f8fafc;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ai-widget-issue-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      }
+      .ai-widget-issue-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .ai-widget-issue-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: #0f172a;
+        margin: 0;
+      }
+      .ai-widget-issue-tag {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 2px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      .ai-widget-tag-investigating { background: #dbeafe; color: #1e40af; }
+      .ai-widget-tag-open { background: #fee2e2; color: #991b1b; }
+      .ai-widget-tag-resolved { background: #dcfce7; color: #166534; }
+      .ai-widget-issue-desc {
+        font-size: 12px;
+        color: #475569;
+        margin: 6px 0 0 0;
+        line-height: 1.4;
+      }
+      .ai-widget-issue-notes {
+        margin-top: 8px;
+        padding: 6px 8px;
+        background: #f1f5f9;
+        border-radius: 6px;
+        font-size: 11px;
+        color: #334155;
+      }
+      .ai-widget-issue-meta {
+        margin-top: 6px;
+        font-size: 10px;
+        color: #94a3b8;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -241,12 +336,24 @@
             ${config.subtitle}
           </div>
         </div>
-        <button class="ai-widget-close-btn" id="ai-widget-close">&times;</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="ai-widget-close-btn" id="ai-widget-reset" title="Start New Chat">↺</button>
+          <button class="ai-widget-close-btn" id="ai-widget-close">&times;</button>
+        </div>
+      </div>
+      <div class="ai-widget-tabs">
+        <button class="ai-widget-tab-btn active" id="ai-widget-tab-chat">💬 Chat</button>
+        <button class="ai-widget-tab-btn" id="ai-widget-tab-issues">
+          ⚠️ Status & Issues <span class="ai-widget-tab-badge" id="ai-widget-issues-count" style="display:none;">0</span>
+        </button>
       </div>
       <div class="ai-widget-body" id="ai-widget-messages">
         <div class="ai-widget-msg ai-widget-msg-assistant">
           👋 Hello! How can I assist you today?
         </div>
+      </div>
+      <div class="ai-widget-issues-panel" id="ai-widget-issues" style="display:none;">
+        <div style="text-align:center;color:#64748b;font-size:13px;padding:24px 0;">Loading known issues...</div>
       </div>
       <form class="ai-widget-footer" id="ai-widget-form">
         <input type="text" class="ai-widget-input" id="ai-widget-input-text" placeholder="Type a message..." autocomplete="off" />
@@ -258,7 +365,45 @@
     document.body.appendChild(drawer);
 
     document.getElementById('ai-widget-close').onclick = toggleDrawer;
+    document.getElementById('ai-widget-reset').onclick = function() {
+      if (config.tenantId) sessionStorage.removeItem('ai_widget_convo_' + config.tenantId);
+      state.conversationId = null;
+      state.messages = [];
+      renderMessages();
+    };
     document.getElementById('ai-widget-form').onsubmit = handleSend;
+
+    // Tab buttons
+    document.getElementById('ai-widget-tab-chat').onclick = function() {
+      switchTab('chat');
+    };
+    document.getElementById('ai-widget-tab-issues').onclick = function() {
+      switchTab('issues');
+    };
+  }
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    var chatTabBtn = document.getElementById('ai-widget-tab-chat');
+    var issuesTabBtn = document.getElementById('ai-widget-tab-issues');
+    var msgContainer = document.getElementById('ai-widget-messages');
+    var issuesContainer = document.getElementById('ai-widget-issues');
+    var formEl = document.getElementById('ai-widget-form');
+
+    if (tab === 'chat') {
+      chatTabBtn.classList.add('active');
+      issuesTabBtn.classList.remove('active');
+      msgContainer.style.display = 'flex';
+      issuesContainer.style.display = 'none';
+      formEl.style.display = 'flex';
+    } else {
+      chatTabBtn.classList.remove('active');
+      issuesTabBtn.classList.add('active');
+      msgContainer.style.display = 'none';
+      issuesContainer.style.display = 'flex';
+      formEl.style.display = 'none';
+      fetchWidgetIssues();
+    }
   }
 
   function toggleDrawer() {
@@ -267,9 +412,88 @@
     if (state.isOpen) {
       drawer.classList.add('open');
       initSession();
+      fetchWidgetIssuesCount();
     } else {
       drawer.classList.remove('open');
     }
+  }
+
+  async function fetchWidgetIssuesCount() {
+    if (!config.tenantId) return;
+    try {
+      var res = await fetch(config.apiHost + '/api/widget/issues?tenantId=' + encodeURIComponent(config.tenantId));
+      var data = await res.json();
+      var count = (data && data.issues) ? data.issues.length : 0;
+      var badgeEl = document.getElementById('ai-widget-issues-count');
+      if (badgeEl) {
+        if (count > 0) {
+          badgeEl.textContent = count;
+          badgeEl.style.display = 'inline-block';
+        } else {
+          badgeEl.style.display = 'none';
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function fetchWidgetIssues() {
+    if (!config.tenantId) return;
+    state.issuesLoading = true;
+    renderWidgetIssues();
+
+    try {
+      var res = await fetch(config.apiHost + '/api/widget/issues?tenantId=' + encodeURIComponent(config.tenantId));
+      var data = await res.json();
+      state.issues = (data && data.issues) ? data.issues : [];
+    } catch (e) {
+      console.error('Failed to fetch widget issues', e);
+      state.issues = [];
+    } finally {
+      state.issuesLoading = false;
+      renderWidgetIssues();
+    }
+  }
+
+  function renderWidgetIssues() {
+    var container = document.getElementById('ai-widget-issues');
+    if (!container) return;
+
+    if (state.issuesLoading) {
+      container.innerHTML = '<div style="text-align:center;color:#64748b;font-size:13px;padding:24px 0;">⚡ Loading known issues & updates...</div>';
+      return;
+    }
+
+    if (state.issues.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:32px 16px;color:#64748b;">
+          <div style="font-size:32px;margin-bottom:8px;">✅</div>
+          <div style="font-weight:600;color:#0f172a;font-size:14px;">All Systems Operational</div>
+          <p style="font-size:12px;margin:4px 0 0 0;">No active issues or outages reported at this time.</p>
+        </div>
+      `;
+      return;
+    }
+
+    var html = '<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Known Issues & Status Updates</div>';
+
+    state.issues.forEach(function (issue) {
+      var statusCls = issue.status === 'resolved' ? 'ai-widget-tag-resolved' : (issue.status === 'investigating' ? 'ai-widget-tag-investigating' : 'ai-widget-tag-open');
+      var statusLabel = issue.status === 'resolved' ? 'Resolved' : (issue.status === 'investigating' ? 'Investigating' : 'Under Review');
+
+      html += `
+        <div class="ai-widget-issue-card">
+          <div class="ai-widget-issue-header">
+            <h5 class="ai-widget-issue-title">${escapeHtml(issue.title)}</h5>
+            <span class="ai-widget-issue-tag ${statusCls}">${statusLabel}</span>
+          </div>
+          <p class="ai-widget-issue-desc">${escapeHtml(issue.description)}</p>
+          ${issue.resolution_notes ? `<div class="ai-widget-issue-notes"><strong>Update:</strong> ${escapeHtml(issue.resolution_notes)}</div>` : ''}
+          <div class="ai-widget-issue-meta">Reported: ${new Date(issue.created_at).toLocaleDateString()}</div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
   }
 
   async function initSession() {

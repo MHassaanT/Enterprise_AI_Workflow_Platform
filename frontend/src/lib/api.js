@@ -1151,3 +1151,62 @@ export async function deleteAppointment(id) {
   return res.json();
 }
 
+// ── Reported Issues ──
+
+export async function fetchReportedIssues(params = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.append('status', params.status);
+  if (params.severity) query.append('severity', params.severity);
+  if (params.search) query.append('search', params.search);
+  if (params.investigation_status) query.append('investigation_status', params.investigation_status);
+
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`/api/reported-issues${queryString}`, {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch reported issues');
+  }
+  return res.json();
+}
+
+export async function fetchReportedIssueById(id) {
+  const res = await fetch(`/api/reported-issues/${id}`, {
+    headers: { ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch reported issue');
+  }
+  return res.json();
+}
+
+export async function updateReportedIssue(id, data) {
+  const res = await fetch(`/api/reported-issues/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(data),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update reported issue');
+  }
+  return res.json();
+}
+
+export async function triggerIssueInvestigation(id) {
+  const res = await fetch(`/api/reported-issues/${id}/investigate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to trigger investigation');
+  }
+  return res.json();
+}

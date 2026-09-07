@@ -106,6 +106,53 @@ async def create_pr_endpoint(req: PRRequest, authorization: Optional[str] = Head
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class InvestigateIssueRequest(BaseModel):
+    issue_id: str
+    tenant_id: str
+    repo: str
+    base_branch: str = "main"
+    issue_title: str
+    issue_description: str
+    issue_customer_message: str = ""
+
+@router.post("/investigate-issue")
+async def investigate_issue(req: InvestigateIssueRequest, authorization: Optional[str] = Header(None)):
+    """Trigger the Coding Agent to investigate a customer-reported issue."""
+    token = authorization.replace("Bearer ", "") if authorization and authorization.startswith("Bearer ") else None
+    try:
+        config = {"configurable": {"thread_id": f"investigate-{req.issue_id}"}}
+        initial_state = {
+            "messages": [{"role": "user", "content": f"Investigate issue: {req.issue_title}\n\n{req.issue_description}"}],
+            "repo": req.repo,
+            "base_branch": req.base_branch,
+            "working_branch": "",
+            "plan_mode": False,
+            "status": "idle",
+            "github_token": token,
+            "issue_investigation_mode": True,
+            "issue_id": req.issue_id,
+            "issue_title": req.issue_title,
+            "issue_description": req.issue_description,
+            "issue_customer_message": req.issue_customer_message,
+            "tenant_id": req.tenant_id,
+            "investigated_files": [],
+        }
+
+        result = await coding_agent_graph.ainvoke(initial_state, config=config)
+
+        return {
+            "status": "success",
+            "issue_id": req.issue_id,
+            "investigation_findings": result.get("investigation_findings"),
+            "root_cause": result.get("root_cause"),
+            "investigated_files": result.get("investigated_files", []),
+            "approval_id": result.get("investigation_approval_id"),
+            "agent_status": result.get("status"),
+        }
+    except Exception as e:
+        print(f"[INVESTIGATE-ISSUE] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/chat")
 async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(None)):
     token = authorization.replace("Bearer ", "") if authorization and authorization.startswith("Bearer ") else None

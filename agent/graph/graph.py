@@ -18,12 +18,16 @@ from graph.nodes.retriever import retriever_node
 from graph.nodes.reasoning import reasoning_node
 from graph.nodes.approval_checkpoint import approval_checkpoint_node
 from graph.nodes.tool_executor import tool_executor_node
+from graph.nodes.issue_flagger import issue_flagger_node
 
 
 def _route_after_reasoning(state: AgentState) -> str:
     next_step = state.get("next_step", "")
     if next_step == "tool_call":
         return "approval_checkpoint" if state.get("is_high_risk") else "tool_executor"
+    # Route to issue_flagger if an unresolvable issue was detected
+    if state.get("has_unresolvable_issue") and state.get("flagged_issue"):
+        return "issue_flagger"
     return END
 
 
@@ -49,6 +53,7 @@ def build_graph():
     builder.add_node("reasoning", reasoning_node)
     builder.add_node("approval_checkpoint", approval_checkpoint_node)
     builder.add_node("tool_executor", tool_executor_node)
+    builder.add_node("issue_flagger", issue_flagger_node)
 
     builder.add_edge(START, "intent_classifier")
 
@@ -63,7 +68,7 @@ def build_graph():
     builder.add_conditional_edges(
         "reasoning",
         _route_after_reasoning,
-        {"approval_checkpoint": "approval_checkpoint", "tool_executor": "tool_executor", END: END},
+        {"approval_checkpoint": "approval_checkpoint", "tool_executor": "tool_executor", "issue_flagger": "issue_flagger", END: END},
     )
     builder.add_conditional_edges(
         "approval_checkpoint",
@@ -73,6 +78,7 @@ def build_graph():
 
     # ReAct loop — tool result feeds back into reasoning
     builder.add_edge("tool_executor", "reasoning")
+    builder.add_edge("issue_flagger", END)
 
     return builder.compile(checkpointer=graph_memory)
 

@@ -151,3 +151,58 @@ async def get_tenant_company_context(tenant_id: str) -> dict:
         }
 
 
+async def create_reported_issue(payload: dict) -> str:
+    """
+    Creates a reported issue via POST /internal/reported-issues.
+    Called by the Customer Support Agent's issue_flagger node.
+    Returns the new issue UUID.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/reported-issues",
+                json=payload,
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()["issueId"]
+    except Exception as e:
+        print(f"[REPORTED ISSUE ERROR] Failed to create reported issue: {e}")
+        raise e
+
+
+async def get_pending_issues(tenant_id: str) -> list:
+    """
+    Fetches issues pending investigation via GET /internal/reported-issues/pending.
+    Called by the Coding Agent to discover new issues to investigate.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{settings.BACKEND_URL}/internal/reported-issues/pending",
+                params={"tenantId": tenant_id},
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json().get("issues", [])
+    except Exception as e:
+        print(f"[REPORTED ISSUE ERROR] Failed to fetch pending issues: {e}")
+        return []
+
+
+async def update_issue_investigation(issue_id: str, payload: dict) -> None:
+    """
+    Updates investigation results via PATCH /internal/reported-issues/:id/investigation.
+    Called by the Coding Agent after completing its investigation.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.patch(
+                f"{settings.BACKEND_URL}/internal/reported-issues/{issue_id}/investigation",
+                json=payload,
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+    except Exception as e:
+        print(f"[REPORTED ISSUE ERROR] Failed to update issue investigation: {e}")
+        raise e

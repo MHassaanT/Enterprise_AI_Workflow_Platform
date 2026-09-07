@@ -112,6 +112,18 @@ const handleApprovalAction = async (req, res) => {
       [approvalReq.tenant_id || tenantId, JSON.stringify({ approvalId: id, decision: action, resolvedBy: userId })]
     );
 
+    // 2b. If this approval was for an issue investigation, update the reported issue record
+    if (approvalReq.action_type === 'issue_investigation_review') {
+      const issueStatus = action === 'approved' ? 'resolved' : 'dismissed';
+      await query(
+        `UPDATE reported_issues
+         SET status = $1, resolved_at = NOW(), resolved_by = 'human',
+             resolution_notes = $2, updated_at = NOW()
+         WHERE approval_id = $3`,
+        [issueStatus, `Human reviewer ${action} the issue investigation findings.`, id]
+      );
+    }
+
     // 3. Forward to FastAPI /agent/resume
     let agentResult = null;
     if (approvalReq.conversation_id) {

@@ -2045,4 +2045,244 @@ router.patch('/appointments/:id', async (req, res) => {
   }
 });
 
+// ── POST /internal/reported-issues ──
+// Called by Customer Support Agent's issue_flagger node when it detects an unresolvable issue.
+router.post('/reported-issues', async (req, res) => {
+  const { tenantId, conversationId, title, description, customerMessage, category, severity } = req.body;
+
+  if (!tenantId || !title || !description) {
+    return res.status(400).json({ error: 'tenantId, title, and description are required.' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO reported_issues (tenant_id, conversation_id, title, description, customer_message, category, severity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [
+        tenantId,
+        conversationId || null,
+        title,
+        description,
+        customerMessage || null,
+        category || 'unknown',
+        severity || 'medium',
+      ],
+      tenantId
+    );
+
+    const issueId = result.rows[0].id;
+
+    // Audit log
+    await query(
+      `INSERT INTO audit_logs (tenant_id, event_type, payload) VALUES ($1, $2, $3)`,
+      [tenantId, 'issue_reported', JSON.stringify({
+        issueId,
+        conversationId,
+        title,
+        category,
+        severity,
+        source: 'customer_support_agent',
+      })],
+      tenantId
+    );
+
+    // Auto-trigger Coding Agent investigation
+    const http = require('http');
+    const https = require('https');
+    const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+
+    const { getGithubTokenForTenant, getGithubRepoForTenant } = require('../services/githubCredentials');
+    const githubToken = await getGithubTokenForTenant(tenantId);
+    const repo = await getGithubRepoForTenant(tenantId);
+
+    // If repo is available, trigger coding agent investigation asynchronously
+    if (repo) {
+      const investigatePayload = JSON.stringify({
+        issue_id: issueId,
+        tenant_id: tenantId,
+        repo,
+        base_branch: 'main',
+        issue_title: title,
+        issue_description: description,
+        issue_customer_message: customerMessage || '',
+      });
+
+      const url = new URL(`${agentUrl}/agent/coding/investigate-issue`);
+      const transport = url.protocol === 'https:' ? https : http;
+
+      const agentReq = transport.request({
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(investigatePayload),
+          'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN || '',
+          ...(githubToken ? { 'Authorization': `Bearer ${githubToken}` } : {}),
+        },
+      }, (agentRes) => {
+        let data = '';
+        agentRes.on('data', (chunk) => (data += chunk));
+        agentRes.on('end', () => {
+          console.log(`[REPORTED-ISSUES] Coding Agent investigation triggered for issue ${issueId}:`, data);
+        });
+      });
+
+      agentReq.on('error', (err) => {
+        console.error(`[REPORTED-ISSUES] Error triggering Coding Agent for issue ${issueId}:`, err);
+      });
+
+      agentReq.write(investigatePayload);
+      agentReq.end();
+
+      // Mark as investigating
+      await query(
+        `UPDATE reported_issues SET status = 'investigating', investigation_status = 'investigating', updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2`,
+        [issueId, tenantId],
+        tenantId
+      );
+    } else {
+      // No repo connected — skip investigation, flag for human review
+      await query(
+        `UPDATE reported_issues
+         SET investigation_status = 'skipped',
+             investigation_findings = 'No GitHub repository connected for this tenant. Unable to perform automated code investigation.',
+             status = 'awaiting_review',
+             updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2`,
+        [issueId, tenantId],
+        tenantId
+      );
+    }
+
+    res.status(201).json({ issueId });
+  } catch (error) {
+    console.error('Error creating reported issue:', error);
+    res.status(500).json({ error: 'Failed to create reported issue.' });
+  }
+});
+
+// ── GET /internal/reported-issues/pending ──
+// Called by Coding Agent to fetch issues awaiting investigation.
+router.get('/reported-issues/pending', async (req, res) => {
+  const { tenantId } = req.query;
+
+  try {
+    const result = await query(
+      `SELECT * FROM reported_issues
+       WHERE tenant_id = $1 AND investigation_status = 'pending'
+       ORDER BY created_at ASC`,
+      [tenantId],
+      tenantId
+    );
+
+    res.json({ issues: result.rows, count: result.rows.length });
+  } catch (error) {
+    console.error('Error fetching pending reported issues:', error);
+    res.status(500).json({ error: 'Failed to fetch pending issues.' });
+  }
+});
+
+// ── PATCH /internal/reported-issues/:id/investigation ──
+// Called by Coding Agent after completing investigation to update findings.
+router.patch('/reported-issues/:id/investigation', async (req, res) => {
+  const { id } = req.params;
+  const {
+    tenantId,
+    investigationStatus,
+    investigationRepo,
+    investigationBranch,
+    investigationFindings,
+    investigatedFiles,
+    rootCause,
+    status,
+    approvalId,
+  } = req.body;
+
+  try {
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (investigationStatus) {
+      updates.push(`investigation_status = $${idx}`);
+      params.push(investigationStatus);
+      idx++;
+    }
+    if (investigationRepo) {
+      updates.push(`investigation_repo = $${idx}`);
+      params.push(investigationRepo);
+      idx++;
+    }
+    if (investigationBranch) {
+      updates.push(`investigation_branch = $${idx}`);
+      params.push(investigationBranch);
+      idx++;
+    }
+    if (investigationFindings) {
+      updates.push(`investigation_findings = $${idx}`);
+      params.push(investigationFindings);
+      idx++;
+    }
+    if (investigatedFiles) {
+      updates.push(`investigated_files = $${idx}`);
+      params.push(JSON.stringify(investigatedFiles));
+      idx++;
+    }
+    if (rootCause) {
+      updates.push(`root_cause = $${idx}`);
+      params.push(rootCause);
+      idx++;
+    }
+    if (status) {
+      updates.push(`status = $${idx}`);
+      params.push(status);
+      idx++;
+    }
+    if (approvalId) {
+      updates.push(`approval_id = $${idx}`);
+      params.push(approvalId);
+      idx++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update.' });
+    }
+
+    updates.push('updated_at = NOW()');
+
+    const result = await query(
+      `UPDATE reported_issues
+       SET ${updates.join(', ')}
+       WHERE id = $${idx} AND tenant_id = $${idx + 1}
+       RETURNING *`,
+      [...params, id, tenantId],
+      tenantId
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Reported issue not found.' });
+    }
+
+    // Audit log
+    await query(
+      `INSERT INTO audit_logs (tenant_id, event_type, payload) VALUES ($1, $2, $3)`,
+      [tenantId, 'issue_investigation_updated', JSON.stringify({
+        issueId: id,
+        investigationStatus,
+        rootCause: rootCause || null,
+        approvalId: approvalId || null,
+      })],
+      tenantId
+    );
+
+    res.json({ success: true, issue: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating issue investigation:', error);
+    res.status(500).json({ error: 'Failed to update issue investigation.' });
+  }
+});
+
 module.exports = router;

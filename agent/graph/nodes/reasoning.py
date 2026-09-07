@@ -233,12 +233,74 @@ async def reasoning_node(state: AgentState) -> dict:
         }
 
     # ── Final answer ──
+    response_text = getattr(response, 'content', '') or ''
+    
+    # Detect unresolvable customer issues:
+    # If RAG context is empty/irrelevant AND the response indicates inability to help
+    # AND the user appears to be reporting a bug/issue/complaint
+    context = state.get('context', [])
+    question = state.get('question', '').lower()
+    
+    cant_help_indicators = [
+        'out of context', "i don't have information", "i couldn't find",
+        'unable to find', 'no information available', "i don't have access to",
+        'not in my knowledge', 'beyond my current', 'no relevant information',
+        'i apologize, but i', 'unfortunately, i don\'t have',
+    ]
+    issue_indicators = [
+        'not working', 'error', 'bug', 'broken', 'issue', 'problem',
+        'crash', 'fail', 'wrong', 'complaint', 'glitch', 'down',
+        'malfunction', 'defect', 'stuck', 'freeze', 'slow', 'unresponsive',
+    ]
+    
+    response_lower = response_text.lower()
+    cant_help = any(ind in response_lower for ind in cant_help_indicators)
+    is_issue_report = any(ind in question for ind in issue_indicators)
+    # An issue is unresolvable only when:
+    # 1. The user was asking about or reporting an issue/problem/bug
+    # 2. The agent checked KB and tools/database and was unable to find info to satisfy the user
+    has_unresolvable = cant_help and is_issue_report
+    
+    flagged = None
+    if has_unresolvable:
+        # Auto-classify the issue
+        category = 'bug_report'
+        if any(w in question for w in ['feature', 'add', 'want', 'wish', 'missing', 'need']):
+            category = 'feature_gap'
+        elif any(w in question for w in ['data', 'record', 'entry', 'database', 'missing data']):
+            category = 'data_issue'
+        
+        severity = 'medium'
+        if any(w in question for w in ['urgent', 'critical', 'emergency', 'immediately', 'asap', 'crash', 'down']):
+            severity = 'critical'
+        elif any(w in question for w in ['very', 'major', 'severe', 'significant', 'important']):
+            severity = 'high'
+        elif any(w in question for w in ['minor', 'small', 'slight', 'trivial']):
+            severity = 'low'
+        
+        # Build issue title from the question (first 100 chars)
+        title = state.get('question', 'Customer reported issue')[:100]
+        if len(state.get('question', '')) > 100:
+            title += '...'
+        
+        flagged = {
+            'title': title,
+            'description': f"Customer reported an issue that could not be resolved from the knowledge base or database. Original complaint: {state.get('question', '')}",
+            'category': category,
+            'severity': severity,
+            'customer_message': state.get('question', ''),
+        }
+        
+        print(f"[REASONING] Unresolvable issue detected: category={category}, severity={severity}")
+    
     return {
         "messages": [response],
         "next_step": "respond",
         "tool_result": None,
         "pending_tool_call": None,
         "pending_tool_calls": None,
-        "tool_call_count": 0,  # Reset for next turn
+        "tool_call_count": 0,
+        "has_unresolvable_issue": has_unresolvable,
+        "flagged_issue": flagged,
     }
 

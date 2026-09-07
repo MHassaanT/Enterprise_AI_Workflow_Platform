@@ -14,3 +14,15 @@ class CodingAgentState(TypedDict):
     status: str  # 'idle' | 'planning' | 'branch_created' | 'executing' | 'pr_created' | 'error'
     error_message: Optional[str]
     github_token: Optional[str]
+
+    # Issue investigation mode (cross-agent escalation from Customer Support)
+    issue_investigation_mode: bool
+    issue_id: Optional[str]                 # UUID of the reported_issue being investigated
+    issue_title: Optional[str]
+    issue_description: Optional[str]
+    issue_customer_message: Optional[str]
+    investigation_findings: Optional[str]
+    investigated_files: List[Dict[str, Any]]
+    root_cause: Optional[str]
+    investigation_approval_id: Optional[str]
+    tenant_id: Optional[str]

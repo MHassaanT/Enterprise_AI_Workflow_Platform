@@ -224,4 +224,29 @@ router.post('/conversations/:id/messages', async (req, res) => {
   });
 });
 
+// ── GET PUBLIC REPORTED ISSUES FOR WIDGET ──
+router.get('/issues', async (req, res) => {
+  const { tenantId } = req.query;
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  try {
+    const result = await query(
+      `SELECT id, title, description, category, severity, status, investigation_status,
+              investigation_findings, root_cause, resolution_notes, created_at, updated_at
+       FROM reported_issues
+       WHERE tenant_id = $1 AND show_in_widget = true
+       ORDER BY created_at DESC`,
+      [tenantId],
+      tenantId
+    );
+
+    res.json({ issues: result.rows, count: result.rows.length });
+  } catch (err) {
+    console.error('Error fetching widget issues:', err);
+    res.status(500).json({ error: 'Failed to fetch issues.' });
+  }
+});
+
 module.exports = router;

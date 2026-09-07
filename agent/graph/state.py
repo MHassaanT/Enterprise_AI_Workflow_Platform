@@ -37,3 +37,8 @@ class AgentState(TypedDict):
     conversation_id: str
     question: str
     user_id: str
+
+    # Issue flagging — cross-agent escalation
+    flagged_issue: Optional[dict]         # {title, description, category, severity, customer_message}
+    has_unresolvable_issue: bool          # True when reasoning detects KB/DB couldn't answer a complaint
+
