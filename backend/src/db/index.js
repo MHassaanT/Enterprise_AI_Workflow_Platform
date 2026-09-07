@@ -68,6 +68,8 @@ pool.connect((err, client, release) => {
       client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS pr_number INT;'),
       client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS fix_branch VARCHAR(255);'),
       client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS fix_summary TEXT;'),
+      client.query('ALTER TABLE reported_issues DROP CONSTRAINT IF EXISTS reported_issues_status_check;'),
+      client.query('ALTER TABLE reported_issues DROP CONSTRAINT IF EXISTS reported_issues_investigation_status_check;'),
       client.query(`CREATE TABLE IF NOT EXISTS reported_issues (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

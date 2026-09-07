@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS reported_issues (
 
     -- Coding Agent investigation results
     investigation_status VARCHAR(50) DEFAULT 'pending'
-        CHECK (investigation_status IN ('pending', 'investigating', 'completed', 'skipped')),
+        CHECK (investigation_status IN ('pending', 'investigating', 'completed', 'skipped', 'failed')),
     investigation_repo VARCHAR(255),        -- GitHub repo analyzed (e.g. 'owner/repo')
     investigation_branch VARCHAR(255),      -- Branch analyzed
     investigation_findings TEXT,            -- LLM analysis summary from Coding Agent
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS reported_issues (
 
     -- Lifecycle
     status VARCHAR(50) DEFAULT 'open'
-        CHECK (status IN ('open', 'investigating', 'awaiting_review', 'resolved', 'dismissed', 'no_code_issue')),
+        CHECK (status IN ('open', 'investigating', 'awaiting_review', 'fixing', 'resolved', 'dismissed', 'no_code_issue')),
     resolved_at TIMESTAMPTZ,
     resolved_by VARCHAR(255),               -- 'coding_agent', 'human', 'auto'
     resolution_notes TEXT,
