@@ -357,4 +357,122 @@ router.post('/:id/investigate', async (req, res) => {
   }
 });
 
+// ── POST /api/reported-issues/:id/fix ── Manually trigger Coding Agent autonomous bug fix & PR
+router.post('/:id/fix', async (req, res) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params;
+
+    const issueResult = await query(
+      `SELECT * FROM reported_issues WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+      tenantId
+    );
+
+    if (!issueResult.rows[0]) {
+      return res.status(404).json({ error: 'Reported issue not found.' });
+    }
+
+    const issue = issueResult.rows[0];
+
+    const githubToken = await getGithubTokenForTenant(tenantId);
+    let repo = req.body?.repo || issue.investigation_repo || await getGithubRepoForTenant(tenantId, githubToken);
+    const baseBranch = req.body?.base_branch || issue.investigation_branch || 'main';
+
+    if (!repo) {
+      return res.status(400).json({ error: 'No GitHub repository connected for this tenant.' });
+    }
+
+    // Set status to fixing
+    await query(
+      `UPDATE reported_issues
+       SET status = 'fixing',
+           resolution_notes = 'Coding Agent is applying code fix and creating Pull Request on GitHub...',
+           updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+      tenantId
+    );
+
+    const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+    const fixPayload = {
+      issue_id: id,
+      tenant_id: tenantId,
+      repo: repo,
+      base_branch: baseBranch,
+      issue_title: issue.title,
+      issue_description: issue.description,
+      root_cause: issue.root_cause || '',
+      investigated_files: issue.investigated_files || [],
+      customer_message: issue.customer_message || '',
+    };
+
+    try {
+      const fixResponse = await axios.post(
+        `${agentUrl}/agent/coding/fix-issue`,
+        fixPayload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production',
+            ...(githubToken ? { 'Authorization': `Bearer ${githubToken}` } : {}),
+          },
+          timeout: 180000, // 3 minutes timeout
+        }
+      );
+
+      const fixData = fixResponse.data || {};
+      await query(
+        `UPDATE reported_issues
+         SET status = 'resolved',
+             pr_url = $1,
+             pr_number = $2,
+             fix_branch = $3,
+             fix_summary = $4,
+             resolved_at = NOW(),
+             resolved_by = 'coding_agent',
+             resolution_notes = $5,
+             updated_at = NOW()
+         WHERE id = $6 AND tenant_id = $7`,
+        [
+          fixData.pr_url,
+          fixData.pr_number,
+          fixData.branch,
+          fixData.summary,
+          `Autonomous code fix applied on branch '${fixData.branch}'. Pull Request opened: ${fixData.pr_url}`,
+          id,
+          tenantId
+        ],
+        tenantId
+      );
+
+      return res.json({
+        success: true,
+        message: 'Pull Request opened successfully.',
+        pr_url: fixData.pr_url,
+        pr_number: fixData.pr_number,
+        branch: fixData.branch,
+        summary: fixData.summary,
+      });
+    } catch (agentErr) {
+      console.error(`[FIX-ROUTE ERROR] Coding Agent fix error for issue ${id}:`, agentErr.response?.data || agentErr.message);
+      await query(
+        `UPDATE reported_issues
+         SET status = 'awaiting_review',
+             resolution_notes = $1,
+             updated_at = NOW()
+         WHERE id = $2 AND tenant_id = $3`,
+        [`Fix attempt error: ${agentErr.response?.data?.detail || agentErr.message}`, id, tenantId],
+        tenantId
+      );
+      return res.status(500).json({
+        error: agentErr.response?.data?.detail || agentErr.message || 'Fix execution failed.'
+      });
+    }
+  } catch (error) {
+    console.error('Error triggering fix:', error);
+    res.status(500).json({ error: 'Failed to trigger fix.' });
+  }
+});
+
 module.exports = router;

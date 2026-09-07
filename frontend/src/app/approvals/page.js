@@ -12,6 +12,7 @@ import {
   fetchReportedIssues,
   updateReportedIssue,
   triggerIssueInvestigation,
+  triggerIssueFix,
 } from '@/lib/api';
 
 export default function ApprovalsAndAppointmentsPage() {
@@ -41,6 +42,7 @@ export default function ApprovalsAndAppointmentsPage() {
   const [issuesFeedback, setIssuesFeedback] = useState(null);
   const [expandedIssue, setExpandedIssue] = useState(null);
   const [investigatingIssueId, setInvestigatingIssueId] = useState(null);
+  const [fixingIssueId, setFixingIssueId] = useState(null);
 
   // ── Modal State (Manual Booking) ──
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -222,10 +224,12 @@ export default function ApprovalsAndAppointmentsPage() {
     }
   };
 
-  // Auto-poll when any issue is investigating
+  // Auto-poll when any issue is investigating or fixing
   useEffect(() => {
-    const hasInvestigating = issues.some(i => i.investigation_status === 'investigating' || i.status === 'investigating');
-    if (!hasInvestigating) return;
+    const hasActive = issues.some(
+      i => i.investigation_status === 'investigating' || i.status === 'investigating' || i.status === 'fixing'
+    );
+    if (!hasActive) return;
 
     const interval = setInterval(() => {
       loadIssues();
@@ -254,6 +258,30 @@ export default function ApprovalsAndAppointmentsPage() {
       loadIssues();
     } finally {
       setTimeout(() => setInvestigatingIssueId(null), 1000);
+    }
+  };
+
+  const handleTriggerFix = async (id) => {
+    setFixingIssueId(id);
+    setIssues(prev => prev.map(i => i.id === id ? {
+      ...i,
+      status: 'fixing',
+      resolution_notes: 'Coding Agent is applying code fix and creating Pull Request on GitHub...',
+    } : i));
+
+    try {
+      setIssuesFeedback({ type: 'info', message: 'Coding Agent is generating bug fix and opening Pull Request on GitHub...' });
+      const result = await triggerIssueFix(id);
+      setIssuesFeedback({
+        type: 'success',
+        message: `Pull Request #${result.pr_number || ''} opened successfully on branch '${result.branch}'!`
+      });
+      loadIssues();
+    } catch (err) {
+      setIssuesFeedback({ type: 'error', message: err.message || 'Failed to generate fix and open PR.' });
+      loadIssues();
+    } finally {
+      setFixingIssueId(null);
     }
   };
 
@@ -1079,6 +1107,34 @@ export default function ApprovalsAndAppointmentsPage() {
                             </div>
                           )}
 
+                          {/* GitHub Pull Request Banner */}
+                          {issue.pr_url && (
+                            <div className="mt-2 p-2.5 bg-emerald-950/40 border border-emerald-800/60 rounded-lg flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
+                                  <span className="material-symbols-outlined text-[18px]">call_split</span>
+                                </div>
+                                <div>
+                                  <span className="text-xs font-bold text-emerald-300 block">
+                                    GitHub Pull Request #{issue.pr_number || 'open'} Open
+                                  </span>
+                                  <span className="text-[11px] font-mono text-zinc-400">
+                                    Branch: {issue.fix_branch || 'feature'}
+                                  </span>
+                                </div>
+                              </div>
+                              <a
+                                href={issue.pr_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-md transition-colors flex items-center gap-1 shadow"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                                View PR on GitHub ↗
+                              </a>
+                            </div>
+                          )}
+
                           {/* Actions Bar */}
                           <div className="flex flex-wrap items-center justify-between pt-1 mt-2 border-t border-outline-variant/30 gap-2">
                             <span className="text-xs text-on-surface-variant">
@@ -1086,6 +1142,13 @@ export default function ApprovalsAndAppointmentsPage() {
                             </span>
 
                             <div className="flex items-center gap-2">
+                              <Link
+                                href={`/coding?tab=issues&issueId=${issue.id}`}
+                                className="px-3 py-1 bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 font-label-md text-xs rounded-md border border-blue-700/40 transition-colors flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">code</span> Coding Agent
+                              </Link>
+
                               {issue.approval_id && (
                                 <Link
                                   href="#"
@@ -1106,6 +1169,19 @@ export default function ApprovalsAndAppointmentsPage() {
                                     {investigatingIssueId === issue.id || issue.investigation_status === 'investigating' ? 'sync' : 'precision_manufacturing'}
                                   </span>
                                   {investigatingIssueId === issue.id || issue.investigation_status === 'investigating' ? 'Investigating...' : (issue.investigation_status === 'completed' ? 'Re-investigate' : 'Trigger Investigation')}
+                                </button>
+                              )}
+
+                              {issue.investigation_status === 'completed' && issue.status !== 'resolved' && (
+                                <button
+                                  onClick={() => handleTriggerFix(issue.id)}
+                                  disabled={fixingIssueId === issue.id || issue.status === 'fixing'}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-label-md text-xs rounded-md transition-colors flex items-center gap-1 font-bold disabled:opacity-50 shadow"
+                                >
+                                  <span className={`material-symbols-outlined text-[16px] ${fixingIssueId === issue.id || issue.status === 'fixing' ? 'animate-spin' : ''}`}>
+                                    {fixingIssueId === issue.id || issue.status === 'fixing' ? 'sync' : 'rocket_launch'}
+                                  </span>
+                                  {fixingIssueId === issue.id || issue.status === 'fixing' ? 'Fixing & PR...' : 'Approve & Open PR'}
                                 </button>
                               )}
                               

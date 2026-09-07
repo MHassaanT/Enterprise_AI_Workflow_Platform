@@ -222,4 +222,25 @@ router.post('/investigate-issue', async (req, res) => {
   }
 });
 
+// ── POST /api/v1/coding/fix-issue ── Proxy to Coding Agent for autonomous bug fix & PR
+router.post('/fix-issue', async (req, res) => {
+  try {
+    const headers = await getForwardHeaders(req);
+    const response = await axios.post(
+      `${AGENT_SERVICE_URL}/agent/coding/fix-issue`,
+      req.body,
+      {
+        headers,
+        timeout: 180000, // 3 minute timeout for code editing, commit and PR creation
+      }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Coding Agent fix-issue proxy error:', err.response?.data || err.message);
+    return res.status(err.response?.status || 500).json({
+      error: err.response?.data?.detail || err.message || 'Fix execution failed'
+    });
+  }
+});
+
 module.exports = router;

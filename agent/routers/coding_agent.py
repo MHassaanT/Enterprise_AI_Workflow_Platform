@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from services import github_service
 from graph.coding.graph import coding_agent_graph
+from graph.coding.issue_fixer import run_issue_fixer
 
 router = APIRouter()
 
@@ -166,6 +167,51 @@ async def investigate_issue(req: InvestigateIssueRequest, authorization: Optiona
     except Exception as e:
         print(f"[INVESTIGATE-ISSUE] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class FixIssueRequest(BaseModel):
+    issue_id: str
+    tenant_id: str
+    repo: str
+    base_branch: str = "main"
+    issue_title: str
+    issue_description: str
+    root_cause: Optional[str] = None
+    investigated_files: Optional[List[Any]] = None
+    customer_message: Optional[str] = ""
+
+
+@router.post("/fix-issue")
+async def fix_issue_endpoint(req: FixIssueRequest, authorization: Optional[str] = Header(None)):
+    """Trigger the Coding Agent to create a fix branch, generate bug fixes, commit them, and open a GitHub PR."""
+    token = authorization.replace("Bearer ", "") if authorization and authorization.startswith("Bearer ") else None
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
+    try:
+        result = await run_issue_fixer(
+            issue_id=req.issue_id,
+            tenant_id=req.tenant_id,
+            repo=req.repo,
+            base_branch=req.base_branch,
+            issue_title=req.issue_title,
+            issue_description=req.issue_description,
+            root_cause=req.root_cause,
+            investigated_files=req.investigated_files,
+            customer_message=req.customer_message,
+            token=token,
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Fix execution failed"))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[FIX-ISSUE] Uncaught error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/chat")
 async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(None)):

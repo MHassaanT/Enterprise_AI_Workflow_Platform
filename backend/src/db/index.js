@@ -64,6 +64,10 @@ pool.connect((err, client, release) => {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );`),
+      client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS pr_url VARCHAR(500);'),
+      client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS pr_number INT;'),
+      client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS fix_branch VARCHAR(255);'),
+      client.query('ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS fix_summary TEXT;'),
       client.query(`CREATE TABLE IF NOT EXISTS reported_issues (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -82,6 +86,10 @@ pool.connect((err, client, release) => {
         approval_id UUID REFERENCES approval_requests(id) ON DELETE SET NULL,
         show_in_widget BOOLEAN DEFAULT false,
         status VARCHAR(50) DEFAULT 'open',
+        pr_url VARCHAR(500),
+        pr_number INT,
+        fix_branch VARCHAR(255),
+        fix_summary TEXT,
         resolved_at TIMESTAMPTZ,
         resolved_by VARCHAR(255),
         resolution_notes TEXT,

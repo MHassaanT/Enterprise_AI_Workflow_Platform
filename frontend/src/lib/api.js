@@ -1211,3 +1211,18 @@ export async function triggerIssueInvestigation(id, data = {}) {
   }
   return res.json();
 }
+
+export async function triggerIssueFix(id, data = {}) {
+  const res = await fetch(`/api/reported-issues/${id}/fix`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(data),
+  });
+  handleUnauthorized(res);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to generate fix and open PR');
+  }
+  return res.json();
+}
+
