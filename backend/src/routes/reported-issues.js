@@ -235,6 +235,21 @@ router.post('/:id/investigate', async (req, res) => {
       });
     }
 
+    // Immediately update issue: mark investigating, store repo/branch, and clear old findings
+    await query(
+      `UPDATE reported_issues
+       SET status = 'investigating',
+           investigation_status = 'investigating',
+           investigation_repo = $1,
+           investigation_branch = $2,
+           investigation_findings = 'Autonomous codebase investigation in progress. Inspecting repository structure and analyzing root cause...',
+           root_cause = NULL,
+           updated_at = NOW()
+       WHERE id = $3 AND tenant_id = $4`,
+      [repo, baseBranch, id, tenantId],
+      tenantId
+    );
+
     // Call the Coding Agent to investigate (asynchronously)
     const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
     const investigatePayload = {
@@ -258,19 +273,82 @@ router.post('/:id/investigate', async (req, res) => {
         },
         timeout: 120000,
       }
-    ).then((agentRes) => {
-      console.log(`[INVESTIGATE] Coding Agent investigation completed for issue ${id}:`, agentRes.data?.status);
-    }).catch((agentErr) => {
-      console.error(`[INVESTIGATE] Coding Agent investigation error for issue ${id}:`, agentErr.response?.data || agentErr.message);
-    });
+    ).then(async (agentRes) => {
+      const data = agentRes.data || {};
+      const findings = data.investigation_findings || null;
+      const rootCause = data.root_cause || null;
+      const investigatedFiles = data.investigated_files || [];
+      let approvalId = data.approval_id || null;
 
-    // Update issue status to investigating
-    await query(
-      `UPDATE reported_issues SET status = 'investigating', investigation_status = 'investigating', updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
-      tenantId
-    );
+      // Fallback: If approval was not created by agent, backend creates the approval right here!
+      if (!approvalId && rootCause) {
+        try {
+          const appRes = await query(
+            `INSERT INTO approval_requests (tenant_id, action_type, action_payload)
+             VALUES ($1, $2, $3) RETURNING id`,
+            [
+              tenantId,
+              'issue_investigation_review',
+              JSON.stringify({
+                issue_id: id,
+                issue_title: issue.title,
+                issue_description: issue.description,
+                customer_message: issue.customer_message,
+                investigation_repo: repo,
+                investigation_branch: baseBranch,
+                root_cause: rootCause,
+                investigation_findings: findings,
+                investigated_files: investigatedFiles,
+              })
+            ],
+            tenantId
+          );
+          if (appRes.rows[0]) {
+            approvalId = appRes.rows[0].id;
+          }
+        } catch (appErr) {
+          console.error('[INVESTIGATE] Error creating approval fallback:', appErr.message);
+        }
+      }
+
+      await query(
+        `UPDATE reported_issues
+         SET investigation_status = 'completed',
+             status = 'awaiting_review',
+             investigation_repo = $1,
+             investigation_branch = $2,
+             investigation_findings = $3,
+             root_cause = $4,
+             investigated_files = $5,
+             approval_id = COALESCE($6, approval_id),
+             updated_at = NOW()
+         WHERE id = $7 AND tenant_id = $8`,
+        [
+          repo,
+          baseBranch,
+          findings || 'Autonomous code investigation completed.',
+          rootCause || 'Analysis completed.',
+          JSON.stringify(investigatedFiles),
+          approvalId,
+          id,
+          tenantId
+        ],
+        tenantId
+      );
+      console.log(`[INVESTIGATE] Coding Agent investigation saved for issue ${id}`);
+    }).catch(async (agentErr) => {
+      console.error(`[INVESTIGATE] Coding Agent investigation error for issue ${id}:`, agentErr.response?.data || agentErr.message);
+      await query(
+        `UPDATE reported_issues
+         SET investigation_status = 'failed',
+             investigation_findings = $1,
+             status = 'awaiting_review',
+             updated_at = NOW()
+         WHERE id = $2 AND tenant_id = $3`,
+        [`Investigation error: ${agentErr.response?.data?.detail || agentErr.message}`, id, tenantId],
+        tenantId
+      );
+    });
 
     res.json({ success: true, message: 'Investigation triggered. The Coding Agent is analyzing the issue.', repo });
   } catch (error) {

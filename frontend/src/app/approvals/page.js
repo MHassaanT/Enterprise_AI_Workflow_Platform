@@ -40,6 +40,7 @@ export default function ApprovalsAndAppointmentsPage() {
   const [issueSearch, setIssueSearch] = useState('');
   const [issuesFeedback, setIssuesFeedback] = useState(null);
   const [expandedIssue, setExpandedIssue] = useState(null);
+  const [investigatingIssueId, setInvestigatingIssueId] = useState(null);
 
   // ── Modal State (Manual Booking) ──
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -221,15 +222,38 @@ export default function ApprovalsAndAppointmentsPage() {
     }
   };
 
+  // Auto-poll when any issue is investigating
+  useEffect(() => {
+    const hasInvestigating = issues.some(i => i.investigation_status === 'investigating' || i.status === 'investigating');
+    if (!hasInvestigating) return;
+
+    const interval = setInterval(() => {
+      loadIssues();
+      loadApprovals();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [issues]);
+
   const handleTriggerInvestigation = async (id) => {
+    setInvestigatingIssueId(id);
+    // Immediately clear old findings and show in-progress status in local state
+    setIssues(prev => prev.map(i => i.id === id ? {
+      ...i,
+      status: 'investigating',
+      investigation_status: 'investigating',
+      investigation_findings: 'Autonomous codebase investigation in progress. Inspecting repository structure and analyzing root cause...',
+    } : i));
     try {
       setIssuesFeedback({ type: 'info', message: 'Triggering investigation...' });
       await triggerIssueInvestigation(id);
-      setIssuesFeedback({ type: 'success', message: 'Investigation triggered. The Coding Agent is analyzing the issue.' });
+      setIssuesFeedback({ type: 'success', message: 'Investigation started. The Coding Agent is analyzing the codebase.' });
       loadIssues();
-      setTimeout(() => setIssuesFeedback(null), 5000);
     } catch (err) {
       setIssuesFeedback({ type: 'error', message: err.message });
+      loadIssues();
+    } finally {
+      setTimeout(() => setInvestigatingIssueId(null), 1000);
     }
   };
 
@@ -1072,12 +1096,16 @@ export default function ApprovalsAndAppointmentsPage() {
                                 </Link>
                               )}
                               
-                              {['pending', 'skipped'].includes(issue.investigation_status) && (
+                              {issue.status !== 'resolved' && issue.status !== 'dismissed' && (
                                 <button
                                   onClick={() => handleTriggerInvestigation(issue.id)}
-                                  className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 font-label-md text-xs rounded-md transition-colors flex items-center gap-1"
+                                  disabled={investigatingIssueId === issue.id || issue.investigation_status === 'investigating'}
+                                  className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 font-label-md text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
                                 >
-                                  <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span> Trigger Investigation
+                                  <span className={`material-symbols-outlined text-[16px] ${investigatingIssueId === issue.id || issue.investigation_status === 'investigating' ? 'animate-spin' : ''}`}>
+                                    {investigatingIssueId === issue.id || issue.investigation_status === 'investigating' ? 'sync' : 'precision_manufacturing'}
+                                  </span>
+                                  {investigatingIssueId === issue.id || issue.investigation_status === 'investigating' ? 'Investigating...' : (issue.investigation_status === 'completed' ? 'Re-investigate' : 'Trigger Investigation')}
                                 </button>
                               )}
                               
