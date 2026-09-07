@@ -1198,10 +1198,11 @@ export async function updateReportedIssue(id, data) {
   return res.json();
 }
 
-export async function triggerIssueInvestigation(id) {
+export async function triggerIssueInvestigation(id, data = {}) {
   const res = await fetch(`/api/reported-issues/${id}/investigate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    body: JSON.stringify(data),
   });
   handleUnauthorized(res);
   if (!res.ok) {

@@ -2087,17 +2087,16 @@ router.post('/reported-issues', async (req, res) => {
     );
 
     // Auto-trigger Coding Agent investigation
-    const http = require('http');
-    const https = require('https');
+    const axios = require('axios');
     const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
 
     const { getGithubTokenForTenant, getGithubRepoForTenant } = require('../services/githubCredentials');
     const githubToken = await getGithubTokenForTenant(tenantId);
-    const repo = await getGithubRepoForTenant(tenantId);
+    const repo = req.body.repo || await getGithubRepoForTenant(tenantId, githubToken);
 
     // If repo is available, trigger coding agent investigation asynchronously
     if (repo) {
-      const investigatePayload = JSON.stringify({
+      const investigatePayload = {
         issue_id: issueId,
         tenant_id: tenantId,
         repo,
@@ -2105,36 +2104,24 @@ router.post('/reported-issues', async (req, res) => {
         issue_title: title,
         issue_description: description,
         issue_customer_message: customerMessage || '',
+      };
+
+      axios.post(
+        `${agentUrl}/agent/coding/investigate-issue`,
+        investigatePayload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production',
+            ...(githubToken ? { 'Authorization': `Bearer ${githubToken}` } : {}),
+          },
+          timeout: 120000,
+        }
+      ).then((agentRes) => {
+        console.log(`[REPORTED-ISSUES] Coding Agent investigation completed for issue ${issueId}:`, agentRes.data?.status);
+      }).catch((agentErr) => {
+        console.error(`[REPORTED-ISSUES] Coding Agent investigation error for issue ${issueId}:`, agentErr.response?.data || agentErr.message);
       });
-
-      const url = new URL(`${agentUrl}/agent/coding/investigate-issue`);
-      const transport = url.protocol === 'https:' ? https : http;
-
-      const agentReq = transport.request({
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(investigatePayload),
-          'X-Internal-Token': process.env.INTERNAL_SERVICE_TOKEN || '',
-          ...(githubToken ? { 'Authorization': `Bearer ${githubToken}` } : {}),
-        },
-      }, (agentRes) => {
-        let data = '';
-        agentRes.on('data', (chunk) => (data += chunk));
-        agentRes.on('end', () => {
-          console.log(`[REPORTED-ISSUES] Coding Agent investigation triggered for issue ${issueId}:`, data);
-        });
-      });
-
-      agentReq.on('error', (err) => {
-        console.error(`[REPORTED-ISSUES] Error triggering Coding Agent for issue ${issueId}:`, err);
-      });
-
-      agentReq.write(investigatePayload);
-      agentReq.end();
 
       // Mark as investigating
       await query(

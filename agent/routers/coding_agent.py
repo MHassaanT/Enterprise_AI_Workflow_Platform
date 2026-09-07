@@ -10,6 +10,7 @@ FastAPI endpoints for the Coding Agent domain:
 - Run LangGraph Coding Agent chat flow
 """
 
+import os
 from fastapi import APIRouter, HTTPException, Query, Header
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -119,11 +120,24 @@ class InvestigateIssueRequest(BaseModel):
 async def investigate_issue(req: InvestigateIssueRequest, authorization: Optional[str] = Header(None)):
     """Trigger the Coding Agent to investigate a customer-reported issue."""
     token = authorization.replace("Bearer ", "") if authorization and authorization.startswith("Bearer ") else None
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
+    repo = req.repo
+    if not repo or repo in ["None", "null", "undefined", ""]:
+        try:
+            repos = await github_service.list_repositories(token)
+            if repos and len(repos) > 0:
+                repo = repos[0]["full_name"]
+                print(f"[INVESTIGATE-ISSUE] Auto-resolved repo to: {repo}")
+        except Exception as e:
+            print(f"[INVESTIGATE-ISSUE] Could not auto-resolve repo: {e}")
+
     try:
         config = {"configurable": {"thread_id": f"investigate-{req.issue_id}"}}
         initial_state = {
             "messages": [{"role": "user", "content": f"Investigate issue: {req.issue_title}\n\n{req.issue_description}"}],
-            "repo": req.repo,
+            "repo": repo or "octocat/Hello-World",
             "base_branch": req.base_branch,
             "working_branch": "",
             "plan_mode": False,

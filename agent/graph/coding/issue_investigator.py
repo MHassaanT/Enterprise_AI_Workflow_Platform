@@ -42,7 +42,16 @@ async def issue_investigator_node(state: CodingAgentState) -> Dict[str, Any]:
         print(f"[ISSUE INVESTIGATOR] Error updating issue status: {e}")
     
     # Step 1: Check for connected repository
-    if not repo:
+    if not repo or repo in ["None", "null", "undefined", ""]:
+        try:
+            repos = await github_service.list_repositories(token)
+            if repos and len(repos) > 0:
+                repo = repos[0]["full_name"]
+                print(f"[ISSUE INVESTIGATOR] Auto-resolved repo from token: {repo}")
+        except Exception as e:
+            print(f"[ISSUE INVESTIGATOR] Could not auto-resolve repo from token: {e}")
+
+    if not repo or repo in ["None", "null", "undefined", ""]:
         print(f"[ISSUE INVESTIGATOR] No connected repository for tenant={tenant_id}. Performing conceptual analysis.")
         llm = get_llm()
         conceptual_prompt = (

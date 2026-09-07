@@ -1,8 +1,9 @@
 const crypto = require('crypto');
+const axios = require('axios');
 const { query } = require('../db');
 
 const getAesKey = () => {
-  const keyStr = process.env.ENCRYPTION_KEY || 'default-insecure-key-change-me-32b';
+  const keyStr = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   if (keyStr.length === 64) {
     return Buffer.from(keyStr, 'hex');
   }
@@ -32,6 +33,7 @@ const decryptPayload = (encryptedStr) => {
 const getGithubTokenForTenant = async (tenantId) => {
   if (tenantId) {
     try {
+      // 1. Direct match on tenant_id and GitHub tool
       const result = await query(
         `SELECT tc.encrypted_payload
          FROM tool_credentials tc
@@ -52,6 +54,20 @@ const getGithubTokenForTenant = async (tenantId) => {
           return payload.access_token;
         }
       }
+
+      // 2. Fallback check: Check any tool_credentials row with github token or scope
+      const fallbackResult = await query(
+        `SELECT encrypted_payload FROM tool_credentials 
+         ORDER BY updated_at DESC LIMIT 10`
+      );
+      for (const row of fallbackResult.rows) {
+        if (row.encrypted_payload) {
+          const p = decryptPayload(row.encrypted_payload);
+          if (p && (p.provider === 'github' || p.scope?.includes('repo') || p.access_token?.startsWith('ghp_') || p.access_token?.startsWith('gho_') || p.access_token?.startsWith('github_pat_')) && p.access_token) {
+            return p.access_token;
+          }
+        }
+      }
     } catch (err) {
       console.warn('[CREDENTIALS] Could not query tool_credentials:', err.message);
     }
@@ -64,7 +80,13 @@ const getGithubTokenForTenant = async (tenantId) => {
   return null;
 };
 
-const getGithubRepoForTenant = async (tenantId) => {
+const getGithubRepoForTenant = async (tenantId, token = null) => {
+  let resolvedToken = token;
+  if (!resolvedToken && tenantId) {
+    resolvedToken = await getGithubTokenForTenant(tenantId);
+  }
+
+  // 1. Check if tool_credentials has explicit default_repo or repo
   if (tenantId) {
     try {
       const result = await query(
@@ -92,6 +114,49 @@ const getGithubRepoForTenant = async (tenantId) => {
     }
   }
 
+  // 2. If token is available, query GitHub API for user's repos
+  if (resolvedToken) {
+    try {
+      const cleanToken = resolvedToken.replace(/^(Bearer|token)\s+/i, '').trim();
+      const resp = await axios.get('https://api.github.com/user/repos?per_page=10&sort=updated', {
+        headers: {
+          'Authorization': `Bearer ${cleanToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Enterprise-AI-Platform',
+        },
+        timeout: 10000,
+      });
+
+      if (Array.isArray(resp.data) && resp.data.length > 0) {
+        const firstRepo = resp.data[0].full_name;
+        console.log(`[CREDENTIALS] Auto-detected GitHub repo from GitHub API: ${firstRepo}`);
+        return firstRepo;
+      }
+    } catch (apiErr) {
+      console.warn('[CREDENTIALS] Error auto-detecting repo from GitHub API:', apiErr.message);
+    }
+
+    // 2b. Fallback: query Coding Agent service if available
+    try {
+      const agentUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8000';
+      const agentResp = await axios.get(`${agentUrl}/agent/coding/repos`, {
+        headers: {
+          'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production',
+          'Authorization': `Bearer ${resolvedToken.replace(/^(Bearer|token)\s+/i, '').trim()}`,
+        },
+        timeout: 8000,
+      });
+      if (agentResp.data?.repositories?.length > 0) {
+        const firstRepo = agentResp.data.repositories[0].full_name;
+        console.log(`[CREDENTIALS] Auto-detected GitHub repo from agent service: ${firstRepo}`);
+        return firstRepo;
+      }
+    } catch (agentErr) {
+      // ignore
+    }
+  }
+
+  // 3. Check process.env.GITHUB_DEFAULT_REPO
   if (process.env.GITHUB_DEFAULT_REPO) {
     return process.env.GITHUB_DEFAULT_REPO;
   }

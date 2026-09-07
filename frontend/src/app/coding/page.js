@@ -61,14 +61,20 @@ export default function CodingAgentPage() {
   const handleInvestigateFlaggedIssue = async (issue) => {
     setInvestigatingIssueId(issue.id);
     try {
-      await triggerIssueInvestigation(issue.id);
+      const repoToUse = selectedRepo || (repositories.length > 0 ? repositories[0].full_name : undefined);
+      const branchToUse = baseBranch || (repositories.length > 0 ? repositories[0].default_branch : 'main');
+
+      await triggerIssueInvestigation(issue.id, {
+        repo: repoToUse,
+        base_branch: branchToUse,
+      });
       await loadFlaggedIssues();
       setMessages(prev => [
         ...prev,
         {
           id: Date.now(),
           role: 'assistant',
-          content: `🔍 Autonomous codebase investigation started for issue: "${issue.title}". Inspecting repo tree, reading candidate files, and analyzing root causes. A human approval request will be submitted upon completion.`,
+          content: `🔍 Autonomous codebase investigation started for issue: "${issue.title}"${repoToUse ? ` in repository ${repoToUse}` : ''}. Inspecting repo tree, reading candidate files, and analyzing root causes. A human approval request will be submitted upon completion.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
