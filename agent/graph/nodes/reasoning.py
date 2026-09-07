@@ -245,21 +245,27 @@ async def reasoning_node(state: AgentState) -> dict:
         'out of context', "i don't have information", "i couldn't find",
         'unable to find', 'no information available', "i don't have access to",
         'not in my knowledge', 'beyond my current', 'no relevant information',
-        'i apologize, but i', 'unfortunately, i don\'t have',
+        'i apologize, but i', "unfortunately, i don't have", 'unfortunately',
+        'escalat', 'human support', 'human agent', 'support agent', 'support team',
+        'technical team', 'cannot resolve', 'unable to resolve', 'cannot fix',
+        'unable to fix', 'cannot assist with this error', 'unable to assist',
+        'escalating now', 'hold on for a moment', 'contact support',
     ]
     issue_indicators = [
         'not working', 'error', 'bug', 'broken', 'issue', 'problem',
         'crash', 'fail', 'wrong', 'complaint', 'glitch', 'down',
         'malfunction', 'defect', 'stuck', 'freeze', 'slow', 'unresponsive',
+        'giving an error', 'trying for so long', 'cannot book', "can't book",
+        'failed', 'failing', 'not loading',
     ]
     
     response_lower = response_text.lower()
     cant_help = any(ind in response_lower for ind in cant_help_indicators)
     is_issue_report = any(ind in question for ind in issue_indicators)
-    # An issue is unresolvable only when:
+    # An issue is unresolvable when:
     # 1. The user was asking about or reporting an issue/problem/bug
-    # 2. The agent checked KB and tools/database and was unable to find info to satisfy the user
-    has_unresolvable = cant_help and is_issue_report
+    # 2. The agent checked KB/DB and was unable to find info or explicitly escalated to human/support
+    has_unresolvable = (cant_help or (len(context) == 0 and any(w in response_lower for w in ['sorry', 'apologize', 'cannot', 'unable', 'escalat']))) and is_issue_report
     
     flagged = None
     if has_unresolvable:

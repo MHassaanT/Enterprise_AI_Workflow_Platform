@@ -64,8 +64,35 @@ pool.connect((err, client, release) => {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );`),
+      client.query(`CREATE TABLE IF NOT EXISTS reported_issues (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        conversation_id VARCHAR(255),
+        title VARCHAR(500) NOT NULL,
+        description TEXT NOT NULL,
+        customer_message TEXT,
+        category VARCHAR(100) DEFAULT 'unknown',
+        severity VARCHAR(50) DEFAULT 'medium',
+        investigation_status VARCHAR(50) DEFAULT 'pending',
+        investigation_repo VARCHAR(255),
+        investigation_branch VARCHAR(255),
+        investigation_findings TEXT,
+        investigated_files JSONB DEFAULT '[]'::jsonb,
+        root_cause TEXT,
+        approval_id UUID REFERENCES approval_requests(id) ON DELETE SET NULL,
+        show_in_widget BOOLEAN DEFAULT false,
+        status VARCHAR(50) DEFAULT 'open',
+        resolved_at TIMESTAMPTZ,
+        resolved_by VARCHAR(255),
+        resolution_notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );`),
+      client.query(`CREATE INDEX IF NOT EXISTS idx_reported_issues_tenant_status ON reported_issues(tenant_id, status);`),
+      client.query(`CREATE INDEX IF NOT EXISTS idx_reported_issues_created ON reported_issues(tenant_id, created_at DESC);`),
+      client.query(`CREATE INDEX IF NOT EXISTS idx_reported_issues_widget ON reported_issues(tenant_id, show_in_widget) WHERE show_in_widget = true;`),
     ])
-      .then(() => console.log('✅ HR, SafePay, Onboarding & Appointments database tables verified'))
+      .then(() => console.log('✅ HR, SafePay, Onboarding, Appointments & Reported Issues database tables verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }
