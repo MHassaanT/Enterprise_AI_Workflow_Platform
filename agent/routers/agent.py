@@ -1,9 +1,3 @@
-"""
-Agent Router — POST /agent/run & POST /agent/resume
-
-Called internally by the Node.js API Gateway. Never exposed publicly.
-Authenticated via X-Internal-Token header (shared secret).
-"""
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
@@ -50,10 +44,8 @@ async def run_agent(
     if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
-    # Fetch dynamic tenant context (entities, agent config, company info)
     tenant_context = await get_tenant_agent_context(request.tenant_id)
 
-    # Reconstruct conversation history memory from past turns, filtering out previous fallback refusal loops
     messages_list = []
     if request.history:
         for msg in request.history:
@@ -62,8 +54,6 @@ async def run_agent(
             if role == "user":
                 messages_list.append(HumanMessage(content=text))
             elif role == "assistant":
-                # Skip legacy refusal / fallback messages from previous failed attempts
-                # to prevent the LLM from seeing past refusals and reinforcing them
                 _lower = text.lower()
                 REFUSAL_PATTERNS = [
                     "cannot assist with", "unable to process your request",
@@ -78,7 +68,6 @@ async def run_agent(
                     continue
                 messages_list.append(AIMessage(content=text))
 
-    # Append current question if not already the last message
     if not messages_list or getattr(messages_list[-1], "content", "") != request.question:
         messages_list.append(HumanMessage(content=request.question))
 
@@ -105,7 +94,6 @@ async def run_agent(
 
     config = {"configurable": {"thread_id": request.conversation_id}}
 
-    # Check if there is an active pending approval for this thread
     existing_state = None
     try:
         existing_state = await customer_support_graph.aget_state(config)
@@ -118,11 +106,6 @@ async def run_agent(
         and existing_state.values.get("approval_status") == "pending"
     )
 
-    # If this is a normal turn (not waiting on reviewer approval), clear stale
-    # in-memory checkpointer history for this thread. The Node.js gateway provides
-    # the authoritative PostgreSQL history via request.history. This prevents
-    # checkpointer memory from compounding messages across turns and accumulating
-    # stale or unfulfilled tool calls.
     if not is_pending_approval and graph_memory:
         try:
             if hasattr(graph_memory, "storage") and isinstance(graph_memory.storage, dict):
@@ -148,11 +131,9 @@ async def run_agent(
         if final_state.get("approval_status") == "pending":
             answer = final_state["messages"][-1].content
         else:
-            # Extract last AI message as the answer
             ai_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "ai"]
             answer = ai_msgs[-1].content if ai_msgs else "Unable to process your request."
 
-        # Determine which tool was used (if any)
         tool_msgs = [m for m in final_state["messages"] if getattr(m, "type", "") == "tool"]
         tool_used = tool_msgs[-1].tool_call_id if tool_msgs else None
 
@@ -174,7 +155,6 @@ async def run_agent(
         )
         citations = []
 
-        # Safe fallback: attempt clean LLM completion using retrieved RAG context without tools
         try:
             from services.rag_client import query_rag
             from services.llm_gateway import get_llm
@@ -239,7 +219,6 @@ async def resume_agent(
             "tenant_context": existing_values.get("tenant_context", {}),
         }
 
-        # Generic notification — no hardcoded refund/Gmail logic
         if request.decision == "rejected":
             notification = (
                 f"SYSTEM NOTIFICATION: Action (Ref: {request.approval_id}) was REJECTED by human reviewer. "
