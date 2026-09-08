@@ -1,8 +1,3 @@
-"""
-DB client — thin HTTP wrappers for Node.js internal routes.
-The agent service never touches Postgres directly; all writes go through
-the Node.js backend to keep tenant isolation logic in one place.
-"""
 import httpx
 from config import settings
 
@@ -10,10 +5,6 @@ _HEADERS = lambda: {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
 
 
 async def get_agent_tool_bindings(agent_instance_id: str) -> dict:
-    """
-    Fetches authorized tool bindings & MCP configs for the given agent instance.
-    Returns: {"tools": [...], "is_default_fallback": bool}
-    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -34,9 +25,6 @@ async def get_agent_tool_bindings(agent_instance_id: str) -> dict:
         }
 
 async def get_tenant_tool_bindings(tenant_id: str) -> dict:
-    """
-    Fetches all authorized tools for a tenant, bypassing agent-specific bindings.
-    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -58,10 +46,6 @@ async def get_tenant_tool_bindings(tenant_id: str) -> dict:
 
 
 async def create_approval_request(payload: dict) -> str:
-    """
-    Creates a pending ApprovalRequest record in Postgres.
-    Returns the new approval UUID.
-    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
@@ -77,10 +61,6 @@ async def create_approval_request(payload: dict) -> str:
 
 
 async def write_audit_log(tenant_id: str, event_type: str, payload: dict) -> None:
-    """
-    Appends an entry to the audit_logs table.
-    Fire-and-forget — errors are logged but do not interrupt the agent flow.
-    """
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.post(
@@ -93,10 +73,6 @@ async def write_audit_log(tenant_id: str, event_type: str, payload: dict) -> Non
 
 
 async def execute_db_query(sql: str, params: list = None, tenant_id: str = None) -> dict:
-    """
-    Executes a SQL query via the internal Node.js backend route /internal/db/query.
-    Returns {"rows": [...], "rowCount": int}
-    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
@@ -116,10 +92,6 @@ async def execute_db_query(sql: str, params: list = None, tenant_id: str = None)
 
 
 async def get_tenant_company_context(tenant_id: str) -> dict:
-    """
-    Fetches tenant company details & sender metadata for agent email context.
-    Returns: {"company_name", "description", "website", "industry", "sender_name", "sender_role", "sender_email"}
-    """
     if not tenant_id:
         return {
             "company_name": "Enterprise Client",
@@ -152,11 +124,6 @@ async def get_tenant_company_context(tenant_id: str) -> dict:
 
 
 async def create_reported_issue(payload: dict) -> str:
-    """
-    Creates a reported issue via POST /internal/reported-issues.
-    Called by the Customer Support Agent's issue_flagger node.
-    Returns the new issue UUID.
-    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
@@ -172,10 +139,6 @@ async def create_reported_issue(payload: dict) -> str:
 
 
 async def get_pending_issues(tenant_id: str) -> list:
-    """
-    Fetches issues pending investigation via GET /internal/reported-issues/pending.
-    Called by the Coding Agent to discover new issues to investigate.
-    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
@@ -191,10 +154,6 @@ async def get_pending_issues(tenant_id: str) -> list:
 
 
 async def update_issue_investigation(issue_id: str, payload: dict) -> None:
-    """
-    Updates investigation results via PATCH /internal/reported-issues/:id/investigation.
-    Called by the Coding Agent after completing its investigation.
-    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.patch(
@@ -206,3 +165,18 @@ async def update_issue_investigation(issue_id: str, payload: dict) -> None:
     except Exception as e:
         print(f"[REPORTED ISSUE ERROR] Failed to update issue investigation: {e}")
         raise e
+
+
+async def book_ride(tenant_id: str, ride_details: dict) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{settings.BACKEND_URL}/internal/rides/book",
+                json={"tenantId": tenant_id, "rideDetails": ride_details},
+                headers=_HEADERS(),
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print(f"[RIDE BOOKING ERROR] Failed to book ride: {e}")
+        return {"error": str(e)}
