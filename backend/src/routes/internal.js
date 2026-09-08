@@ -2440,7 +2440,7 @@ router.post('/whatsapp/send', async (req, res) => {
   }
 
   try {
-    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const { getWhatsAppManager } = require('../mcp/whatsapp');
     const manager = getWhatsAppManager();
 
     if (mediaUrl) {
@@ -2470,7 +2470,7 @@ router.get('/whatsapp/status/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
 
   try {
-    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const { getWhatsAppManager } = require('../mcp/whatsapp');
     const manager = getWhatsAppManager();
     const status = await manager.getStatus(tenantId);
     res.json(status);
@@ -2494,7 +2494,7 @@ router.post('/whatsapp/check', async (req, res) => {
   }
 
   try {
-    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const { getWhatsAppManager } = require('../mcp/whatsapp');
     const manager = getWhatsAppManager();
     const results = await manager.checkOnWhatsApp(tenantId, targets);
     res.json({ results });

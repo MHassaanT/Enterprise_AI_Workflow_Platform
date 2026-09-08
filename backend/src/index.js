@@ -31,7 +31,7 @@ const entitiesRoutes = require('./routes/entities');
 const appointmentRoutes = require('./routes/appointments');
 const reportedIssuesRoutes = require('./routes/reported-issues');
 const whatsappRoutes = require('./routes/whatsapp');
-const { getWhatsAppManager } = require('../../mcp/whatsapp');
+const { getWhatsAppManager } = require('./mcp/whatsapp');
 
 const { authenticate } = require('./middleware/auth');
 const { requirePlanAccess } = require('./middleware/subscriptionGuard');

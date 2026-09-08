@@ -10,7 +10,7 @@ The integration utilizes the **Baileys library (`@whiskeysockets/baileys`)** emb
 
 ## 1. Architectural Overview & System Topology
 
-The WhatsApp MCP Channel is embedded directly into the Node.js backend (`backend/`) under the dedicated module `mcp/whatsapp/`. This architecture eliminates inter-container network latency, shares the existing PostgreSQL connection pool and Redis clients, and allows long-lived WhatsApp Web WebSockets to run seamlessly alongside platform APIs.
+The WhatsApp MCP Channel is embedded directly into the Node.js backend under `backend/src/mcp/whatsapp/` (with `mcp/whatsapp/` retained as a re-export bridge). This architecture guarantees seamless deployment within containerized environments (Docker/Railway/Koyeb) where only the `backend/` directory is packaged, eliminates inter-container network latency, shares the existing PostgreSQL connection pool and Redis clients, and allows long-lived WhatsApp Web WebSockets to run smoothly alongside platform APIs.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

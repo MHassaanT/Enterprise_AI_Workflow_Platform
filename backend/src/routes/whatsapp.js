@@ -5,7 +5,7 @@ const { createClient } = require('redis');
 const { query } = require('../db');
 const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
-const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+const { getWhatsAppManager } = require('../mcp/whatsapp');
 
 /**
  * Middleware supporting token authentication via query parameter ?token=...
