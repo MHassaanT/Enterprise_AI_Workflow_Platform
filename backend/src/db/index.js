@@ -155,8 +155,21 @@ pool.connect((err, client, release) => {
           provider_type = EXCLUDED.provider_type,
           is_high_risk = EXCLUDED.is_high_risk,
           schema_json = EXCLUDED.schema_json;`),
+      client.query(`ALTER TABLE tenant_email_otps ALTER COLUMN email DROP NOT NULL;`),
+      client.query(`ALTER TABLE tenant_email_otps ADD COLUMN IF NOT EXISTS phone VARCHAR(50);`),
+      client.query(`ALTER TABLE tenant_email_otps ADD COLUMN IF NOT EXISTS channel VARCHAR(20) DEFAULT 'email';`),
+      client.query(`CREATE INDEX IF NOT EXISTS idx_tenant_email_otps_phone ON tenant_email_otps(tenant_id, phone, verified);`),
+      client.query(`ALTER TABLE tenant_email_otps DROP CONSTRAINT IF EXISTS chk_tenant_otps_identifier;`),
+      client.query(`ALTER TABLE tenant_email_otps ADD CONSTRAINT chk_tenant_otps_identifier CHECK (email IS NOT NULL OR phone IS NOT NULL);`),
+      client.query(`INSERT INTO tool_registry (canonical_name, display_name, provider_type, is_high_risk, schema_json)
+        VALUES
+          ('authenticate_user', 'User OTP Authentication (Email & WhatsApp)', 'builtin', false, '{"type":"object","properties":{"email":{"type":"string"},"phone":{"type":"string"},"action":{"type":"string","enum":["send_otp","verify_otp"]},"otp_code":{"type":"string"}},"required":["action"]}'::jsonb)
+        ON CONFLICT (canonical_name) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          provider_type = EXCLUDED.provider_type,
+          schema_json = EXCLUDED.schema_json;`),
     ])
-      .then(() => console.log('✅ HR, SafePay, Onboarding, Appointments, Reported Issues & WhatsApp database tables verified'))
+      .then(() => console.log('✅ HR, SafePay, Onboarding, Appointments, Reported Issues, WhatsApp & OTP database tables verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }
