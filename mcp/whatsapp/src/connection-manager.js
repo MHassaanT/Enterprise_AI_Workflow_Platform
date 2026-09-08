@@ -449,6 +449,35 @@ class WhatsAppConnectionManager {
   }
 
   /**
+   * Checks if one or more phone numbers are registered on WhatsApp using Baileys onWhatsApp()
+   *
+   * @param {string} tenantId - Tenant UUID
+   * @param {string|string[]} phoneNumbers - One or more phone numbers to check
+   * @returns {Promise<Array<{ exists: boolean, jid: string }>>}
+   */
+  async checkOnWhatsApp(tenantId, ...phoneNumbers) {
+    const session = this.sessions.get(tenantId);
+    if (!session || session.status !== 'connected' || !session.sock) {
+      throw new Error(`Tenant '${tenantId}' does not have an active connected WhatsApp session. Connect first.`);
+    }
+
+    const flatNumbers = phoneNumbers.flat().map((p) => {
+      if (!p) return '';
+      // Clean up whitespace, dashes, plus signs
+      const cleaned = String(p).replace(/[^\d]/g, '');
+      return cleaned;
+    }).filter(Boolean);
+
+    if (flatNumbers.length === 0) {
+      return [];
+    }
+
+    // Direct invocation of Baileys sock.onWhatsApp()
+    const results = await session.sock.onWhatsApp(...flatNumbers);
+    return results || [];
+  }
+
+  /**
    * Restores active WhatsApp connections on system startup
    */
   async restoreActiveSessions() {

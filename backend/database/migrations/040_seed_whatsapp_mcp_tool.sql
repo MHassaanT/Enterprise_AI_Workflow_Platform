@@ -66,6 +66,22 @@ VALUES
       "properties": {},
       "description": "Queries the current connection status and paired phone number for the tenant WhatsApp session"
     }'::jsonb
+  ),
+  (
+    'whatsapp_check_number',
+    'Check WhatsApp Number',
+    'whatsapp',
+    false,
+    '{
+      "type": "object",
+      "required": ["phone"],
+      "properties": {
+        "phone": {
+          "type": "string",
+          "description": "Phone number in international E.164 format to verify registration on WhatsApp"
+        }
+      }
+    }'::jsonb
   )
 ON CONFLICT (canonical_name) DO UPDATE SET
   display_name = EXCLUDED.display_name,

@@ -110,6 +110,41 @@ async def execute_whatsapp_tool(
 
                 return f"WhatsApp Status Query Error ({res.status_code}): {res.text}"
 
+            # 4. Check if phone numbers exist on WhatsApp via onWhatsApp()
+            elif norm_tool in ["whatsapp_check_number", "check_whatsapp", "on_whatsapp", "verify_whatsapp_number"]:
+                phones = (
+                    arguments.get("phone")
+                    or arguments.get("phones")
+                    or arguments.get("phone_numbers")
+                    or arguments.get("to")
+                )
+                if not phones:
+                    return "Error: 'phone' or 'phone_numbers' is required to check WhatsApp registration."
+
+                targets = [phones] if isinstance(phones, str) else list(phones)
+
+                payload = {
+                    "tenantId": effective_tenant_id,
+                    "phoneNumbers": targets,
+                }
+
+                res = await client.post(
+                    f"{settings.BACKEND_URL}/internal/whatsapp/check",
+                    headers=headers,
+                    json=payload,
+                )
+
+                if res.is_success:
+                    data = res.json()
+                    results = data.get("results", [])
+                    formatted = [
+                        f"{r.get('jid', 'Unknown')}: {'Registered' if r.get('exists') else 'Not on WhatsApp'}"
+                        for r in results
+                    ]
+                    return f"WhatsApp Registration Check Results:\n" + "\n".join(formatted) if formatted else "No records found."
+
+                return f"WhatsApp Check Error ({res.status_code}): {res.text}"
+
             else:
                 return f"Error: Unsupported WhatsApp tool action '{tool_name}'."
 

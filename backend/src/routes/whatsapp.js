@@ -187,4 +187,25 @@ router.get('/conversations', authenticate, authorize('admin', 'employee'), async
   }
 });
 
+// ── 6. POST /api/whatsapp/check-number ── Check if phone numbers exist on WhatsApp via Baileys onWhatsApp()
+router.post('/check-number', authenticate, authorize('admin', 'employee'), async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const { phoneNumbers, phone } = req.body || {};
+
+    const targets = phoneNumbers || (phone ? [phone] : []);
+    if (!targets || targets.length === 0) {
+      return res.status(400).json({ error: 'phone or phoneNumbers array is required.' });
+    }
+
+    const manager = getWhatsAppManager();
+    const results = await manager.checkOnWhatsApp(tenantId, targets);
+
+    res.json({ results });
+  } catch (err) {
+    console.error('Error checking numbers on WhatsApp:', err);
+    res.status(500).json({ error: err.message || 'Failed to check numbers on WhatsApp.' });
+  }
+});
+
 module.exports = router;

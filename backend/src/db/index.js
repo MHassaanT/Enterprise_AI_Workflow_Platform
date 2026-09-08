@@ -148,7 +148,8 @@ pool.connect((err, client, release) => {
         VALUES
           ('whatsapp_send_message', 'Send WhatsApp Message', 'whatsapp', false, '{"type":"object","required":["to","message"],"properties":{"to":{"type":"string","description":"Recipient phone number in international format (e.g. +923001234567)"},"message":{"type":"string","description":"Text message to send"}}}'::jsonb),
           ('whatsapp_send_media', 'Send WhatsApp Media', 'whatsapp', false, '{"type":"object","required":["to","media_url","media_type"],"properties":{"to":{"type":"string"},"media_url":{"type":"string"},"media_type":{"type":"string","enum":["image","document","audio","video"]},"caption":{"type":"string"},"filename":{"type":"string"}}}'::jsonb),
-          ('whatsapp_get_status', 'Get WhatsApp Connection Status', 'whatsapp', false, '{"type":"object","properties":{}}'::jsonb)
+          ('whatsapp_get_status', 'Get WhatsApp Connection Status', 'whatsapp', false, '{"type":"object","properties":{}}'::jsonb),
+          ('whatsapp_check_number', 'Check WhatsApp Number', 'whatsapp', false, '{"type":"object","required":["phone"],"properties":{"phone":{"type":"string","description":"Phone number in international format to check"}}}'::jsonb)
         ON CONFLICT (canonical_name) DO UPDATE SET
           display_name = EXCLUDED.display_name,
           provider_type = EXCLUDED.provider_type,
