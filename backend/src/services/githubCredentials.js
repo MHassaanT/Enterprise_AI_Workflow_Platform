@@ -31,50 +31,35 @@ const decryptPayload = (encryptedStr) => {
 };
 
 const getGithubTokenForTenant = async (tenantId) => {
-  if (tenantId) {
-    try {
-      // 1. Direct match on tenant_id and GitHub tool
-      const result = await query(
-        `SELECT tc.encrypted_payload
-         FROM tool_credentials tc
-         LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
-         WHERE (tc.tenant_id = $1 OR tc.tenant_id IS NULL) AND (
-           LOWER(tr.canonical_name) = 'github' OR 
-           LOWER(tr.provider_type) = 'github' OR
-           LOWER(tc.encrypted_payload) LIKE '%github%'
-         )
-         ORDER BY tc.updated_at DESC
-         LIMIT 1`,
-        [tenantId]
-      );
-
-      if (result.rows.length > 0 && result.rows[0].encrypted_payload) {
-        const payload = decryptPayload(result.rows[0].encrypted_payload);
-        if (payload && payload.access_token) {
-          return payload.access_token;
-        }
-      }
-
-      // 2. Fallback check: Check any tool_credentials row with github token or scope
-      const fallbackResult = await query(
-        `SELECT encrypted_payload FROM tool_credentials 
-         ORDER BY updated_at DESC LIMIT 10`
-      );
-      for (const row of fallbackResult.rows) {
-        if (row.encrypted_payload) {
-          const p = decryptPayload(row.encrypted_payload);
-          if (p && (p.provider === 'github' || p.scope?.includes('repo') || p.access_token?.startsWith('ghp_') || p.access_token?.startsWith('gho_') || p.access_token?.startsWith('github_pat_')) && p.access_token) {
-            return p.access_token;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[CREDENTIALS] Could not query tool_credentials:', err.message);
-    }
+  if (!tenantId) {
+    return null;
   }
 
-  if (process.env.GITHUB_TOKEN) {
-    return process.env.GITHUB_TOKEN;
+  try {
+    // Strict tenant-scoped lookup for GitHub credentials
+    const result = await query(
+      `SELECT tc.encrypted_payload
+       FROM tool_credentials tc
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'github' OR 
+         LOWER(tr.provider_type) = 'github' OR
+         LOWER(tc.encrypted_payload) LIKE '%github%'
+       )
+       ORDER BY tc.updated_at DESC
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (result.rows.length > 0 && result.rows[0].encrypted_payload) {
+      const payload = decryptPayload(result.rows[0].encrypted_payload);
+      if (payload && payload.access_token) {
+        return payload.access_token;
+      }
+    }
+  } catch (err) {
+    console.warn('[CREDENTIALS] Could not query tool_credentials:', err.message);
   }
 
   return null;
@@ -93,14 +78,15 @@ const getGithubRepoForTenant = async (tenantId, token = null) => {
         `SELECT tc.encrypted_payload
          FROM tool_credentials tc
          LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
-         WHERE (tc.tenant_id = $1 OR tc.tenant_id IS NULL) AND (
+         WHERE tc.tenant_id = $1 AND (
            LOWER(tr.canonical_name) = 'github' OR 
            LOWER(tr.provider_type) = 'github' OR
            LOWER(tc.encrypted_payload) LIKE '%github%'
          )
          ORDER BY tc.updated_at DESC
          LIMIT 1`,
-        [tenantId]
+        [tenantId],
+        tenantId
       );
 
       if (result.rows.length > 0 && result.rows[0].encrypted_payload) {

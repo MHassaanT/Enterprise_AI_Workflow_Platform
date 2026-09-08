@@ -37,51 +37,35 @@ const decryptPayload = (encryptedStr) => {
 };
 
 const getGithubTokenForTenant = async (tenantId) => {
-  if (tenantId) {
-    try {
-      // 1. Look up tool_credentials for tenant matching GitHub tool
-      const result = await query(
-        `SELECT tc.encrypted_payload
-         FROM tool_credentials tc
-         LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
-         WHERE (tc.tenant_id = $1 OR tc.tenant_id IS NULL) AND (
-           LOWER(tr.canonical_name) = 'github' OR 
-           LOWER(tr.provider_type) = 'github' OR
-           LOWER(tc.encrypted_payload) LIKE '%github%'
-         )
-         ORDER BY tc.updated_at DESC
-         LIMIT 1`,
-        [tenantId]
-      );
-
-      if (result.rows.length > 0 && result.rows[0].encrypted_payload) {
-        const payload = decryptPayload(result.rows[0].encrypted_payload);
-        if (payload && payload.access_token) {
-          return payload.access_token;
-        }
-      }
-
-      // 2. Fallback check: Check any tool_credentials row with provider = 'github'
-      const fallbackResult = await query(
-        `SELECT encrypted_payload FROM tool_credentials 
-         ORDER BY updated_at DESC LIMIT 10`
-      );
-      for (const row of fallbackResult.rows) {
-        if (row.encrypted_payload) {
-          const p = decryptPayload(row.encrypted_payload);
-          if (p && (p.provider === 'github' || p.scope?.includes('repo')) && p.access_token) {
-            return p.access_token;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[CODING ROUTE WARNING] Could not query tool_credentials from DB:', err.message);
-    }
+  if (!tenantId) {
+    return null;
   }
 
-  // 3. Fallback to process.env.GITHUB_TOKEN if set
-  if (process.env.GITHUB_TOKEN) {
-    return process.env.GITHUB_TOKEN;
+  try {
+    // Strict tenant-scoped lookup for GitHub credentials
+    const result = await query(
+      `SELECT tc.encrypted_payload
+       FROM tool_credentials tc
+       LEFT JOIN tool_registry tr ON tc.tool_id = tr.id
+       WHERE tc.tenant_id = $1 AND (
+         LOWER(tr.canonical_name) = 'github' OR 
+         LOWER(tr.provider_type) = 'github' OR
+         LOWER(tc.encrypted_payload) LIKE '%github%'
+       )
+       ORDER BY tc.updated_at DESC
+       LIMIT 1`,
+      [tenantId],
+      tenantId
+    );
+
+    if (result.rows.length > 0 && result.rows[0].encrypted_payload) {
+      const payload = decryptPayload(result.rows[0].encrypted_payload);
+      if (payload && payload.access_token) {
+        return payload.access_token;
+      }
+    }
+  } catch (err) {
+    console.warn('[CODING ROUTE WARNING] Could not query tool_credentials from DB:', err.message);
   }
 
   return null;
