@@ -106,9 +106,14 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Use this when you cannot resolve the issue, the user is frustrated, or they explicitly ask for a human."
     ),
     "authenticate_user_with_email": (
-        "Send and verify a 6-digit OTP code to a customer's email address. "
-        "Use action='send_otp' when a customer requests user-specific sensitive actions or private account access (such as refunds, account modifications, or private personal data). "
-        "Use action='verify_otp' with otp_code when the user provides the code in chat. Do NOT use for general or public inquiries."
+        "Send and verify a 6-digit OTP code to a customer's WhatsApp phone number or Email address. "
+        "Use action='send_otp' with either 'phone' (for WhatsApp delivery) or 'email' (for Email delivery) when a customer requests user-specific sensitive actions or private account access (such as rides/trips, refunds, orders, appointment cancellation/modification, or private personal data). "
+        "Use action='verify_otp' with otp_code and phone/email when the user provides the code in chat. Do NOT use for general or public inquiries."
+    ),
+    "authenticate_user": (
+        "Send and verify a 6-digit OTP code to a customer's WhatsApp phone number or Email address. "
+        "Use action='send_otp' with either 'phone' (for WhatsApp delivery) or 'email' (for Email delivery) when a customer requests user-specific sensitive actions or private account access. "
+        "Use action='verify_otp' with otp_code when the user provides the code in chat."
     ),
     "create_appointment": (
         "Book an appointment, discovery call, consultation, or meeting for a customer with the company/team. "
@@ -145,6 +150,10 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
     "whatsapp_get_status": (
         "Check the current WhatsApp Web connection status for this tenant."
     ),
+    "whatsapp_check_number": (
+        "Check if a phone number or list of phone numbers is registered on WhatsApp using Baileys onWhatsApp(). "
+        "Useful for validating customer contacts, leads, or outreach phone numbers before messaging."
+    ),
     # Legacy tools
     "check_order_status": _check_order_desc,
     "check_order_details": _check_order_desc,
@@ -170,6 +179,7 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "get_platform_status": get_platform_status_impl,
     "escalate_to_human": escalate_to_human_impl,
     "authenticate_user_with_email": authenticate_user_with_email_impl,
+    "authenticate_user": authenticate_user_with_email_impl,
     "create_appointment": create_appointment_impl,
     "get_appointments": get_appointments_impl,
     "reschedule_appointment": reschedule_appointment_impl,
@@ -198,6 +208,7 @@ TOOL_INPUT_MODELS: Dict[str, type] = {
     "get_platform_status": GetPlatformStatusInput,
     "escalate_to_human": EscalateToHumanInput,
     "authenticate_user_with_email": AuthenticateUserWithEmailInput,
+    "authenticate_user": AuthenticateUserWithEmailInput,
     "create_appointment": CreateAppointmentInput,
     "get_appointments": GetAppointmentsInput,
     "reschedule_appointment": RescheduleAppointmentInput,
@@ -324,6 +335,12 @@ BUILTIN_LANGCHAIN_TOOLS: Dict[str, StructuredTool] = {
         description=TOOL_DESCRIPTIONS["authenticate_user_with_email"],
         args_schema=AuthenticateUserWithEmailInput,
     ),
+    "authenticate_user": StructuredTool.from_function(
+        coroutine=authenticate_user_with_email_impl,
+        name="authenticate_user",
+        description=TOOL_DESCRIPTIONS["authenticate_user"],
+        args_schema=AuthenticateUserWithEmailInput,
+    ),
     "create_appointment": StructuredTool.from_function(
         coroutine=create_appointment_impl,
         name="create_appointment",
@@ -425,8 +442,9 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
         return GitHubDynamicInput
     elif "whatsapp" in tool_name.lower():
         class WhatsAppDynamicInput(BaseModel):
-            action: Optional[str] = Field(default="whatsapp_send_message", description="The action: 'whatsapp_send_message', 'whatsapp_send_media', or 'whatsapp_get_status'")
+            action: Optional[str] = Field(default="whatsapp_send_message", description="The action: 'whatsapp_send_message', 'whatsapp_send_media', 'whatsapp_get_status', or 'whatsapp_check_number'")
             to: Optional[str] = Field(default=None, description="Recipient phone number in international E.164 format (e.g. +923001234567)")
+            phone: Optional[str] = Field(default=None, description="Phone number to check/verify on WhatsApp")
             message: Optional[str] = Field(default=None, description="Text message to send")
             media_url: Optional[str] = Field(default=None, description="URL of media file for media messages")
             media_type: Optional[str] = Field(default="image", description="Media type: image, document, audio, video")

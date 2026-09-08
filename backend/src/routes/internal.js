@@ -1390,44 +1390,77 @@ router.patch('/support-tickets/:ticketId', async (req, res) => {
 });
 
 // ── POST /internal/otp/generate ──
-// Generate and store an email OTP for tenant customer support agent
+// Generate and store an OTP (Email or WhatsApp) for tenant customer support agent
 router.post('/otp/generate', async (req, res) => {
-  const { tenantId, email, conversationId, expiresInMinutes = 10 } = req.body;
-  if (!tenantId || !email) {
-    return res.status(400).json({ error: 'tenantId and email are required.' });
+  const { tenantId, email, phone, channel, conversationId, expiresInMinutes = 10 } = req.body;
+  if (!tenantId || (!email && !phone)) {
+    return res.status(400).json({ error: 'tenantId and either email or phone are required.' });
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const cleanPhone = phone ? String(phone).replace(/[^\d+]/g, '').trim() : null;
+  const normalizedEmail = email ? email.trim().toLowerCase() : null;
+  const effectiveChannel = (channel || (cleanPhone ? 'whatsapp' : 'email')).toLowerCase();
 
   try {
     // Generate secure 6-digit numeric OTP
     const otpCode = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
-    // Invalidate previous unverified OTPs for this tenant & email
-    await query(
-      `UPDATE tenant_email_otps 
-       SET expires_at = NOW() 
-       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE AND expires_at > NOW()`,
-      [tenantId, normalizedEmail],
-      tenantId
-    );
+    if (cleanPhone) {
+      // Invalidate previous unverified OTPs for this tenant & phone
+      await query(
+        `UPDATE tenant_email_otps 
+         SET expires_at = NOW() 
+         WHERE tenant_id = $1 AND phone = $2 AND verified = FALSE AND expires_at > NOW()`,
+        [tenantId, cleanPhone],
+        tenantId
+      );
 
-    // Insert new OTP record
-    const result = await query(
-      `INSERT INTO tenant_email_otps (tenant_id, conversation_id, email, otp_code, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, expires_at`,
-      [tenantId, conversationId || null, normalizedEmail, otpCode, expiresAt],
-      tenantId
-    );
+      // Insert new OTP record for WhatsApp
+      const result = await query(
+        `INSERT INTO tenant_email_otps (tenant_id, conversation_id, phone, channel, otp_code, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, expires_at`,
+        [tenantId, conversationId || null, cleanPhone, 'whatsapp', otpCode, expiresAt],
+        tenantId
+      );
 
-    res.json({
-      success: true,
-      otpCode,
-      expiresAt: result.rows[0].expires_at,
-      otpId: result.rows[0].id,
-    });
+      return res.json({
+        success: true,
+        otpCode,
+        channel: 'whatsapp',
+        phone: cleanPhone,
+        expiresAt: result.rows[0].expires_at,
+        otpId: result.rows[0].id,
+      });
+    } else {
+      // Invalidate previous unverified OTPs for this tenant & email
+      await query(
+        `UPDATE tenant_email_otps 
+         SET expires_at = NOW() 
+         WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE AND expires_at > NOW()`,
+        [tenantId, normalizedEmail],
+        tenantId
+      );
+
+      // Insert new OTP record for Email
+      const result = await query(
+        `INSERT INTO tenant_email_otps (tenant_id, conversation_id, email, channel, otp_code, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, expires_at`,
+        [tenantId, conversationId || null, normalizedEmail, 'email', otpCode, expiresAt],
+        tenantId
+      );
+
+      return res.json({
+        success: true,
+        otpCode,
+        channel: 'email',
+        email: normalizedEmail,
+        expiresAt: result.rows[0].expires_at,
+        otpId: result.rows[0].id,
+      });
+    }
   } catch (error) {
     console.error('Error generating OTP:', error);
     res.status(500).json({ error: 'Failed to generate OTP.' });
@@ -1435,31 +1468,54 @@ router.post('/otp/generate', async (req, res) => {
 });
 
 // ── POST /internal/otp/verify ──
-// Verify an email OTP code for customer support agent
+// Verify an email or WhatsApp OTP code for customer support agent
 router.post('/otp/verify', async (req, res) => {
-  const { tenantId, email, otpCode, conversationId } = req.body;
-  if (!tenantId || !email || !otpCode) {
-    return res.status(400).json({ error: 'tenantId, email, and otpCode are required.' });
+  const { tenantId, email, phone, identifier, otpCode, conversationId } = req.body;
+  if (!tenantId || (!email && !phone && !identifier) || !otpCode) {
+    return res.status(400).json({ error: 'tenantId, (email, phone, or identifier), and otpCode are required.' });
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
   const cleanOtp = otpCode.trim();
+  let cleanPhone = phone ? String(phone).replace(/[^\d+]/g, '').trim() : null;
+  let normalizedEmail = email ? email.trim().toLowerCase() : null;
+
+  if (identifier && !cleanPhone && !normalizedEmail) {
+    const rawId = String(identifier).trim();
+    if (rawId.includes('@')) {
+      normalizedEmail = rawId.toLowerCase();
+    } else {
+      cleanPhone = rawId.replace(/[^\d+]/g, '');
+    }
+  }
 
   try {
-    // Fetch latest active OTP record
-    const result = await query(
-      `SELECT * FROM tenant_email_otps
-       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [tenantId, normalizedEmail],
-      tenantId
-    );
+    let result;
+    if (cleanPhone) {
+      // Fetch latest active OTP record for phone
+      result = await query(
+        `SELECT * FROM tenant_email_otps
+         WHERE tenant_id = $1 AND phone = $2 AND verified = FALSE
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [tenantId, cleanPhone],
+        tenantId
+      );
+    } else {
+      // Fetch latest active OTP record for email
+      result = await query(
+        `SELECT * FROM tenant_email_otps
+         WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = FALSE
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [tenantId, normalizedEmail],
+        tenantId
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.json({
         verified: false,
-        message: 'No pending verification code found for this email. Please request a new code.',
+        message: `No pending verification code found for this ${cleanPhone ? 'phone number' : 'email'}. Please request a new code.`,
         remainingAttempts: 0,
       });
     }
@@ -1511,8 +1567,11 @@ router.post('/otp/verify', async (req, res) => {
 
     res.json({
       verified: true,
-      message: 'Email successfully verified.',
+      message: `${cleanPhone ? 'Phone' : 'Email'} successfully verified.`,
+      channel: otpRecord.channel || (cleanPhone ? 'whatsapp' : 'email'),
+      identifier: cleanPhone || normalizedEmail,
       email: normalizedEmail,
+      phone: cleanPhone,
     });
   } catch (error) {
     console.error('Error verifying OTP:', error);
@@ -1521,29 +1580,53 @@ router.post('/otp/verify', async (req, res) => {
 });
 
 // ── GET /internal/otp/status ──
-// Check if user email has been verified recently (within last 30 minutes)
+// Check if user email or phone has been verified recently (within last 30 minutes)
 router.get('/otp/status', async (req, res) => {
-  const { tenantId, email } = req.query;
-  if (!tenantId || !email) {
-    return res.status(400).json({ error: 'tenantId and email are required.' });
+  const { tenantId, email, phone, identifier } = req.query;
+  if (!tenantId || (!email && !phone && !identifier)) {
+    return res.status(400).json({ error: 'tenantId and (email, phone, or identifier) are required.' });
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  let cleanPhone = phone ? String(phone).replace(/[^\d+]/g, '').trim() : null;
+  let normalizedEmail = email ? email.trim().toLowerCase() : null;
+
+  if (identifier && !cleanPhone && !normalizedEmail) {
+    const rawId = String(identifier).trim();
+    if (rawId.includes('@')) {
+      normalizedEmail = rawId.toLowerCase();
+    } else {
+      cleanPhone = rawId.replace(/[^\d+]/g, '');
+    }
+  }
 
   try {
-    const result = await query(
-      `SELECT * FROM tenant_email_otps
-       WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = TRUE
-         AND verified_at > NOW() - INTERVAL '30 minutes'
-       ORDER BY verified_at DESC
-       LIMIT 1`,
-      [tenantId, normalizedEmail],
-      tenantId
-    );
+    let result;
+    if (cleanPhone) {
+      result = await query(
+        `SELECT * FROM tenant_email_otps
+         WHERE tenant_id = $1 AND phone = $2 AND verified = TRUE
+           AND verified_at > NOW() - INTERVAL '30 minutes'
+         ORDER BY verified_at DESC
+         LIMIT 1`,
+        [tenantId, cleanPhone],
+        tenantId
+      );
+    } else {
+      result = await query(
+        `SELECT * FROM tenant_email_otps
+         WHERE tenant_id = $1 AND LOWER(email) = $2 AND verified = TRUE
+           AND verified_at > NOW() - INTERVAL '30 minutes'
+         ORDER BY verified_at DESC
+         LIMIT 1`,
+        [tenantId, normalizedEmail],
+        tenantId
+      );
+    }
 
     res.json({
       verified: result.rows.length > 0,
       lastVerifiedAt: result.rows[0]?.verified_at || null,
+      channel: result.rows[0]?.channel || null,
     });
   } catch (error) {
     console.error('Error checking OTP status:', error);
@@ -2394,6 +2477,30 @@ router.get('/whatsapp/status/:tenantId', async (req, res) => {
   } catch (error) {
     console.error(`[Internal WhatsApp] Status error for tenant ${tenantId}:`, error);
     res.status(500).json({ error: error.message || 'Failed to get WhatsApp status.' });
+  }
+});
+
+// ── POST /internal/whatsapp/check ── Check if numbers exist on WhatsApp via onWhatsApp()
+router.post('/whatsapp/check', async (req, res) => {
+  const { tenantId, phoneNumbers, phone } = req.body;
+
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required.' });
+  }
+
+  const targets = phoneNumbers || (phone ? [phone] : []);
+  if (!targets || targets.length === 0) {
+    return res.status(400).json({ error: 'phone or phoneNumbers array is required.' });
+  }
+
+  try {
+    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const manager = getWhatsAppManager();
+    const results = await manager.checkOnWhatsApp(tenantId, targets);
+    res.json({ results });
+  } catch (error) {
+    console.error(`[Internal WhatsApp] onWhatsApp check error for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: error.message || 'Failed to check numbers on WhatsApp.' });
   }
 });
 
