@@ -2348,4 +2348,53 @@ router.patch('/reported-issues/:id/investigation', async (req, res) => {
   }
 });
 
+// ── POST /internal/whatsapp/send ── Execute outbound WhatsApp message/media via Agent Tool
+router.post('/whatsapp/send', async (req, res) => {
+  const { tenantId, to, message, mediaUrl, mediaType, caption, filename } = req.body;
+
+  if (!tenantId || !to) {
+    return res.status(400).json({ error: 'tenantId and to recipient are required.' });
+  }
+
+  try {
+    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const manager = getWhatsAppManager();
+
+    if (mediaUrl) {
+      const result = await manager.sendMedia(tenantId, to, {
+        mediaUrl,
+        mediaType: mediaType || 'image',
+        caption,
+        filename,
+      });
+      return res.json(result);
+    }
+
+    if (!message) {
+      return res.status(400).json({ error: 'message text or mediaUrl is required.' });
+    }
+
+    const result = await manager.sendMessage(tenantId, to, message);
+    res.json(result);
+  } catch (error) {
+    console.error(`[Internal WhatsApp] Send error for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: error.message || 'Failed to send WhatsApp message.' });
+  }
+});
+
+// ── GET /internal/whatsapp/status/:tenantId ── Check WhatsApp status for Agent Tool
+router.get('/whatsapp/status/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const { getWhatsAppManager } = require('../../../mcp/whatsapp');
+    const manager = getWhatsAppManager();
+    const status = await manager.getStatus(tenantId);
+    res.json(status);
+  } catch (error) {
+    console.error(`[Internal WhatsApp] Status error for tenant ${tenantId}:`, error);
+    res.status(500).json({ error: error.message || 'Failed to get WhatsApp status.' });
+  }
+});
+
 module.exports = router;

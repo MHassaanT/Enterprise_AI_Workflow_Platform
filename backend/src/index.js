@@ -30,6 +30,8 @@ const subscriptionRoutes = require('./routes/subscription');
 const entitiesRoutes = require('./routes/entities');
 const appointmentRoutes = require('./routes/appointments');
 const reportedIssuesRoutes = require('./routes/reported-issues');
+const whatsappRoutes = require('./routes/whatsapp');
+const { getWhatsAppManager } = require('../../mcp/whatsapp');
 
 const { authenticate } = require('./middleware/auth');
 const { requirePlanAccess } = require('./middleware/subscriptionGuard');
@@ -80,6 +82,8 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/v1/appointments', appointmentRoutes);
 app.use('/api/reported-issues', reportedIssuesRoutes);
 app.use('/api/v1/reported-issues', reportedIssuesRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/v1/whatsapp', whatsappRoutes);
 
 // ── PLAN-GATED AGENT ROUTES ──
 // These routes additionally check that the tenant's subscription includes the agent.
@@ -105,4 +109,8 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`✅ API Gateway running on port ${PORT}`);
+  // Restore active WhatsApp sessions asynchronously
+  getWhatsAppManager().restoreActiveSessions().catch((err) => {
+    console.warn('⚠️ WhatsApp session restore notice on startup:', err.message);
+  });
 });

@@ -1,0 +1,16 @@
+{
+  "name": "whatsapp-mcp-channel",
+  "version": "1.0.0",
+  "description": "Multi-Tenant WhatsApp MCP Contact Channel using Baileys and PostgreSQL Auth State",
+  "main": "index.js",
+  "keywords": ["whatsapp", "baileys", "mcp", "multi-tenant", "ai-agent"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.19",
+    "qrcode": "^1.5.4",
+    "redis": "^4.7.0",
+    "pino": "^9.6.0",
+    "@hapi/boom": "^10.0.1"
+  }
+}

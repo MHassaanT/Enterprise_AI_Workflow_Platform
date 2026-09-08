@@ -145,11 +145,22 @@ const SEEDED_INTEGRATIONS = [
     category: 'Productivity',
     icon: '📊',
     gradient: 'linear-gradient(135deg, #34a853 0%, #1e8e3e 100%)',
+  },
+  {
+    id: 'whatsapp-card',
+    canonical_name: 'WhatsApp',
+    display_name: 'WhatsApp Business Channel',
+    provider_type: 'whatsapp',
+    auth_mode: 'qr_pairing',
+    description: 'Connect your business WhatsApp number via QR code to receive inbound customer inquiries and dispatch agent replies.',
+    category: 'Communication Channels',
+    icon: '💬',
+    gradient: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
   }
 ];
 
 export default function IntegrationHubPage() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => (typeof window !== 'undefined' ? getUser() : null));
   const [integrations, setIntegrations] = useState([]);
   const [agents, setAgents] = useState([]);
   const [selectedAgentId, setSelectedAgentId] = useState('');
@@ -175,41 +186,59 @@ export default function IntegrationHubPage() {
   // Hunter.io Modal Fields
   const [hunterApiKey, setHunterApiKey] = useState('');
 
+  // WhatsApp QR & SSE Stream State
+  const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'qr_pending' | 'connected'
+  const [waQr, setWaQr] = useState(null);
+  const [waPhoneNumber, setWaPhoneNumber] = useState(null);
+  const [waEventSource, setWaEventSource] = useState(null);
+  const [waLoading, setWaLoading] = useState(false);
+
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
   const [newToolConnector, setNewToolConnector] = useState('builtin');
   const [newToolIsHighRisk, setNewToolIsHighRisk] = useState(false);
   const [newToolDescription, setNewToolDescription] = useState('');
 
-  useEffect(() => {
-    setUser(getUser());
-    loadInitialData();
-
-    // Listen for OAuth2 popup success messages
-    const handleOAuthMessage = (event) => {
-      if (event.data && event.data.type === 'OAUTH_SUCCESS') {
-        setMessage({
-          type: 'success',
-          text: `🎉 ${event.data.provider.toUpperCase()} authorized & connected successfully via OAuth2!`
-        });
-        loadInitialData();
-      }
-    };
-
-    window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
-  }, []);
+  const loadAgentConfig = async (agentId) => {
+    try {
+      const config = await fetchAgentConfig(agentId);
+      setAgentBindings(config.tool_bindings || []);
+    } catch (err) {
+      console.error('Error loading agent config:', err);
+    }
+  };
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [registryTools, agentList] = await Promise.all([
+      const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
+      const [registryTools, agentList, waStatusData] = await Promise.all([
         fetchToolRegistry().catch(() => []),
         fetchAgents().catch(() => []),
+        fetch('/api/whatsapp/status', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }).then((r) => r.ok ? r.json() : null).catch(() => null),
       ]);
+
+      if (waStatusData) {
+        setWaStatus(waStatusData.status || 'disconnected');
+        setWaPhoneNumber(waStatusData.phoneNumber || null);
+        if (waStatusData.qr) setWaQr(waStatusData.qr);
+      }
 
       // Merge backend registry tool statuses into seeded cards
       const merged = SEEDED_INTEGRATIONS.map((seed) => {
+        if (seed.provider_type === 'whatsapp') {
+          const isConnected = waStatusData?.status === 'connected';
+          return {
+            ...seed,
+            isConnected,
+            phoneNumber: waStatusData?.phoneNumber || null,
+            status: waStatusData?.status || 'disconnected',
+            updated_at: waStatusData?.connectedAt,
+          };
+        }
+
         const matched = registryTools.find(
           (t) => t.canonical_name.toLowerCase() === seed.canonical_name.toLowerCase()
         );
@@ -235,14 +264,25 @@ export default function IntegrationHubPage() {
     }
   };
 
-  const loadAgentConfig = async (agentId) => {
-    try {
-      const config = await fetchAgentConfig(agentId);
-      setAgentBindings(config.tool_bindings || []);
-    } catch (err) {
-      console.error('Error loading agent config:', err);
-    }
-  };
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInitialData();
+
+    // Listen for OAuth2 popup success messages
+    const handleOAuthMessage = (event) => {
+      if (event.data && event.data.type === 'OAUTH_SUCCESS') {
+        setMessage({
+          type: 'success',
+          text: `🎉 ${event.data.provider.toUpperCase()} authorized & connected successfully via OAuth2!`
+        });
+        loadInitialData();
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSelectAgent = (e) => {
     const id = e.target.value;
@@ -251,10 +291,128 @@ export default function IntegrationHubPage() {
   };
 
   const handleConnectClick = (integration) => {
-    if (integration.auth_mode === 'oauth2') {
+    if (integration.provider_type === 'whatsapp' || integration.auth_mode === 'qr_pairing') {
+      openWhatsAppModal();
+    } else if (integration.auth_mode === 'oauth2') {
       handleOAuthConnect(integration.provider_type || integration.canonical_name);
     } else {
       openConnectModal(integration);
+    }
+  };
+
+  const openWhatsAppModal = async () => {
+    setActiveModal('WhatsApp');
+    setWaLoading(true);
+    const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
+
+    try {
+      // 1. Check current status
+      const statusRes = await fetch('/api/whatsapp/status', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setWaStatus(data.status || 'disconnected');
+        setWaPhoneNumber(data.phoneNumber || null);
+        if (data.qr) setWaQr(data.qr);
+
+        // 2. If disconnected, trigger connect
+        if (!data.status || data.status === 'disconnected') {
+          setWaStatus('connecting');
+          fetch('/api/whatsapp/connect', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }).then((r) => r.json()).then((resData) => {
+            if (resData.qr) setWaQr(resData.qr);
+            if (resData.status) setWaStatus(resData.status);
+          }).catch((e) => console.error('Connect init error:', e));
+        }
+      }
+
+      // 3. Open SSE stream
+      const sseUrl = `/api/whatsapp/qr-stream?token=${encodeURIComponent(token || '')}`;
+      const es = new EventSource(sseUrl);
+
+      es.addEventListener('status', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          setWaStatus(parsed.status || 'disconnected');
+          if (parsed.phoneNumber) setWaPhoneNumber(parsed.phoneNumber);
+          if (parsed.qr) setWaQr(parsed.qr);
+          if (parsed.status === 'connected') {
+            loadInitialData();
+          }
+        } catch (err) {}
+      });
+
+      es.addEventListener('qr', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (parsed.qr) {
+            setWaQr(parsed.qr);
+            setWaStatus('qr_pending');
+          }
+        } catch (err) {}
+      });
+
+      es.onerror = () => {
+        // Auto reconnect
+      };
+
+      setWaEventSource(es);
+    } catch (err) {
+      console.error('Error opening WhatsApp modal:', err);
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleWhatsAppDisconnect = async () => {
+    try {
+      setWaLoading(true);
+      const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
+      const res = await fetch('/api/whatsapp/disconnect', {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        setWaStatus('disconnected');
+        setWaPhoneNumber(null);
+        setWaQr(null);
+        setMessage({ type: 'success', text: 'WhatsApp session disconnected successfully.' });
+        loadInitialData();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to disconnect WhatsApp.' });
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleRefreshQr = async () => {
+    try {
+      setWaLoading(true);
+      setWaQr(null);
+      setWaStatus('connecting');
+      const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
+      const res = await fetch('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ forceNew: true }),
+      });
+      const data = await res.json();
+      if (data.qr) setWaQr(data.qr);
+      if (data.status) setWaStatus(data.status);
+    } catch (err) {
+      console.error('Failed to regenerate QR:', err);
+    } finally {
+      setWaLoading(false);
     }
   };
 
@@ -298,6 +456,12 @@ export default function IntegrationHubPage() {
   };
 
   const closeModal = () => {
+    if (waEventSource) {
+      try {
+        waEventSource.close();
+      } catch (e) {}
+      setWaEventSource(null);
+    }
     setActiveModal(null);
     setModalTarget(null);
     setSafePaySecret('');
@@ -494,7 +658,11 @@ export default function IntegrationHubPage() {
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">{item.display_name}</h3>
                         <span className={`font-label-md text-label-md px-2 py-0.5 rounded ${item.isConnected ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50' : 'bg-surface-container text-on-surface-variant border border-outline-variant'}`}>
-                          {item.isConnected ? '● Connected' : '○ Not Connected'}
+                          {item.isConnected
+                            ? item.provider_type === 'whatsapp' && item.phoneNumber
+                              ? `● Connected (+${item.phoneNumber})`
+                              : '● Connected'
+                            : '○ Not Connected'}
                         </span>
                       </div>
                       <p className="font-body-md text-body-md text-on-surface-variant flex-1">{item.description}</p>
@@ -507,8 +675,12 @@ export default function IntegrationHubPage() {
                           className="w-full py-2 px-md bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-md hover:bg-primary-container transition-colors shadow-sm"
                         >
                           {item.isConnected
-                            ? item.auth_mode === 'oauth2' ? '🔄 Re-authorize OAuth2' : '⚙️ Reconfigure Credentials'
-                            : item.auth_mode === 'oauth2' ? '🔗 Authorize via OAuth2' : '🔌 Connect Integration'}
+                            ? item.provider_type === 'whatsapp'
+                              ? '📱 Manage WhatsApp / QR'
+                              : item.auth_mode === 'oauth2' ? '🔄 Re-authorize OAuth2' : '⚙️ Reconfigure Credentials'
+                            : item.provider_type === 'whatsapp'
+                              ? '💬 Connect WhatsApp (QR Code)'
+                              : item.auth_mode === 'oauth2' ? '🔗 Authorize via OAuth2' : '🔌 Connect Integration'}
                         </button>
                       ) : (
                         <span className="font-label-md text-label-md text-on-surface-variant text-center block">Admin Access Required to Connect</span>
@@ -574,6 +746,7 @@ export default function IntegrationHubPage() {
                     <option value="gmail">Gmail</option>
                     <option value="google_docs">Google Docs</option>
                     <option value="google_sheets">Google Sheets</option>
+                    <option value="whatsapp">WhatsApp</option>
                   </select>
                 </div>
 
@@ -803,6 +976,134 @@ export default function IntegrationHubPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* WHATSAPP MODAL */}
+        {activeModal === 'WhatsApp' && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center p-md z-50" onClick={closeModal}>
+            <div className="bg-surface-container-low border border-outline-variant rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-lg bg-surface border-b border-outline-variant flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-2xl text-white shadow-sm" style={{ background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)' }}>
+                    💬
+                  </div>
+                  <div>
+                    <h2 className="font-headline-md text-headline-md text-on-surface">WhatsApp Business Channel</h2>
+                    <span className="font-label-md text-label-md text-on-surface-variant">Multi-Tenant Baileys Web Protocol</span>
+                  </div>
+                </div>
+                <button onClick={closeModal} className="text-on-surface-variant hover:text-on-surface text-xl font-bold">×</button>
+              </div>
+
+              <div className="p-xl space-y-md">
+                {/* Status Header */}
+                <div className="flex items-center justify-between p-md bg-surface border border-outline-variant rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-on-surface">Status:</span>
+                    <span className={`px-2 py-0.5 rounded font-label-md text-label-md uppercase font-mono ${
+                      waStatus === 'connected'
+                        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/50'
+                        : waStatus === 'qr_pending'
+                        ? 'bg-amber-950/40 text-amber-400 border border-amber-800/50'
+                        : 'bg-surface-container text-on-surface-variant border border-outline-variant'
+                    }`}>
+                      {waStatus === 'connected' ? '● Connected' : waStatus === 'qr_pending' ? '📷 Scan QR Code' : '⏳ Initializing...'}
+                    </span>
+                  </div>
+                  {waPhoneNumber && (
+                    <span className="font-mono text-sm text-on-surface bg-surface-container px-2 py-0.5 rounded border border-outline-variant">
+                      +{waPhoneNumber}
+                    </span>
+                  )}
+                </div>
+
+                {/* Main Body */}
+                {waStatus === 'connected' ? (
+                  <div className="text-center py-lg space-y-md bg-surface border border-outline-variant rounded-xl p-lg">
+                    <div className="text-5xl">🎉</div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-on-surface">WhatsApp Channel Active</h3>
+                      <p className="text-sm text-on-surface-variant mt-1">
+                        Inbound customer messages sent to <strong className="text-on-surface">+{waPhoneNumber}</strong> will automatically create conversations and route through your AI agent.
+                      </p>
+                    </div>
+                    <div className="pt-md flex justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleWhatsAppDisconnect}
+                        disabled={waLoading}
+                        className="px-lg py-2 bg-error-container/20 text-error border border-error/30 font-label-md text-label-md rounded-lg hover:bg-error-container/40 transition-colors disabled:opacity-50"
+                      >
+                        {waLoading ? 'Disconnecting...' : '🔴 Disconnect WhatsApp'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-md">
+                    {/* Instructions */}
+                    <div className="p-md bg-surface-container/50 border border-outline-variant rounded-lg text-sm text-on-surface space-y-1">
+                      <p className="font-semibold text-on-surface">To connect your WhatsApp number:</p>
+                      <ol className="list-decimal list-inside text-on-surface-variant text-xs space-y-1 pt-1">
+                        <li>Open <strong>WhatsApp</strong> on your phone</li>
+                        <li>Tap <strong>Settings</strong> or <strong>Menu (⋮)</strong> → <strong>Linked Devices</strong></li>
+                        <li>Tap <strong>Link a Device</strong></li>
+                        <li>Point your phone camera at the QR code below</li>
+                      </ol>
+                    </div>
+
+                    {/* QR Display */}
+                    <div className="flex flex-col items-center justify-center p-md bg-white border border-outline-variant rounded-xl min-h-[280px]">
+                      {waQr ? (
+                        <div className="space-y-3 flex flex-col items-center">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={waQr}
+                            alt="WhatsApp Pairing QR Code"
+                            className="w-60 h-60 object-contain rounded-lg shadow-sm border border-gray-200"
+                          />
+                          <p className="text-xs text-gray-500 font-mono text-center">
+                            QR updates in real-time. Scan before expiration.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-3 text-on-surface-variant py-8">
+                          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-sm text-gray-600">Generating secure pairing QR code...</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={handleRefreshQr}
+                        disabled={waLoading}
+                        className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                      >
+                        🔄 Reload QR Code
+                      </button>
+                      <span className="text-xs text-on-surface-variant">Encrypted via AES-256</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* TOS Notice */}
+                <div className="p-sm bg-amber-950/20 border border-amber-800/30 rounded-lg text-xs text-amber-300">
+                  ⚠️ <strong>Notice:</strong> This integration connects via WhatsApp Web protocol. Follow Meta terms of service and avoid unsolicited bulk messaging.
+                </div>
+
+                <div className="flex justify-end pt-md">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-lg py-md bg-surface border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

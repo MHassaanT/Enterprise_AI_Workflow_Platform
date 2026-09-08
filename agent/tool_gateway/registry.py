@@ -134,6 +134,17 @@ TOOL_DESCRIPTIONS: Dict[str, str] = {
         "Requires either appointment_id or customer_email. "
         "CRITICAL: Always use this tool when a customer asks to modify their appointment (change name, email, phone, or reschedule date/time); NEVER use create_appointment."
     ),
+    "whatsapp_send_message": (
+        "Send a real-time WhatsApp message to a customer or contact. "
+        "Requires recipient's phone number in 'to' (e.g. +923001234567) and 'message' text."
+    ),
+    "whatsapp_send_media": (
+        "Send a WhatsApp media message (image, document, audio, video) to a recipient. "
+        "Requires 'to', 'media_url', and 'media_type'."
+    ),
+    "whatsapp_get_status": (
+        "Check the current WhatsApp Web connection status for this tenant."
+    ),
     # Legacy tools
     "check_order_status": _check_order_desc,
     "check_order_details": _check_order_desc,
@@ -412,6 +423,15 @@ def _build_dynamic_schema(tool_name: str, config: Dict[str, Any]) -> type:
             workflow_id: str = Field(default=None, description="Workflow ID or filename for dispatch")
             ref: str = Field(default=None, description="Git ref or branch for workflow dispatch")
         return GitHubDynamicInput
+    elif "whatsapp" in tool_name.lower():
+        class WhatsAppDynamicInput(BaseModel):
+            action: Optional[str] = Field(default="whatsapp_send_message", description="The action: 'whatsapp_send_message', 'whatsapp_send_media', or 'whatsapp_get_status'")
+            to: Optional[str] = Field(default=None, description="Recipient phone number in international E.164 format (e.g. +923001234567)")
+            message: Optional[str] = Field(default=None, description="Text message to send")
+            media_url: Optional[str] = Field(default=None, description="URL of media file for media messages")
+            media_type: Optional[str] = Field(default="image", description="Media type: image, document, audio, video")
+            caption: Optional[str] = Field(default=None, description="Optional caption for media")
+        return WhatsAppDynamicInput
 
     params_raw = config.get("parameters") or config.get("params") or {}
 
