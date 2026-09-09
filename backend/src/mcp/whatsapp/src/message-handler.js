@@ -173,6 +173,38 @@ const handleInboundMessages = async ({ tenantId, sock, event, dbQuery }) => {
         tenantId
       );
 
+      // 5b. Cross-reference with Sales SDR Prospects (inbound WhatsApp reply tracking)
+      try {
+        const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+        const prospectUpdate = await dbQuery(
+          `UPDATE sales_prospects 
+           SET has_reply = TRUE,
+               last_reply_at = NOW(),
+               reply_content = $1,
+               reply_status = 'REPLY_RECEIVED',
+               deal_stage = CASE 
+                 WHEN deal_stage = 'OUTREACH_SENT' THEN 'REPLIED' 
+                 WHEN deal_stage = 'PROPOSAL_SENT' AND ($1 ILIKE '%agree%' OR $1 ILIKE '%confirm%' OR $1 ILIKE '%accept%' OR $1 ILIKE '%yes%') THEN 'PROPOSAL_ACCEPTED'
+                 ELSE deal_stage 
+               END,
+               last_channel_used = 'whatsapp',
+               updated_at = NOW()
+           WHERE tenant_id = $2 AND (
+             replace(replace(replace(contact_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $3
+             OR contact_phone = $4
+             OR contact_phone = '+' || $3
+           )
+           RETURNING id, company_name, contact_name`,
+          [messageText, tenantId, cleanPhone, remoteJid],
+          tenantId
+        );
+        if (prospectUpdate.rows && prospectUpdate.rows.length > 0) {
+          console.log(`[WhatsApp Sales Hook] Updated prospect ${prospectUpdate.rows[0].contact_name} at ${prospectUpdate.rows[0].company_name} with inbound WhatsApp reply.`);
+        }
+      } catch (salesHookErr) {
+        console.warn('[WhatsApp Sales Hook Notice]', salesHookErr.message);
+      }
+
       // 6. Fetch recent conversation history (up to 10 turns)
       const historyRes = await dbQuery(
         `SELECT role, content FROM messages 

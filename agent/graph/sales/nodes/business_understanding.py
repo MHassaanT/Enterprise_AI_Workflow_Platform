@@ -62,8 +62,14 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     # 2. Fetch Existing Prospects for Tenant to Enforce Cross-Campaign Uniqueness (only sent emails/outreach)
     existing_domains = set(state.get("existing_domains") or [])
     existing_emails = set(state.get("existing_emails") or [])
+    existing_phones = set(state.get("existing_phones") or [])
     try:
-        ex_query = "SELECT LOWER(domain) as domain, LOWER(contact_email) as contact_email FROM sales_prospects WHERE (deal_stage = 'SENT' OR gmail_message_id IS NOT NULL) AND tenant_id = $1;"
+        ex_query = """
+        SELECT LOWER(domain) as domain, LOWER(contact_email) as contact_email, contact_phone 
+        FROM sales_prospects 
+        WHERE (deal_stage IN ('SENT', 'OUTREACH_SENT') OR gmail_message_id IS NOT NULL OR whatsapp_message_id IS NOT NULL) 
+          AND tenant_id = $1;
+        """
         ex_res = await execute_db_query(ex_query, [tenant_id])
         if ex_res and ex_res.get("rows"):
             for row in ex_res["rows"]:
@@ -71,6 +77,10 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
                     existing_domains.add(row["domain"].strip().lower())
                 if row.get("contact_email"):
                     existing_emails.add(row["contact_email"].strip().lower())
+                if row.get("contact_phone"):
+                    clean_p = "".join(c for c in str(row["contact_phone"]) if c.isdigit() or c == "+")
+                    if clean_p:
+                        existing_phones.add(clean_p)
     except Exception as e:
         pass
 
@@ -110,5 +120,6 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
         "raw_accounts": accounts,
         "existing_domains": list(existing_domains),
         "existing_emails": list(existing_emails),
+        "existing_phones": list(existing_phones),
         "logs": logs,
     }

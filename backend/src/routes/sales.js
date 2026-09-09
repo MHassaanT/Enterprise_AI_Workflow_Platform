@@ -49,9 +49,12 @@ router.get('/prospects', async (req, res) => {
           domain VARCHAR(255) NOT NULL,
           contact_name VARCHAR(255),
           contact_email VARCHAR(255),
+          contact_phone VARCHAR(50),
           contact_title VARCHAR(255),
           icp_score NUMERIC(5, 2) DEFAULT 0.00,
           deliverability_status VARCHAR(50) DEFAULT 'UNVERIFIED',
+          whatsapp_status VARCHAR(50) DEFAULT 'UNVERIFIED',
+          outreach_channel VARCHAR(50) DEFAULT 'email',
           scraped_context TEXT,
           outreach_subject VARCHAR(500),
           outreach_body TEXT,
@@ -60,11 +63,18 @@ router.get('/prospects', async (req, res) => {
           apollo_person_id VARCHAR(100),
           hunter_person_id VARCHAR(100),
           gmail_message_id VARCHAR(100),
+          whatsapp_message_id VARCHAR(255),
+          last_channel_used VARCHAR(50) DEFAULT 'email',
           created_at TIMESTAMPTZ DEFAULT NOW(),
           updated_at TIMESTAMPTZ DEFAULT NOW()
         );
       `);
       await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS hunter_person_id VARCHAR(100);`);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50);`);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(50) DEFAULT 'UNVERIFIED';`);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS outreach_channel VARCHAR(50) DEFAULT 'email';`);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(255);`);
+      await query(`ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS last_channel_used VARCHAR(50) DEFAULT 'email';`);
       await query(`
         CREATE TABLE IF NOT EXISTS tenant_hunter_settings (
           tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
@@ -95,9 +105,9 @@ router.get('/prospects', async (req, res) => {
 router.post('/pipeline/run', async (req, res) => {
   try {
     const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
-    const { target_domain, prospect_limit, icp_config, auto_send_email } = req.body;
+    const { target_domain, prospect_limit, icp_config, auto_send_email, outreach_channel } = req.body;
 
-    console.log(`[BACKEND RUN PIPELINE] Initiating campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send=${auto_send_email}`);
+    console.log(`[BACKEND RUN PIPELINE] Initiating campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send=${auto_send_email}, channel=${outreach_channel || 'email'}`);
 
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/run`,
@@ -106,6 +116,7 @@ router.post('/pipeline/run', async (req, res) => {
         target_domain: target_domain || null,
         prospect_limit: parseInt(prospect_limit) || 10,
         auto_send_email: auto_send_email || false,
+        outreach_channel: outreach_channel || 'email',
         icp_config: icp_config || null,
         user_id: req.user?.id || 'sales_user'
       },
@@ -165,6 +176,32 @@ router.post('/send-email', async (req, res) => {
   } catch (err) {
     console.error('Error dispatching email:', err.message);
     return res.status(500).json({ success: false, error: 'Failed to send outreach email.' });
+  }
+});
+
+// POST /api/v1/sales/send-whatsapp — Manually send single outreach message via WhatsApp Baileys API
+router.post('/send-whatsapp', async (req, res) => {
+  try {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
+    const { prospect_id, contact_phone, message } = req.body;
+
+    const response = await axios.post(
+      `${AGENT_URL}/agent/sales/send-whatsapp`,
+      {
+        tenant_id: tenantId,
+        prospect_id,
+        contact_phone,
+        message,
+      },
+      {
+        headers: { 'X-Internal-Token': INTERNAL_TOKEN },
+      }
+    );
+
+    return res.json(response.data);
+  } catch (err) {
+    console.error('Error dispatching WhatsApp message:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to send WhatsApp outreach message.', detail: err.response?.data || err.message });
   }
 });
 

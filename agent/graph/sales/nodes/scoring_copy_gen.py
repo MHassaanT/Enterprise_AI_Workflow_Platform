@@ -37,34 +37,43 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"LLM gateway initialization note: {e}")
 
+    outreach_channel = (state.get("outreach_channel") or "email").lower()
     outreach_batch: List[Dict[str, Any]] = []
 
     for idx, contact in enumerate(verified_contacts):
-        # HARD GUARD: Reject any contact that did not pass Stage 4 verification.
-        # This is a structural safety net — if a contact somehow reaches Stage 5
-        # without a deliverability result showing is_valid: True, drop it and log an error.
-        deliverability = contact.get("deliverability")
-        if not deliverability or not deliverability.get("is_valid", False):
-            logger.error(
-                f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_email')}' — "
-                f"missing or invalid deliverability result. "
-                f"deliverability={deliverability}, email_status={contact.get('email_status', 'unknown')}. "
-                f"This contact should never have reached Stage 5 without passing Stage 4."
-            )
-            continue
+        # HARD GUARD: Reject any contact that did not pass Stage 4 verification for the target channel.
+        deliverability = contact.get("deliverability") or {}
+        wa_status = contact.get("whatsapp_status", "UNVERIFIED")
+
+        if outreach_channel == "whatsapp":
+            if wa_status != "ON_WHATSAPP":
+                logger.error(
+                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_phone')}' — "
+                    f"not registered on WhatsApp (status={wa_status})."
+                )
+                continue
+        else:
+            if not deliverability.get("is_valid", False):
+                logger.error(
+                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_email')}' — "
+                    f"missing or invalid email deliverability result. "
+                    f"deliverability={deliverability}, email_status={contact.get('email_status', 'unknown')}."
+                )
+                continue
 
         company_name = contact.get("company_name") or "Enterprise Client"
         domain = contact.get("domain") or "enterprise.com"
         contact_name = contact.get("contact_name", "Executive")
         contact_title = contact.get("contact_title", "Decision Maker")
         contact_email = contact.get("contact_email", f"contact@{domain}")
+        contact_phone = contact.get("contact_phone")
 
         # Match scraped text if available
         scraped_text = ""
         if idx < len(scraped_accounts):
             scraped_text = scraped_accounts[idx].get("scraped_text", "")
 
-        # Real dynamic ICP scoring calculation (0-100) based on title, industry, web context & deliverability
+        # Dynamic ICP scoring calculation (0-100)
         target_titles = [t.lower() for t in (icp.get("target_titles", []) if isinstance(icp.get("target_titles"), list) else [icp.get("target_titles", "")])]
         target_industries = [i.lower() for i in (icp.get("target_industries", []) if isinstance(icp.get("target_industries"), list) else [icp.get("target_industries", "")])]
         
@@ -83,10 +92,12 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         if scraped_text and len(scraped_text) > 100:
             base_score += 10.0
 
-        if deliverability.get("is_valid", True):
+        if outreach_channel == "whatsapp" and wa_status == "ON_WHATSAPP":
+            base_score += 5.0
+        elif outreach_channel == "email" and deliverability.get("is_valid", True):
             base_score += 5.0
         else:
-            base_score -= 20.0
+            base_score -= 10.0
 
         icp_score = round(min(98.0, max(40.0, base_score)), 1)
 
@@ -95,7 +106,37 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         sender_name = company_context.get("sender_name", "Account Executive")
         sender_role = company_context.get("sender_role", "Sales Representative")
 
-        prompt = f"""You are an elite AI Sales SDR representing {sender_company}. Analyze the following prospect and generate a highly personalized cold outreach email on behalf of {sender_company}.
+        if outreach_channel == "whatsapp":
+            prompt = f"""You are an elite AI Sales SDR representing {sender_company}. Generate a high-converting, personalized WhatsApp outreach message for a prospective client.
+
+OUR COMPANY & VALUE PROP:
+- Company Name: {sender_company}
+- Industry: {company_context.get("industry", "Technology")}
+- Value Proposition: {battlecard}
+- Sender: {sender_name} ({sender_role})
+
+TARGET PROSPECT:
+- Company: {company_name} ({domain})
+- Contact Name: {contact_name} ({contact_title})
+- Web Context: {scraped_text[:500]}
+
+INSTRUCTIONS:
+1. Write a punchy, conversational WhatsApp cold outreach message (max 3-4 short paragraphs/bullet points, WhatsApp friendly with selective emoji use).
+2. Propose a brief 10-minute sync to show our autonomous workflow solutions.
+3. Sign off cleanly as "{sender_name} | {sender_company}".
+4. DO NOT include email subject lines or generic placeholder brackets like "[Your Name]".
+
+Return ONLY a valid JSON object:
+{{
+    "icp_score": refined score between 60 and 100,
+    "outreach_subject": "WhatsApp Outreach",
+    "outreach_body": "WhatsApp message content"
+}}
+"""
+            subject = f"WhatsApp Outreach for {company_name}"
+            body = f"Hi {contact_name}! 👋\n\nI saw what {company_name} is building and wanted to reach out. At {sender_company}, we help teams automate enterprise workflows with zero vendor lock-in.\n\nWould you be open to a quick 10-min chat next week?\n\nBest,\n{sender_name} | {sender_company}"
+        else:
+            prompt = f"""You are an elite AI Sales SDR representing {sender_company}. Analyze the following prospect and generate a highly personalized cold outreach email on behalf of {sender_company}.
 
 OUR COMPANY & VALUE PROP:
 - Company Name: {sender_company}
@@ -117,14 +158,13 @@ Return a JSON object with:
 - "outreach_body": personalized cold outreach body signed off as "{sender_name}, {sender_role} at {sender_company}"
 
 CRITICAL FORMATTING RULES FOR OUTREACH BODY:
-DO NOT include generic bracketed placeholders like "[Your Name]", "[Your Position]", "[Your Company Name]", or "[Your Contact Information]".
+DO NOT include generic bracketed placeholders like "[Your Name]", "[Your Position]", "[Your Company Name]".
 Sign off cleanly with "{sender_name}, {sender_role} at {sender_company}".
 
 Respond ONLY with valid JSON.
 """
-
-        subject = f"Autonomous Workflow Velocity for {company_name} | {sender_company}"
-        body = f"Hi {contact_name},\n\nI saw {company_name}'s work in digital transformation. At {sender_company}, {sender_desc[:150]}...\n\nWould you be open to a brief discussion next week?\n\nBest regards,\n{sender_name}\n{sender_role}, {sender_company}"
+            subject = f"Autonomous Workflow Velocity for {company_name} | {sender_company}"
+            body = f"Hi {contact_name},\n\nI saw {company_name}'s work in digital transformation. At {sender_company}, {sender_desc[:150]}...\n\nWould you be open to a brief discussion next week?\n\nBest regards,\n{sender_name}\n{sender_role}, {sender_company}"
 
         if llm:
             try:
@@ -157,6 +197,9 @@ Respond ONLY with valid JSON.
             "contact_name": contact_name,
             "contact_title": contact_title,
             "contact_email": contact_email,
+            "contact_phone": contact_phone,
+            "whatsapp_status": wa_status,
+            "outreach_channel": outreach_channel,
             "hunter_person_id": contact.get("hunter_person_id") or contact.get("apollo_person_id", f"HUNTER-{idx+1}"),
             "apollo_person_id": contact.get("apollo_person_id") or contact.get("hunter_person_id", f"HUNTER-{idx+1}"),
             "deliverability_status": deliverability.get("status", "VALID"),
@@ -170,7 +213,7 @@ Respond ONLY with valid JSON.
     logs.append({
         "stage": "Stage 5: Scoring & Copy Generation",
         "status": "COMPLETED",
-        "details": f"Generated personalized outreach copy and ICP fit scores via OpenRouter LLM for {len(outreach_batch)} deliverable valid prospects."
+        "details": f"Generated personalized outreach copy ({outreach_channel.upper()}) and ICP fit scores via OpenRouter LLM for {len(outreach_batch)} deliverable valid prospects."
     })
 
     return {

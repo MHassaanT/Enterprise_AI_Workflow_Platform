@@ -69,7 +69,7 @@ async def account_fit_research_node(state: SalesAgentState) -> Dict[str, Any]:
                 scraped_text = f"{company_name} ({domain}) - Food business, restaurant, bakery, or food manufacturing enterprise in {icp_config.get('region', 'Lahore Pakistan')}."
                 scrape_method = "metadata_fallback"
 
-        # 2. LLM ICP Evaluation and Email Extraction
+        # 2. LLM ICP Evaluation, Email Extraction, and Phone Number Discovery
         prompt = f"""You are an elite B2B Sales SDR qualifying a prospect company.
 
 ICP CONFIGURATION:
@@ -83,20 +83,22 @@ SCRAPED WEBSITE CONTENT ({company_name} - {domain}):
 
 INSTRUCTIONS:
 1. Evaluate if this company's business matches our Target Industries and ICP.
-2. Extract ANY email addresses visible in the text (e.g. info@, sales@, press@, or personal emails). These will be used for contact pattern inference. Do NOT make up emails.
-3. Check for invalid parked domains (e.g. "domain for sale", "404 not found", etc.).
+2. Extract ANY email addresses visible in the text (e.g. info@, sales@, press@, or personal emails). Do NOT make up emails.
+3. Extract ANY telephone / mobile / WhatsApp numbers visible in the text (e.g. +1..., +44..., +92..., or local business contact lines). Do NOT make up numbers.
+4. Check for invalid parked domains (e.g. "domain for sale", "404 not found", etc.).
 
 Return ONLY a valid JSON object matching this schema exactly:
 {{
     "is_qualified": true/false,
     "reasoning": "1 sentence explanation of fit or rejection",
-    "extracted_emails": ["email1@company.com", "email2@company.com"]
+    "extracted_emails": ["email1@company.com"],
+    "extracted_phones": ["+14155552671"]
 }}
 """
         
         try:
             llm_res = await llm.ainvoke([
-                SystemMessage(content="You evaluate B2B prospects and return ONLY valid JSON."),
+                SystemMessage(content="You evaluate B2B prospects and extract real contact details. Return ONLY valid JSON."),
                 HumanMessage(content=prompt)
             ])
             content = llm_res.content.strip()
@@ -113,11 +115,24 @@ Return ONLY a valid JSON object matching this schema exactly:
             pattern_emails = parsed.get("extracted_emails", [])
             if not isinstance(pattern_emails, list):
                 pattern_emails = []
+            pattern_phones = parsed.get("extracted_phones", [])
+            if not isinstance(pattern_phones, list):
+                pattern_phones = []
         except Exception as e:
             logger.error(f"[ACCOUNT FIT] LLM JSON parsing failed for {domain}: {e}")
             qualified = False
             verdict = "Unqualified Target — LLM evaluation failed."
             pattern_emails = []
+            pattern_phones = []
+
+        # Supplemental regex phone search in scraped_text if none found
+        if not pattern_phones and scraped_text:
+            import re
+            phone_matches = re.findall(r'(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', scraped_text)
+            for pm in phone_matches:
+                clean_digits = re.sub(r'[^\d+]', '', pm)
+                if len(clean_digits) >= 8 and clean_digits not in pattern_phones:
+                    pattern_phones.append(clean_digits)
 
         return {
             "company_name": company_name,
@@ -127,7 +142,8 @@ Return ONLY a valid JSON object matching this schema exactly:
             "scrape_method": scrape_method,
             "qualified": qualified,
             "fit_verdict": verdict,
-            "pattern_emails": pattern_emails
+            "pattern_emails": pattern_emails,
+            "pattern_phones": pattern_phones,
         }
 
     # 3. Parallelize scraping and evaluation

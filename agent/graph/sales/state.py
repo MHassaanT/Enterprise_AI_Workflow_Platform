@@ -12,10 +12,12 @@ class SalesAgentState(TypedDict):
     prospect_limit: Optional[int]
     target_domain: Optional[str]
     auto_send_email: Optional[bool]
+    outreach_channel: Optional[str]  # 'email' | 'whatsapp'
     
     # State tracking for looping
     existing_domains: List[str]
     existing_emails: List[str]
+    existing_phones: List[str]
     
     # Stage 1: Sourcing & Business Understanding
     icp_config: Dict[str, Any]
@@ -39,10 +41,12 @@ class SalesAgentState(TypedDict):
     icp_score: float
     generated_outreach: Optional[Dict[str, Any]]
     
-    # Stage 6: Dispatch & CRM Deal Logging (Gmail API)
+    # Stage 6: Dispatch & CRM Deal Logging (Gmail API & WhatsApp MCP)
     processed_count: int
     outreach_sent: bool
     gmail_message_id: Optional[str]
+    whatsapp_message_id: Optional[str]
+    whatsapp_status: Optional[str]
     deal_stage: str
     quote_details: Optional[Dict[str, Any]]
     

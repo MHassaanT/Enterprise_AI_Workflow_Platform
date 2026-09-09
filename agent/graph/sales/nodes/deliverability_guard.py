@@ -4,9 +4,13 @@ Runs email verifier checks (RFC-5322 syntax, MX DNS lookup, disposable provider 
 to ensure 100% email validity and protect sender domain reputation.
 """
 import asyncio
+import logging
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
 from services.email_verifier import verify_email
+from services.whatsapp_verifier import check_whatsapp_registration
+
+logger = logging.getLogger(__name__)
 
 
 async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
@@ -20,18 +24,29 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     if not discovered_contacts and state.get("discovered_contact"):
         discovered_contacts = [state["discovered_contact"]]
 
+    outreach_channel = (state.get("outreach_channel") or "email").lower()
     existing_domains = set(state.get("existing_domains") or [])
     existing_emails = set(state.get("existing_emails") or [])
+    existing_phones = set(state.get("existing_phones") or [])
 
-    if not existing_domains and not existing_emails:
+    if not existing_domains and not existing_emails and not existing_phones:
         try:
             from services.db_client import execute_db_query
-            ex_query = "SELECT LOWER(contact_email) as contact_email FROM sales_prospects WHERE (deal_stage = 'SENT' OR gmail_message_id IS NOT NULL) AND tenant_id = $1;"
+            ex_query = """
+            SELECT LOWER(contact_email) as contact_email, contact_phone 
+            FROM sales_prospects 
+            WHERE (deal_stage IN ('SENT', 'OUTREACH_SENT') OR gmail_message_id IS NOT NULL OR whatsapp_message_id IS NOT NULL) 
+              AND tenant_id = $1;
+            """
             ex_res = await execute_db_query(ex_query, [tenant_id])
             if ex_res and ex_res.get("rows"):
                 for row in ex_res["rows"]:
                     if row.get("contact_email"):
                         existing_emails.add(row["contact_email"].strip().lower())
+                    if row.get("contact_phone"):
+                        clean_p = "".join(c for c in str(row["contact_phone"]) if c.isdigit() or c == "+")
+                        if clean_p:
+                            existing_phones.add(clean_p)
         except Exception:
             pass
 
@@ -39,34 +54,59 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     evaluated_count = 0
     discarded_count = 0
 
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"[STAGE 4 DELIVERABILITY] Starting verification. Discovered contacts count: {len(discovered_contacts)}")
+    logger.info(f"[STAGE 4 DELIVERABILITY] Starting verification. Channel: {outreach_channel}. Discovered count: {len(discovered_contacts)}")
 
     # Parallel verification of contacts discovered in Stage 3
     async def _verify_single(contact):
         domain = (contact.get("domain") or "").strip().lower()
         email = (contact.get("contact_email") or "").strip().lower()
+        phone = contact.get("contact_phone")
         source = contact.get("source") or "unknown"
 
-        logger.info(f"[STAGE 4 DELIVERABILITY] Verifying contact: email='{email}', domain='{domain}', source='{source}', email_status='{contact.get('email_status', 'unknown')}'")
+        logger.info(f"[STAGE 4 DELIVERABILITY] Verifying: email='{email}', phone='{phone}', domain='{domain}', channel='{outreach_channel}'")
 
-        if email and email in existing_emails:
-            logger.info(f"[STAGE 4 DELIVERABILITY] Contact '{email}' already received outreach in DB. Skipping duplicate.")
+        # 1. Deduplication checks
+        if outreach_channel == "email" and email and email in existing_emails:
+            logger.info(f"[STAGE 4 DELIVERABILITY] Contact email '{email}' already received outreach. Skipping duplicate.")
             return None, True
 
-        if not email:
-            logger.info(f"[STAGE 4 DELIVERABILITY] Empty email for contact. Discarding.")
+        clean_phone = "".join(c for c in str(phone) if c.isdigit() or c == "+") if phone else ""
+        if outreach_channel == "whatsapp" and clean_phone and clean_phone in existing_phones:
+            logger.info(f"[STAGE 4 DELIVERABILITY] Contact phone '{clean_phone}' already received outreach. Skipping duplicate.")
             return None, True
 
-        verify_res = await verify_email(email, source=source, tenant_id=tenant_id)
+        # 2. Email verification
+        verify_res = {"is_valid": False, "status": "NOT_CHECKED"}
+        if email:
+            verify_res = await verify_email(email, source=source, tenant_id=tenant_id)
         contact["deliverability"] = verify_res
-        logger.info(f"[STAGE 4 DELIVERABILITY] Verification result for '{email}': is_valid={verify_res.get('is_valid')}, status={verify_res.get('status')}, reason='{verify_res.get('reason')}'")
-        
-        if verify_res.get("is_valid", False):
-            return contact, False
+
+        # 3. WhatsApp verification via Baileys onWhatsApp()
+        wa_res = {"checked": False, "exists": False, "status": "NOT_CHECKED"}
+        if clean_phone:
+            wa_res = await check_whatsapp_registration(clean_phone, tenant_id=tenant_id)
+            contact["whatsapp_status"] = wa_res.get("whatsapp_status") or wa_res.get("status", "UNVERIFIED")
+            contact["whatsapp_jid"] = wa_res.get("jid")
         else:
-            return contact, True
+            contact["whatsapp_status"] = "NO_PHONE"
+
+        contact["whatsapp_check"] = wa_res
+        logger.info(f"[STAGE 4 DELIVERABILITY] Verification results for {contact.get('contact_name')}: Email valid={verify_res.get('is_valid')}, WhatsApp status={contact.get('whatsapp_status')}")
+
+        # 4. Qualification based on target outreach channel
+        if outreach_channel == "whatsapp":
+            # For WhatsApp outreach, the prospect MUST have a verified WhatsApp account
+            if contact.get("whatsapp_status") == "ON_WHATSAPP":
+                return contact, False
+            else:
+                logger.info(f"[STAGE 4 DELIVERABILITY] Contact '{phone}' discarded: not on WhatsApp (status: {contact.get('whatsapp_status')}).")
+                return contact, True
+        else:
+            # Default Email channel: prospect must pass email deliverability check
+            if verify_res.get("is_valid", False):
+                return contact, False
+            else:
+                return contact, True
 
     if discovered_contacts:
         results = await asyncio.gather(*[_verify_single(c) for c in discovered_contacts])
@@ -80,10 +120,10 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
     verified_contacts = valid_contacts[:prospect_limit]
 
     if verified_contacts:
-        log_detail = f"Evaluated {evaluated_count} candidate emails, filtered out {discarded_count} invalid/unverified profiles, and collected {len(verified_contacts)} deliverable VALID prospects."
+        log_detail = f"Evaluated {evaluated_count} candidate profiles for {outreach_channel.upper()} outreach, filtered out {discarded_count} unqualified/unverified profiles, and collected {len(verified_contacts)} deliverable VALID prospects."
         status_str = "COMPLETED"
     else:
-        log_detail = f"Evaluated {evaluated_count} candidate emails and filtered out {discarded_count} unverified or invalid addresses. 0 deliverable prospects found."
+        log_detail = f"Evaluated {evaluated_count} candidate profiles for {outreach_channel.upper()} outreach and filtered out {discarded_count} invalid addresses or unverified numbers. 0 deliverable prospects found."
         status_str = "FAILED"
 
     logs.append({

@@ -526,15 +526,16 @@ INSTRUCTIONS:
 1. Identify a REAL person who works at {company_name} in one of the target roles listed above.
 2. The person must be clearly named in the snippets — do NOT guess or make up a name.
 3. If multiple people are found, pick the one whose title best matches the target roles.
-4. If NO real person can be identified with confidence, return {{"found": false}}.
+4. Extract ANY direct phone / mobile / WhatsApp contact number for this person or company if mentioned in snippets.
+5. If NO real person can be identified with confidence, return {{"found": false}}.
 
 Return ONLY a valid JSON object:
-- If found: {{"found": true, "name": "Full Name", "first_name": "First", "last_name": "Last", "title": "Their Actual Title"}}
+- If found: {{"found": true, "name": "Full Name", "first_name": "First", "last_name": "Last", "title": "Their Actual Title", "phone": "+1234567890 or null"}}
 - If not found: {{"found": false}}
 """
 
         response = await llm.ainvoke([
-            SystemMessage(content="You extract real person names from search snippets. Return ONLY valid JSON. Never fabricate names."),
+            SystemMessage(content="You extract real person names and phone numbers from search snippets. Return ONLY valid JSON. Never fabricate names or numbers."),
             HumanMessage(content=prompt),
         ])
 
@@ -555,18 +556,44 @@ Return ONLY a valid JSON object:
         first_name = parsed.get("first_name", "").strip()
         last_name = parsed.get("last_name", "").strip()
         title = parsed.get("title", "").strip()
+        raw_phone = parsed.get("phone")
 
         if not name or not first_name:
             logger.warning(f"[CONTACT SEARCH] LLM returned found=true but missing first name/name: {parsed}")
             return None
+
+        phone = normalize_e164_phone(raw_phone) if raw_phone else None
 
         return {
             "name": name,
             "first_name": first_name,
             "last_name": last_name,
             "title": title or target_titles[0] if target_titles else "Executive",
+            "phone": phone,
         }
 
     except Exception as e:
         logger.error(f"[CONTACT SEARCH] LLM person parsing failed for {company_name}: {e}")
         return None
+
+
+def normalize_e164_phone(raw_phone: Optional[str]) -> Optional[str]:
+    """
+    Standardizes a phone string into clean E.164 international format (+[country][number]).
+    """
+    if not raw_phone:
+        return None
+    import re
+    cleaned = re.sub(r'[^\d+]', '', str(raw_phone).strip())
+    if not cleaned:
+        return None
+    if cleaned.startswith("+"):
+        digits = cleaned[1:]
+        if 8 <= len(digits) <= 15:
+            return f"+{digits}"
+    elif len(cleaned) == 10:
+        return f"+1{cleaned}"
+    elif 8 <= len(cleaned) <= 15:
+        return f"+{cleaned}"
+    return None
+

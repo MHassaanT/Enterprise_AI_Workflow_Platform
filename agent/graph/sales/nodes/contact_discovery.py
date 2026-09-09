@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
-from tool_gateway.search_discovery import search_contact_person
+from tool_gateway.search_discovery import search_contact_person, normalize_e164_phone
 from tool_gateway.email_pattern_engine import detect_and_infer
 
 logger = logging.getLogger(__name__)
@@ -120,12 +120,26 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
 
         logger.info(f"[STAGE 3] ✅ Inferred email for {domain}: {candidate_email} (pattern={pattern_used}, status={email_status})")
 
-        # 3. Build contact record compatible with Stage 4/5
+        # 3. Resolve Phone Number for Prospect (Direct person line or website contact line)
+        contact_phone = None
+        if person.get("phone"):
+            contact_phone = normalize_e164_phone(person.get("phone"))
+        
+        if not contact_phone:
+            pattern_phones = account.get("pattern_phones", [])
+            if pattern_phones:
+                contact_phone = normalize_e164_phone(pattern_phones[0])
+
+        logger.info(f"[STAGE 3] Phone for {domain}: {contact_phone or 'None'}")
+
+        # 4. Build contact record compatible with Stage 4/5
         contact_id = f"SERPER-{domain.split('.')[0].upper()}"
         contact = {
             "contact_name": full_name,
             "contact_title": title,
             "contact_email": candidate_email,
+            "contact_phone": contact_phone,
+            "whatsapp_status": "UNVERIFIED",
             "email_status": email_status,
             "pattern_used": pattern_used,
             "pattern_source_email": inference.get("pattern_source_email", ""),

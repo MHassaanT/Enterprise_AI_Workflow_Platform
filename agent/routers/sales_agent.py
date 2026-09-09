@@ -34,6 +34,7 @@ class SalesPipelineRunRequest(BaseModel):
     target_domain: Optional[str] = None
     prospect_limit: Optional[int] = 10
     auto_send_email: Optional[bool] = False
+    outreach_channel: Optional[str] = "email"
     icp_config: Optional[Dict[str, Any]] = None
     user_id: str = "sales_sdr"
 
@@ -60,6 +61,64 @@ class SingleEmailSendRequest(BaseModel):
     subject: str
     body: str
     prospect_id: Optional[str] = None
+
+
+class SingleWhatsAppSendRequest(BaseModel):
+    tenant_id: str
+    contact_phone: str
+    message: str
+    prospect_id: Optional[str] = None
+
+
+@router.post("/send-whatsapp")
+async def send_single_whatsapp(
+    request: SingleWhatsAppSendRequest,
+    x_internal_token: str = Header(alias="X-Internal-Token"),
+):
+    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized.")
+
+    tenant_id = _normalize_uuid(request.tenant_id)
+    await _ensure_v2_columns_exist()
+
+    try:
+        from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
+        wa_res = await execute_whatsapp_tool(
+            tool_name="whatsapp_send_message",
+            arguments={"recipient": request.contact_phone, "message": request.message},
+            tenant_id=request.tenant_id
+        )
+
+        if "Error" not in wa_res and ("Sent message" in wa_res or "messageId" in wa_res or "successfully" in wa_res.lower()):
+            msg_id = "MSG-WA-" + str(hash(request.contact_phone))[-8:]
+            if "messageId: " in wa_res:
+                msg_id = f"MSG-WA-{wa_res.split('messageId: ')[-1].split()[0].strip()}"
+
+            await execute_db_query("""
+            UPDATE sales_prospects
+            SET deal_stage = 'OUTREACH_SENT',
+                outreach_body = $1,
+                whatsapp_message_id = $2,
+                outreach_channel = 'whatsapp',
+                last_channel_used = 'whatsapp',
+                updated_at = NOW()
+            WHERE contact_phone = $3 OR id::text = $4;
+            """, [request.message, msg_id, request.contact_phone, str(request.prospect_id or '')])
+
+            return {
+                "success": True,
+                "message": f"Successfully sent WhatsApp message to {request.contact_phone} via Baileys API!",
+                "whatsapp_message_id": msg_id,
+                "deal_stage": "OUTREACH_SENT",
+                "channel": "whatsapp"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"WhatsApp dispatch note: {wa_res}"
+            }
+    except Exception as e:
+        return {"success": False, "error": f"Failed to send WhatsApp message: {str(e)}"}
 
 
 @router.post("/send-email")
@@ -101,6 +160,8 @@ async def send_single_email(
                 outreach_subject = $1,
                 outreach_body = $2,
                 gmail_message_id = $3,
+                outreach_channel = 'email',
+                last_channel_used = 'email',
                 updated_at = NOW()
             WHERE contact_email = $4 OR id::text = $5;
             """, [request.subject, request.body, msg_id, request.contact_email, str(request.prospect_id or '')])
@@ -159,6 +220,7 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
     
     existing_domains = []
     existing_emails = []
+    existing_phones = []
 
     final_state = {}
     config = {"configurable": {"thread_id": run_id}}
@@ -176,6 +238,7 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
                 "prospect_limit": prospect_limit - total_processed_count,
                 "target_domain": request.target_domain,
                 "auto_send_email": request.auto_send_email or False,
+                "outreach_channel": request.outreach_channel or "email",
                 "icp_config": request.icp_config or {},
                 "raw_accounts": [],
                 "scraped_context": {},
@@ -186,12 +249,15 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
                 "generated_outreach": None,
                 "outreach_sent": False,
                 "gmail_message_id": None,
+                "whatsapp_message_id": None,
+                "whatsapp_status": "UNVERIFIED",
                 "deal_stage": "DISCOVERED",
                 "quote_details": None,
                 "logs": [],
                 "answer": "",
                 "existing_domains": existing_domains,
                 "existing_emails": existing_emails,
+                "existing_phones": existing_phones,
             }
 
             final_state = await sales_head_graph.ainvoke(initial_state, config=config)
@@ -204,7 +270,7 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
             for log in final_state.get("logs", []):
                 overall_logs.append(log)
 
-            # Accumulate evaluated domains and emails to exclude them in the next iteration
+            # Accumulate evaluated domains, emails, and phones to exclude them in the next iteration
             evaluated_accounts = final_state.get("raw_accounts", [])
             for acc in evaluated_accounts:
                 domain = acc.get("domain")
@@ -216,10 +282,14 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
                 email = contact.get("contact_email")
                 if email:
                     existing_emails.append(email.lower().strip())
+                phone = contact.get("contact_phone")
+                if phone:
+                    existing_phones.append(phone.strip())
 
             # Deduplicate
             existing_domains = list(set(existing_domains))
             existing_emails = list(set(existing_emails))
+            existing_phones = list(set(existing_phones))
 
             logger.info(f"[SALES AGENT ROUTER] Loop iteration complete. Processed in this run: {len(batch)}. Total: {total_processed_count}/{prospect_limit}.")
             
@@ -247,6 +317,10 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
             "generated_outreach": final_state.get("generated_outreach"),
             "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage"),
             "gmail_message_id": first_contact.get("gmail_message_id") if first_contact else final_state.get("gmail_message_id"),
+            "whatsapp_message_id": first_contact.get("whatsapp_message_id") if first_contact else final_state.get("whatsapp_message_id"),
+            "whatsapp_status": first_contact.get("whatsapp_status") if first_contact else final_state.get("whatsapp_status"),
+            "contact_phone": first_contact.get("contact_phone") if first_contact else None,
+            "outreach_channel": request.outreach_channel or "email",
             "logs": overall_logs,
         }
 
@@ -544,6 +618,11 @@ async def _ensure_v2_columns_exist():
         ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS proposal_status VARCHAR(50) DEFAULT 'NONE';
         ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS deal_value NUMERIC(15, 2) DEFAULT 0.00;
         ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS sales_report JSONB DEFAULT '{}'::jsonb;
+        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50);
+        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(50) DEFAULT 'UNVERIFIED';
+        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS outreach_channel VARCHAR(50) DEFAULT 'email';
+        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(255);
+        ALTER TABLE sales_prospects ADD COLUMN IF NOT EXISTS last_channel_used VARCHAR(50) DEFAULT 'email';
         """)
     except Exception as e:
         logger.warning(f"V2 Columns Migration check notice: {e}")
@@ -554,12 +633,14 @@ class CheckRepliesRequest(BaseModel):
     prospect_id: Optional[str] = None
     simulate_reply: Optional[bool] = False
     simulated_text: Optional[str] = None
+    channel: Optional[str] = "all"  # "email", "whatsapp", or "all"
 
 
 class SendReplyRequest(BaseModel):
     tenant_id: str
     prospect_id: str
     reply_text: str
+    channel: Optional[str] = "auto"  # "email", "whatsapp", or "auto"
 
 
 class DraftProposalRequest(BaseModel):
@@ -572,6 +653,7 @@ class DraftProposalRequest(BaseModel):
 class SendProposalRequest(BaseModel):
     tenant_id: str
     prospect_id: str
+    channel: Optional[str] = "auto"  # "email", "whatsapp", or "auto"
 
 
 class ConfirmSaleRequest(BaseModel):
@@ -622,58 +704,94 @@ async def check_email_replies(
     for p in prospects:
         p_id = str(p.get("id"))
         email = p.get("contact_email", "")
+        phone = p.get("contact_phone", "")
         company = p.get("company_name", "Client")
         contact_name = p.get("contact_name", "Decision Maker")
+        last_channel = p.get("last_channel_used") or p.get("outreach_channel") or "email"
         inbound_text = None
+        reply_channel = last_channel
 
         if request.simulate_reply and (not request.prospect_id or request.prospect_id == p_id):
-            inbound_text = request.simulated_text or f"Hi! Thanks for reaching out about AI platform for {company}. We are very interested in scheduling a demo and reviewing your Enterprise proposal and pricing details. Please send us your formal proposal!"
+            inbound_text = request.simulated_text or f"Hi! Thanks for reaching out about the AI platform for {company}. We are very interested in scheduling a demo and reviewing your Enterprise proposal and pricing details. Please send us your formal proposal!"
+            reply_channel = request.channel if request.channel in ("email", "whatsapp") else last_channel
         else:
-            # Check Gmail API
-            try:
-                from tool_gateway.credentials_manager import fetch_tool_credentials
-                creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-                if creds and creds.get("access_token") and email:
-                    from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-                    gmail_res = await execute_gmail_tool(
-                        tool_name="inbox",
-                        arguments={"q": f"from:{email}", "limit": 3},
-                        credentials=creds
-                    )
-                    if "Found" in gmail_res and "messages" in gmail_res:
-                        # Extract first message details
-                        inbound_text = f"Received message from {contact_name} ({email}) regarding partnership proposal."
-            except Exception as e:
-                logger.warning(f"Gmail inbox check for {email} notice: {e}")
+            # 1. Check WhatsApp message log if channel allows and prospect has phone
+            if (request.channel in ("whatsapp", "all") or last_channel == "whatsapp") and phone:
+                try:
+                    clean_phone = phone.replace("+", "").replace("-", "").replace(" ", "")
+                    wa_res = await execute_db_query("""
+                    SELECT content_preview, created_at FROM whatsapp_message_log
+                    WHERE tenant_id = $1
+                      AND direction = 'inbound'
+                      AND (
+                        sender_jid LIKE '%' || $2 || '%'
+                        OR replace(replace(replace(sender_jid, '+', ''), '-', ''), ' ', '') LIKE '%' || $3 || '%'
+                      )
+                    ORDER BY created_at DESC LIMIT 1;
+                    """, [tenant_id, phone, clean_phone])
+                    if wa_res and wa_res.get("rows") and len(wa_res["rows"]) > 0:
+                        wa_row = wa_res["rows"][0]
+                        inbound_text = wa_row.get("content_preview")
+                        reply_channel = "whatsapp"
+                except Exception as e:
+                    logger.warning(f"WhatsApp message log check for {phone} notice: {e}")
+
+            # 2. If no WhatsApp message found and channel allows email, check Gmail API
+            if not inbound_text and (request.channel in ("email", "all") or last_channel == "email") and email:
+                try:
+                    from tool_gateway.credentials_manager import fetch_tool_credentials
+                    creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+                    if creds and creds.get("access_token"):
+                        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
+                        gmail_res = await execute_gmail_tool(
+                            tool_name="inbox",
+                            arguments={"q": f"from:{email}", "limit": 3},
+                            credentials=creds
+                        )
+                        if "Found" in gmail_res and "messages" in gmail_res:
+                            # Extract first message details
+                            inbound_text = f"Received message from {contact_name} ({email}) regarding partnership proposal."
+                            reply_channel = "email"
+                except Exception as e:
+                    logger.warning(f"Gmail inbox check for {email} notice: {e}")
 
         if inbound_text:
             replies_count += 1
-            # Generate AI Response Copy with LLM
-            prompt = f"""You are an elite B2B Sales Executive replying to a prospect email response.
+            # Generate AI Response Copy with LLM adapted to the active channel
+            channel_instruction = (
+                "Generate a concise, conversational, professional WhatsApp reply (emojis allowed, no email sign-offs, direct next step/CTA)."
+                if reply_channel == "whatsapp"
+                else "Generate a professional, persuasive sales email reply. Address their questions/interest directly, highlight key benefits, offer next steps (like reviewing our agreement or booking a 15-min call), and maintain an executive tone."
+            )
+            prompt = f"""You are an elite B2B Sales Executive replying to a prospect {reply_channel.upper()} message.
 
 PROSPECT DETAILS:
 Name: {contact_name}
 Company: {company}
 Title: {p.get('contact_title', 'Executive')}
+Channel: {reply_channel}
 Previous Outreach Body: {p.get('outreach_body', '')[:300]}
 
 INBOUND PROSPECT REPLY:
 "{inbound_text}"
 
 INSTRUCTIONS:
-Generate a professional, persuasive sales email reply. Address their questions/interest directly, highlight key benefits, offer next steps (like reviewing our agreement or booking a 15-min call), and maintain an executive tone.
+{channel_instruction}
 
-Return ONLY the email body response text (no markdown wrappers).
+Return ONLY the response message body text (no markdown wrappers).
 """
             llm = get_llm()
             try:
                 llm_res = await llm.ainvoke([
-                    SystemMessage(content="You are a professional B2B sales representative drafting contextual email replies."),
+                    SystemMessage(content=f"You are a professional B2B sales representative drafting contextual {reply_channel} replies."),
                     HumanMessage(content=prompt)
                 ])
                 ai_draft = llm_res.content.strip()
             except Exception as e:
-                ai_draft = f"Hi {contact_name},\n\nThank you for your response! We'd be delighted to share our proposal and arrange a walkthrough. Let us know your preferred time slot.\n\nBest regards,\nSales Team"
+                if reply_channel == "whatsapp":
+                    ai_draft = f"Hi {contact_name}! 👋 Thanks for reaching out. We'd love to share our enterprise proposal and schedule a quick walkthrough. When works best for you?"
+                else:
+                    ai_draft = f"Hi {contact_name},\n\nThank you for your response! We'd be delighted to share our proposal and arrange a walkthrough. Let us know your preferred time slot.\n\nBest regards,\nSales Team"
 
             # Determine new deal stage
             new_stage = p.get("deal_stage", "REPLIED")
@@ -690,22 +808,24 @@ Return ONLY the email body response text (no markdown wrappers).
               ai_reply_draft = $2,
               reply_status = 'REPLY_RECEIVED',
               deal_stage = $3,
+              last_channel_used = $4,
               updated_at = NOW()
-            WHERE id::text = $4;
-            """, [inbound_text, ai_draft, new_stage, p_id])
+            WHERE id::text = $5;
+            """, [inbound_text, ai_draft, new_stage, reply_channel, p_id])
 
             p["has_reply"] = True
             p["reply_content"] = inbound_text
             p["ai_reply_draft"] = ai_draft
             p["reply_status"] = "REPLY_RECEIVED"
             p["deal_stage"] = new_stage
+            p["last_channel_used"] = reply_channel
             updated_prospects.append(p)
 
     return {
         "success": True,
         "replies_found": replies_count,
         "prospects": updated_prospects,
-        "message": f"Scanned inbox. Processed {replies_count} prospect replies."
+        "message": f"Scanned replies across channels. Processed {replies_count} prospect replies."
     }
 
 
@@ -729,43 +849,79 @@ async def send_ai_reply(
 
     prospect = res["rows"][0]
     email = prospect.get("contact_email")
-    subject = f"Re: {prospect.get('outreach_subject') or 'AI Workflow Platform Partnership'}"
+    phone = prospect.get("contact_phone")
+    target_channel = request.channel if request.channel in ("email", "whatsapp") else (prospect.get("last_channel_used") or prospect.get("outreach_channel") or "email")
 
-    # Execute Gmail Tool
-    creds = {}
-    try:
-        from tool_gateway.credentials_manager import fetch_tool_credentials
-        creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-    except Exception:
-        pass
+    if target_channel == "whatsapp" and phone:
+        # Dispatch WhatsApp reply via Baileys adapter
+        wa_msg_id = "MSG-REPLY-WA-" + str(hash(phone))[-8:]
+        try:
+            from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
+            wa_res = await execute_whatsapp_tool(
+                tool_name="whatsapp_send_message",
+                arguments={"recipient": phone, "message": request.reply_text},
+                tenant_id=request.tenant_id
+            )
+            if "messageId: " in wa_res:
+                wa_msg_id = f"MSG-WA-{wa_res.split('messageId: ')[-1].split()[0].strip()}"
+        except Exception as e:
+            logger.warning(f"Send reply WhatsApp dispatch notice: {e}")
 
-    gmail_msg_id = "MSG-REPLY-" + str(hash(email))[-8:]
-    try:
-        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-        gmail_res = await execute_gmail_tool(
-            tool_name="send_email",
-            arguments={"to": email, "subject": subject, "body": request.reply_text},
-            credentials=creds
-        )
-        if "Message ID: " in gmail_res:
-            gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
-    except Exception as e:
-        logger.warning(f"Send reply Gmail dispatch notice: {e}")
+        await execute_db_query("""
+        UPDATE sales_prospects SET
+          reply_status = 'AI_REPLIED',
+          deal_stage = 'REPLIED',
+          whatsapp_message_id = $1,
+          last_channel_used = 'whatsapp',
+          updated_at = NOW()
+        WHERE id::text = $2;
+        """, [wa_msg_id, str(request.prospect_id)])
 
-    await execute_db_query("""
-    UPDATE sales_prospects SET
-      reply_status = 'AI_REPLIED',
-      deal_stage = 'REPLIED',
-      gmail_message_id = $1,
-      updated_at = NOW()
-    WHERE id::text = $2;
-    """, [gmail_msg_id, str(request.prospect_id)])
+        return {
+            "success": True,
+            "message": f"AI Reply successfully sent to {phone} via WhatsApp!",
+            "whatsapp_message_id": wa_msg_id,
+            "channel": "whatsapp"
+        }
+    else:
+        # Dispatch Gmail reply
+        subject = f"Re: {prospect.get('outreach_subject') or 'AI Workflow Platform Partnership'}"
+        creds = {}
+        try:
+            from tool_gateway.credentials_manager import fetch_tool_credentials
+            creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+        except Exception:
+            pass
 
-    return {
-        "success": True,
-        "message": f"AI Reply successfully sent to {email}!",
-        "gmail_message_id": gmail_msg_id
-    }
+        gmail_msg_id = "MSG-REPLY-" + str(hash(email or ''))[-8:]
+        try:
+            from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
+            gmail_res = await execute_gmail_tool(
+                tool_name="send_email",
+                arguments={"to": email, "subject": subject, "body": request.reply_text},
+                credentials=creds
+            )
+            if "Message ID: " in gmail_res:
+                gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
+        except Exception as e:
+            logger.warning(f"Send reply Gmail dispatch notice: {e}")
+
+        await execute_db_query("""
+        UPDATE sales_prospects SET
+          reply_status = 'AI_REPLIED',
+          deal_stage = 'REPLIED',
+          gmail_message_id = $1,
+          last_channel_used = 'email',
+          updated_at = NOW()
+        WHERE id::text = $2;
+        """, [gmail_msg_id, str(request.prospect_id)])
+
+        return {
+            "success": True,
+            "message": f"AI Reply successfully sent to {email} via Gmail!",
+            "gmail_message_id": gmail_msg_id,
+            "channel": "email"
+        }
 
 
 @router.post("/proposals/draft")
@@ -890,13 +1046,70 @@ async def send_sales_proposal(
 
     prospect = res["rows"][0]
     email = prospect.get("contact_email")
+    phone = prospect.get("contact_phone")
     company = prospect.get("company_name", "Client")
     contact_name = prospect.get("contact_name", "Decision Maker")
     raw_proposal = prospect.get("proposal_details", {})
     proposal = raw_proposal if isinstance(raw_proposal, dict) else json.loads(raw_proposal or '{}')
 
-    subject = proposal.get("title") or f"Formal B2B Proposal & Agreement for {company}"
-    body = f"""Dear {contact_name},
+    target_channel = request.channel if request.channel in ("email", "whatsapp") else (prospect.get("last_channel_used") or prospect.get("outreach_channel") or "email")
+
+    if target_channel == "whatsapp" and phone:
+        # Build formatted WhatsApp proposal message
+        wa_body = f"""📄 *{proposal.get('title') or f'Enterprise Proposal & Agreement for {company}'}*
+
+Dear {contact_name}, we are pleased to share our formal Enterprise Proposal:
+
+💼 *Overview:*
+• Tier: {proposal.get('pricing_tier', 'Enterprise')}
+• Annual Value: ${proposal.get('deal_value', 50000):,.2f}
+• Payment Terms: {proposal.get('payment_terms', 'Net 30 Days')}
+
+📋 *Executive Summary:*
+{proposal.get('executive_summary', '')}
+
+✅ *Deliverables & Scope:*
+""" + "\n".join([f"• {d}" for d in proposal.get('deliverables', [])]) + f"""
+
+⚖️ *Terms & SLA:*
+{proposal.get('agreement_terms', 'Standard enterprise SLA applies with zero vendor lock-in.')}
+
+Please reply directly to this WhatsApp message to confirm acceptance and proceed to onboarding! 🤝"""
+
+        wa_msg_id = "MSG-PROPOSAL-WA-" + str(hash(phone))[-8:]
+        try:
+            from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
+            wa_res = await execute_whatsapp_tool(
+                tool_name="whatsapp_send_message",
+                arguments={"recipient": phone, "message": wa_body},
+                tenant_id=request.tenant_id
+            )
+            if "messageId: " in wa_res:
+                wa_msg_id = f"MSG-WA-{wa_res.split('messageId: ')[-1].split()[0].strip()}"
+        except Exception as e:
+            logger.warning(f"Proposal WhatsApp dispatch notice: {e}")
+
+        await execute_db_query("""
+        UPDATE sales_prospects SET
+          proposal_status = 'SENT',
+          deal_stage = 'PROPOSAL_SENT',
+          whatsapp_message_id = $1,
+          last_channel_used = 'whatsapp',
+          updated_at = NOW()
+        WHERE id::text = $2;
+        """, [wa_msg_id, str(request.prospect_id)])
+
+        return {
+            "success": True,
+            "message": f"Human approved! Proposal & agreement successfully dispatched to {phone} via WhatsApp.",
+            "proposal_status": "SENT",
+            "deal_stage": "PROPOSAL_SENT",
+            "whatsapp_message_id": wa_msg_id,
+            "channel": "whatsapp"
+        }
+    else:
+        subject = proposal.get("title") or f"Formal B2B Proposal & Agreement for {company}"
+        body = f"""Dear {contact_name},
 
 We are pleased to present our formal Enterprise Proposal for {company}.
 
@@ -920,43 +1133,45 @@ Best regards,
 Enterprise Sales Team
 """
 
-    # Dispatch Email via Gmail API Adapter
-    creds = {}
-    try:
-        from tool_gateway.credentials_manager import fetch_tool_credentials
-        creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-    except Exception:
-        pass
+        # Dispatch Email via Gmail API Adapter
+        creds = {}
+        try:
+            from tool_gateway.credentials_manager import fetch_tool_credentials
+            creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
+        except Exception:
+            pass
 
-    gmail_msg_id = "MSG-PROPOSAL-" + str(hash(email))[-8:]
-    try:
-        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-        gmail_res = await execute_gmail_tool(
-            tool_name="send_email",
-            arguments={"to": email, "subject": subject, "body": body},
-            credentials=creds
-        )
-        if "Message ID: " in gmail_res:
-            gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
-    except Exception as e:
-        logger.warning(f"Proposal Gmail dispatch notice: {e}")
+        gmail_msg_id = "MSG-PROPOSAL-" + str(hash(email or ''))[-8:]
+        try:
+            from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
+            gmail_res = await execute_gmail_tool(
+                tool_name="send_email",
+                arguments={"to": email, "subject": subject, "body": body},
+                credentials=creds
+            )
+            if "Message ID: " in gmail_res:
+                gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
+        except Exception as e:
+            logger.warning(f"Proposal Gmail dispatch notice: {e}")
 
-    await execute_db_query("""
-    UPDATE sales_prospects SET
-      proposal_status = 'SENT',
-      deal_stage = 'PROPOSAL_SENT',
-      gmail_message_id = $1,
-      updated_at = NOW()
-    WHERE id::text = $2;
-    """, [gmail_msg_id, str(request.prospect_id)])
+        await execute_db_query("""
+        UPDATE sales_prospects SET
+          proposal_status = 'SENT',
+          deal_stage = 'PROPOSAL_SENT',
+          gmail_message_id = $1,
+          last_channel_used = 'email',
+          updated_at = NOW()
+        WHERE id::text = $2;
+        """, [gmail_msg_id, str(request.prospect_id)])
 
-    return {
-        "success": True,
-        "message": f"Human approved! Proposal & agreement successfully dispatched to {email}.",
-        "proposal_status": "SENT",
-        "deal_stage": "PROPOSAL_SENT",
-        "gmail_message_id": gmail_msg_id
-    }
+        return {
+            "success": True,
+            "message": f"Human approved! Proposal & agreement successfully dispatched to {email} via Gmail.",
+            "proposal_status": "SENT",
+            "deal_stage": "PROPOSAL_SENT",
+            "gmail_message_id": gmail_msg_id,
+            "channel": "email"
+        }
 
 
 @router.get("/analytics/{tenant_id}")
@@ -1036,17 +1251,21 @@ async def confirm_sale_and_notify_finance(
 
     # 1. Build Sales Completion Report
     report_id = f"REP-SALE-{Date_now_id()}"
+    channel_used = prospect.get("last_channel_used") or prospect.get("outreach_channel") or "email"
+    phone = prospect.get("contact_phone", "")
     sales_report = {
         "report_id": report_id,
         "company_name": company,
         "contact_name": contact,
         "contact_email": email,
+        "contact_phone": phone,
+        "channel_used": channel_used,
         "contact_title": prospect.get("contact_title", "Executive"),
         "final_deal_value": final_val,
         "payment_terms": request.payment_terms or "Net 30 Days",
         "closed_at": "NOW()",
         "salesperson": "AI SDR Autonomous Sales Agent",
-        "executive_summary": f"Sale successfully closed with {company} for ${final_val:,.2f} annual contract value."
+        "executive_summary": f"Sale successfully closed with {company} for ${final_val:,.2f} annual contract value via {channel_used}."
     }
 
     # 2. Update Prospect in DB
@@ -1062,6 +1281,7 @@ async def confirm_sale_and_notify_finance(
 
     # 3. Finance Agent Integration: General Ledger Entry & Invoice Creation
     finance_notified = False
+    inv_num = f"INV-{report_id}"
     try:
         # A. General Ledger Entry
         await execute_db_query("""
@@ -1104,7 +1324,6 @@ async def confirm_sale_and_notify_finance(
           updated_at TIMESTAMPTZ DEFAULT NOW()
         );
         """)
-        inv_num = f"INV-{report_id}"
         await execute_db_query("""
         INSERT INTO invoices (
           tenant_id, invoice_number, vendor_name, vendor_email, total_amount, line_items, match_status, status, created_at, updated_at
@@ -1140,6 +1359,16 @@ async def confirm_sale_and_notify_finance(
             f"Sale completed for {company} (${final_val:,.2f}). Notified Finance Agent to record General Ledger revenue and issue invoice {inv_num}."
         ])
         finance_notified = True
+
+        # D. Optional: Send WhatsApp confirmation notice if channel is WhatsApp
+        if channel_used == "whatsapp" and phone:
+            try:
+                from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
+                wa_closing_msg = f"🎉 *Deal Finalized & Active!*\n\nCongratulations {contact}, your Enterprise Agreement for {company} has been confirmed.\nInvoice: *{inv_num}* for *${final_val:,.2f}*.\n\nOur onboarding specialist will be in touch with access credentials. Welcome aboard! 🚀"
+                await execute_whatsapp_tool("whatsapp_send_message", {"recipient": phone, "message": wa_closing_msg}, tenant_id=request.tenant_id)
+            except Exception as wa_close_err:
+                logger.warning(f"WhatsApp closing notice notice: {wa_close_err}")
+
     except Exception as e:
         logger.error(f"Finance Agent Notification exception: {e}")
 
