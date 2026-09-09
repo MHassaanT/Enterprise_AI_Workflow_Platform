@@ -94,7 +94,7 @@ async def authenticate_user_with_email_impl(
                     if not on_wa:
                         return (
                             f"The phone number '{clean_phone}' is not registered on WhatsApp. "
-                            f"Please ask the user to provide a valid WhatsApp-registered phone number, or provide their registered email address instead."
+                            f"Please ask the user to provide a valid WhatsApp-registered phone number, or provide your registered email address instead."
                         )
 
                 # 2. Number exists on WhatsApp! Generate and store OTP in backend

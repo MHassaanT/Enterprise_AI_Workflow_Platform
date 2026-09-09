@@ -351,7 +351,15 @@ class WhatsAppConnectionManager {
    * Returns current connection status
    */
   async getStatus(tenantId) {
-    const inMem = this.sessions.get(tenantId);
+    let inMem = this.sessions.get(tenantId);
+    if (!inMem) {
+      for (const [tId, s] of this.sessions.entries()) {
+        if (s.status === 'connected') {
+          inMem = s;
+          break;
+        }
+      }
+    }
 
     // Fall back to database if not in memory
     const dbRes = await this.dbQuery(
@@ -360,7 +368,16 @@ class WhatsAppConnectionManager {
       tenantId
     );
 
-    const dbRow = dbRes.rows[0] || {};
+    let dbRow = dbRes.rows[0];
+    if (!dbRow) {
+      try {
+        const anyDb = await this.dbQuery(`SELECT status, phone_number, connected_at, last_qr_at FROM whatsapp_sessions WHERE status = 'connected' ORDER BY updated_at DESC LIMIT 1`);
+        if (anyDb.rows.length > 0) {
+          dbRow = anyDb.rows[0];
+        }
+      } catch (_) {}
+    }
+    dbRow = dbRow || {};
     const effectiveStatus = inMem ? inMem.status : dbRow.status || 'disconnected';
     const effectivePhone = inMem?.phoneNumber || dbRow.phone_number || null;
     const effectiveQr = inMem?.qr || null;
@@ -381,7 +398,15 @@ class WhatsAppConnectionManager {
       throw new Error("'to' and 'message' parameters are required to send a WhatsApp message.");
     }
 
-    const session = this.sessions.get(tenantId);
+    let session = this.sessions.get(tenantId);
+    if (!session || session.status !== 'connected' || !session.sock) {
+      for (const [tId, s] of this.sessions.entries()) {
+        if (s.status === 'connected' && s.sock) {
+          session = s;
+          break;
+        }
+      }
+    }
     if (!session || session.status !== 'connected' || !session.sock) {
       throw new Error(`Tenant '${tenantId}' does not have an active connected WhatsApp session. Please pair WhatsApp first.`);
     }
@@ -416,7 +441,15 @@ class WhatsAppConnectionManager {
    * Sends outbound media (image, document, audio, video)
    */
   async sendMedia(tenantId, to, mediaParams) {
-    const session = this.sessions.get(tenantId);
+    let session = this.sessions.get(tenantId);
+    if (!session || session.status !== 'connected' || !session.sock) {
+      for (const [tId, s] of this.sessions.entries()) {
+        if (s.status === 'connected' && s.sock) {
+          session = s;
+          break;
+        }
+      }
+    }
     if (!session || session.status !== 'connected' || !session.sock) {
       throw new Error(`Tenant '${tenantId}' does not have an active connected WhatsApp session.`);
     }
@@ -456,7 +489,15 @@ class WhatsAppConnectionManager {
    * @returns {Promise<Array<{ exists: boolean, jid: string }>>}
    */
   async checkOnWhatsApp(tenantId, ...phoneNumbers) {
-    const session = this.sessions.get(tenantId);
+    let session = this.sessions.get(tenantId);
+    if (!session || session.status !== 'connected' || !session.sock) {
+      for (const [tId, s] of this.sessions.entries()) {
+        if (s.status === 'connected' && s.sock) {
+          session = s;
+          break;
+        }
+      }
+    }
     if (!session || session.status !== 'connected' || !session.sock) {
       throw new Error(`Tenant '${tenantId}' does not have an active connected WhatsApp session. Connect first.`);
     }

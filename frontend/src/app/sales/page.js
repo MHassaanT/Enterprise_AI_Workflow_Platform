@@ -90,8 +90,16 @@ export default function SalesDashboard() {
         headers: { ...getAuthHeader() },
       });
       const data = await safeJsonParse(res);
-      if (data.success) {
-        setWhatsappStatus(data.status);
+      if (data) {
+        if (data.status && typeof data.status === 'object') {
+          setWhatsappStatus(data.status);
+        } else if (data.status && typeof data.status === 'string') {
+          setWhatsappStatus(data);
+        } else if (data.phoneNumber) {
+          setWhatsappStatus({ status: 'connected', ...data });
+        } else if (data.success && data.result) {
+          setWhatsappStatus(data.result);
+        }
       }
     } catch (err) {
       console.warn('Could not fetch WhatsApp status:', err.message);
@@ -766,7 +774,10 @@ export default function SalesDashboard() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOutreachChannel('whatsapp')}
+                    onClick={() => {
+                      setOutreachChannel('whatsapp');
+                      fetchWhatsAppStatus();
+                    }}
                     className={`py-1.5 px-3 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                       outreachChannel === 'whatsapp'
                         ? 'bg-emerald-600 text-white shadow'
@@ -779,9 +790,11 @@ export default function SalesDashboard() {
                 {outreachChannel === 'whatsapp' && (
                   <div className="mt-1.5 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded text-[11px] text-emerald-300 flex items-center justify-between">
                     <span>
-                      {whatsappStatus?.status === 'connected' ? '✅ WhatsApp session active' : '⚠️ WhatsApp not connected'}
+                      {whatsappStatus?.status === 'connected'
+                        ? (whatsappStatus.phoneNumber ? `✅ WhatsApp connected (${whatsappStatus.phoneNumber})` : '✅ WhatsApp session active')
+                        : '⚠️ WhatsApp not connected'}
                     </span>
-                    <Link href="/whatsapp" className="underline font-bold text-emerald-200 hover:text-white">
+                    <Link href="/mcp" className="underline font-bold text-emerald-200 hover:text-white">
                       Pair Session
                     </Link>
                   </div>

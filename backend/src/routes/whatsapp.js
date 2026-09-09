@@ -71,8 +71,7 @@ router.get('/status', authenticate, authorize('admin', 'employee'), async (req, 
     const { tenantId } = req.user;
     const manager = getWhatsAppManager();
     const status = await manager.getStatus(tenantId);
-
-    res.json(status);
+    res.json({ success: true, ...status });
   } catch (err) {
     console.error('Error fetching WhatsApp status:', err);
     res.status(500).json({ error: 'Failed to fetch WhatsApp status.' });

@@ -94,6 +94,10 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
         logger.info(f"[STAGE 4 DELIVERABILITY] Verification results for {contact.get('contact_name')}: Email valid={verify_res.get('is_valid')}, WhatsApp status={contact.get('whatsapp_status')}")
 
         # 4. Qualification based on target outreach channel
+        clean_p = clean_phone.replace("+", "") if clean_phone else ""
+        has_phone = bool(clean_p and len(clean_p) >= 7)
+        has_valid_email = bool(verify_res.get("is_valid", False))
+
         if outreach_channel == "whatsapp":
             # For WhatsApp outreach, the prospect MUST have a verified WhatsApp account
             if contact.get("whatsapp_status") == "ON_WHATSAPP":
@@ -114,8 +118,27 @@ async def deliverability_guard_node(state: SalesAgentState) -> Dict[str, Any]:
             evaluated_count += 1
             if is_discarded:
                 discarded_count += 1
-            elif res_contact and len(valid_contacts) < prospect_limit:
+            elif res_contact:
                 valid_contacts.append(res_contact)
+
+    # Prioritize target channel best matches first
+    if outreach_channel == "whatsapp":
+        valid_contacts.sort(
+            key=lambda c: (
+                c.get("whatsapp_status") == "ON_WHATSAPP",
+                bool(c.get("contact_phone")),
+                c.get("deliverability", {}).get("is_valid", False)
+            ),
+            reverse=True
+        )
+    else:
+        valid_contacts.sort(
+            key=lambda c: (
+                c.get("deliverability", {}).get("is_valid", False),
+                bool(c.get("contact_phone"))
+            ),
+            reverse=True
+        )
 
     verified_contacts = valid_contacts[:prospect_limit]
 

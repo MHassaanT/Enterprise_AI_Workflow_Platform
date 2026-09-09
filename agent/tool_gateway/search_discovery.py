@@ -30,6 +30,8 @@ NON_COMPANY_DOMAINS = {
     "wikipedia.org", "wikidata.org", "crunchbase.com", "glassdoor.com", "glassdoor.co.in", "glassdoor.co.uk",
     "indeed.com", "yelp.com", "trustpilot.com", "g2.com", "capterra.com",
     "getapp.com", "trustradius.com", "sourceforge.net", "dnb.com", "ensun.io",
+    "clutch.co", "techreviewer.co", "goodfirms.co", "themanifest.com", "sortlist.com",
+    "upwork.com", "fiverr.com",
     "zoominfo.com", "lusha.com", "d7leadfinder.com", "mustakbil.com", "urdupoint.com",
     "f6s.com", "scribd.com", "pakistanies.com", "builtin.com", "builtinnyc.com",
     "builtincolorado.com", "builtinchicago.org", "project-equity.org", "partnerslate.com",
@@ -135,15 +137,23 @@ def _build_queries(
         if not industry:
             continue
 
-        # Pick 2 template variants per industry
-        templates_to_use = QUERY_TEMPLATES[:2] if len(target_industries) > 1 else QUERY_TEMPLATES[:3]
+        if region_str:
+            templates_to_use = [
+                f"{industry} company in {region_str}",
+                f"{industry} business in {region_str}",
+                f"best {industry} in {region_str}",
+                f"{industry} companies {size_hint} employees {region_str}",
+            ]
+        else:
+            templates_to_use = [
+                f"{industry} software companies",
+                f"top {industry} SaaS platforms",
+                f"{industry} technology companies",
+                f"{industry} B2B startups",
+                f"best {industry} platforms {size_hint}".strip(),
+            ]
 
-        for template in templates_to_use:
-            query = template.format(
-                industry=industry,
-                size_hint=size_hint,
-                region=region_str,
-            )
+        for query in templates_to_use[:3]:
             # Clean up double spaces from empty substitutions
             query = " ".join(query.split())
             queries.append(query)
@@ -596,4 +606,56 @@ def normalize_e164_phone(raw_phone: Optional[str]) -> Optional[str]:
     elif 8 <= len(cleaned) <= 15:
         return f"+{cleaned}"
     return None
+
+
+async def search_company_phone(
+    company_name: str,
+    domain: str = "",
+    tenant_id: str = "00000000-0000-0000-0000-000000000000",
+) -> Optional[str]:
+    """
+    Searches Serper for a company's direct phone number or corporate contact line.
+    Checks knowledgeGraph.phone first, then parses organic snippets.
+    Returns normalized E.164 phone string or None.
+    """
+    if not company_name:
+        return None
+
+    api_key = await _get_serper_api_key(tenant_id)
+    if not api_key:
+        return None
+
+    queries = [
+        f'"{company_name}" phone contact OR headquarters',
+    ]
+    if domain:
+        queries.append(f'site:{domain} "phone" OR "contact us" OR "call us"')
+
+    for query in queries:
+        try:
+            result = await _execute_serper_search(api_key, query, num_results=5)
+            # 1. Knowledge graph phone
+            kg = result.get("knowledgeGraph", {}) or {}
+            if kg and kg.get("phone"):
+                norm = normalize_e164_phone(kg["phone"])
+                if norm:
+                    logger.info(f"[SEARCH PHONE] Found KG phone for {company_name}: {norm}")
+                    return norm
+
+            # 2. Organic snippets
+            import re
+            organic = result.get("organic", []) or []
+            for item in organic[:5]:
+                snippet = f"{item.get('title', '')} {item.get('snippet', '')}"
+                matches = re.findall(r'(\+?\d{1,4}[-.\s]?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4})', snippet)
+                for m in matches:
+                    norm = normalize_e164_phone(m)
+                    if norm and len(norm) >= 10:
+                        logger.info(f"[SEARCH PHONE] Found snippet phone for {company_name}: {norm}")
+                        return norm
+        except Exception as e:
+            logger.warning(f"[SEARCH PHONE] Error querying phone for {company_name}: {e}")
+
+    return None
+
 

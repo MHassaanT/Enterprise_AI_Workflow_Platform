@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Dict, Any, List
 from graph.sales.state import SalesAgentState
-from tool_gateway.search_discovery import search_contact_person, normalize_e164_phone
+from tool_gateway.search_discovery import search_contact_person, normalize_e164_phone, search_company_phone
 from tool_gateway.email_pattern_engine import detect_and_infer
 
 logger = logging.getLogger(__name__)
@@ -129,6 +129,9 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
             pattern_phones = account.get("pattern_phones", [])
             if pattern_phones:
                 contact_phone = normalize_e164_phone(pattern_phones[0])
+
+        if not contact_phone:
+            contact_phone = await search_company_phone(company_name=company_name, domain=domain, tenant_id=tenant_id)
 
         logger.info(f"[STAGE 3] Phone for {domain}: {contact_phone or 'None'}")
 

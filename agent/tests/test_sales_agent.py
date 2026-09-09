@@ -240,4 +240,161 @@ class TestSalesWhatsAppIntegration:
                 assert verified[0]["contact_name"] == "Alice Valid"
                 assert verified[0]["whatsapp_status"] == "ON_WHATSAPP"
 
+    @pytest.mark.asyncio
+    async def test_search_company_phone_serper(self):
+        from tool_gateway.search_discovery import search_company_phone
+        with patch("tool_gateway.search_discovery._get_serper_api_key", new_callable=AsyncMock, return_value="mock-key"):
+            with patch("tool_gateway.search_discovery._execute_serper_search", new_callable=AsyncMock) as mock_serp:
+                # Test knowledgeGraph phone extraction
+                mock_serp.return_value = {
+                    "knowledgeGraph": {"phone": "+1 415 555 2671"}
+                }
+                phone = await search_company_phone("Acme Corp", "acme.com", "t1")
+                assert phone == "+14155552671"
+
+                # Test organic snippet regex phone extraction fallback
+                mock_serp.return_value = {
+                    "organic": [{"snippet": "Call Acme headquarters at (800) 555-0199 for sales inquiries."}]
+                }
+                phone2 = await search_company_phone("Acme Corp", "acme.com", "t1")
+                assert phone2 == "+18005550199"
+
+    @pytest.mark.asyncio
+    async def test_scoring_copy_gen_whatsapp(self):
+        from graph.sales.nodes.scoring_copy_gen import scoring_copy_gen_node
+        with patch("graph.sales.nodes.scoring_copy_gen.get_tenant_company_context", new_callable=AsyncMock) as mock_ctx:
+            mock_ctx.return_value = {
+                "company_name": "Antigravity AI",
+                "sender_name": "Sarah Connor",
+                "sender_role": "Sales Lead",
+                "description": "Enterprise AI Orchestration"
+            }
+            state = {
+                "tenant_id": "00000000-0000-0000-0000-000000000000",
+                "outreach_channel": "whatsapp",
+                "icp_config": {"target_titles": ["VP of Sales"], "target_industries": ["Software"]},
+                "verified_contacts": [{
+                    "company_name": "Target Tech",
+                    "domain": "targettech.io",
+                    "contact_name": "John Doe",
+                    "contact_title": "VP of Sales",
+                    "contact_phone": "+15551234567",
+                    "whatsapp_status": "ON_WHATSAPP",
+                    "deliverability": {"is_valid": True, "status": "DELIVERABLE"}
+                }],
+                "scraped_accounts": [],
+                "logs": []
+            }
+            res = await scoring_copy_gen_node(state)
+            assert len(res["outreach_batch"]) == 1
+            batch_item = res["outreach_batch"][0]
+            assert batch_item["whatsapp_status"] == "ON_WHATSAPP"
+            assert batch_item["outreach_channel"] == "whatsapp"
+            assert "John" in batch_item["body"]
+            assert batch_item["icp_score"] >= 70.0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_closing_whatsapp_preserves_discovered(self):
+        from graph.sales.nodes.dispatch_closing import dispatch_closing_node
+        with patch("graph.sales.nodes.dispatch_closing.execute_db_query", new_callable=AsyncMock) as mock_db:
+            mock_db.return_value = {"rows": []}
+            state = {
+                "tenant_id": "00000000-0000-0000-0000-000000000000",
+                "outreach_channel": "whatsapp",
+                "auto_send_email": False,
+                "outreach_batch": [{
+                    "company_name": "Target Tech",
+                    "domain": "targettech.io",
+                    "contact_name": "John Doe",
+                    "contact_title": "VP of Sales",
+                    "contact_email": "john@targettech.io",
+                    "contact_phone": "+15551234567",
+                    "whatsapp_status": "ON_WHATSAPP",
+                    "outreach_channel": "whatsapp",
+                    "hunter_person_id": "H1",
+                    "apollo_person_id": "A1",
+                    "deliverability_status": "VALID",
+                    "icp_score": 92.0,
+                    "subject": "WhatsApp Outreach",
+                    "body": "Hi John, let's connect on WhatsApp.",
+                    "quote_details": {},
+                    "scraped_text": ""
+                }],
+                "logs": []
+            }
+            res = await dispatch_closing_node(state)
+            assert res["processed_count"] == 1
+            assert res["deal_stage"] == "DISCOVERED"
+            assert res["whatsapp_status"] == "ON_WHATSAPP"
+            assert res["outreach_sent"] is False
+            assert "Target Tech" in res["answer"]
+            assert "+15551234567" in res["answer"]
+
+    @pytest.mark.asyncio
+    async def test_full_sales_graph_whatsapp_pipeline(self):
+        from graph.sales.graph import sales_head_graph
+        with patch("graph.sales.nodes.business_understanding.search_company_accounts", new_callable=AsyncMock) as mock_accts, \
+             patch("graph.sales.nodes.contact_discovery.search_contact_person", new_callable=AsyncMock) as mock_person, \
+             patch("graph.sales.nodes.contact_discovery.search_company_phone", new_callable=AsyncMock) as mock_phone, \
+             patch("graph.sales.nodes.deliverability_guard.verify_email", new_callable=AsyncMock) as mock_email, \
+             patch("graph.sales.nodes.deliverability_guard.check_whatsapp_registration", new_callable=AsyncMock) as mock_wa, \
+             patch("graph.sales.nodes.scoring_copy_gen.get_tenant_company_context", new_callable=AsyncMock) as mock_ctx, \
+             patch("graph.sales.nodes.dispatch_closing.execute_db_query", new_callable=AsyncMock) as mock_db:
+
+            mock_ctx.return_value = {"company_name": "Antigravity AI", "sender_name": "Alex", "sender_role": "SDR"}
+            mock_accts.return_value = {
+                "accounts": [{
+                    "domain": "fintechprime.com",
+                    "company_name": "Fintech Prime",
+                    "industry": "Fintech",
+                    "search_snippet": "Fintech Prime API solutions"
+                }],
+                "total_found": 1
+            }
+            mock_person.return_value = {
+                "status": "found",
+                "contact": {
+                    "name": "David Miller",
+                    "first_name": "David",
+                    "last_name": "Miller",
+                    "title": "CTO",
+                    "phone": None
+                }
+            }
+            mock_phone.return_value = "+14155558899"
+            mock_email.return_value = {"is_valid": True, "status": "DELIVERABLE"}
+            mock_wa.return_value = {
+                "is_registered": True,
+                "whatsapp_status": "ON_WHATSAPP",
+                "jid": "14155558899@s.whatsapp.net"
+            }
+            mock_db.return_value = {"rows": []}
+
+            initial_state = {
+                "tenant_id": "00000000-0000-0000-0000-000000000000",
+                "outreach_channel": "whatsapp",
+                "auto_send_email": False,
+                "prospect_limit": 5,
+                "logs": []
+            }
+
+            final_state = await sales_head_graph.ainvoke(
+                initial_state,
+                config={"configurable": {"thread_id": "test-sales-thread"}}
+            )
+
+            assert final_state["processed_count"] == 1
+            assert final_state["deal_stage"] == "DISCOVERED"
+            assert final_state["whatsapp_status"] == "ON_WHATSAPP"
+            assert final_state["outreach_channel"] == "whatsapp"
+            assert final_state["outreach_sent"] is False
+            contact = final_state["discovered_contact"]
+            assert contact["contact_name"] == "David Miller"
+            assert contact["contact_phone"] == "+14155558899"
+            assert contact["whatsapp_status"] == "ON_WHATSAPP"
+            assert "Fintech Prime" in final_state["answer"]
+
+
+
+
 

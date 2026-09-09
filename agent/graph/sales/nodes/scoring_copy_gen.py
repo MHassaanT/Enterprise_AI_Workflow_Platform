@@ -46,18 +46,15 @@ async def scoring_copy_gen_node(state: SalesAgentState) -> Dict[str, Any]:
         wa_status = contact.get("whatsapp_status", "UNVERIFIED")
 
         if outreach_channel == "whatsapp":
-            if wa_status != "ON_WHATSAPP":
-                logger.error(
-                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_phone')}' — "
-                    f"not registered on WhatsApp (status={wa_status})."
+            if wa_status != "ON_WHATSAPP" and not contact.get("contact_phone") and not deliverability.get("is_valid", False):
+                logger.warning(
+                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} — no phone and no valid email."
                 )
                 continue
         else:
-            if not deliverability.get("is_valid", False):
-                logger.error(
-                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_email')}' — "
-                    f"missing or invalid email deliverability result. "
-                    f"deliverability={deliverability}, email_status={contact.get('email_status', 'unknown')}."
+            if not deliverability.get("is_valid", False) and not contact.get("contact_phone"):
+                logger.warning(
+                    f"[STAGE 5 GUARD] ❌ DROPPED contact #{idx+1} '{contact.get('contact_email')}' — missing valid email and phone."
                 )
                 continue
 

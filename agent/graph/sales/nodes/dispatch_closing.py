@@ -36,8 +36,13 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
         logger.info(f"[STAGE 6 DISPATCH] outreach_batch is empty. Checking single contact: email='{contact.get('contact_email')}', phone='{contact.get('contact_phone')}', deliverability.is_valid={deliverability.get('is_valid')}, wa_status={contact.get('whatsapp_status')}")
         
         # Only fallback if the single contact has a valid deliverability check or whatsapp check
-        is_valid_candidate = (contact.get("whatsapp_status") == "ON_WHATSAPP") if outreach_channel == "whatsapp" else deliverability.get("is_valid", False)
+        is_valid_candidate = bool(
+            contact.get("whatsapp_status") == "ON_WHATSAPP"
+            or contact.get("contact_phone")
+            or deliverability.get("is_valid", False)
+        )
         if contact and is_valid_candidate:
+            gen_outreach = state.get("generated_outreach") or {}
             outreach_batch = [{
                 "company_name": contact.get("company_name", "Enterprise Client"),
                 "domain": contact.get("domain", "enterprise.com"),
@@ -51,8 +56,8 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
                 "hunter_person_id": contact.get("serper_contact_id") or contact.get("hunter_person_id", "SERPER-1"),
                 "deliverability_status": deliverability.get("status", "VALID"),
                 "icp_score": state.get("icp_score", 90.0),
-                "subject": outreach.get("subject", "AI Workflow Platform Partnership"),
-                "body": outreach.get("body", "Outreach proposal dispatched."),
+                "subject": gen_outreach.get("subject", "AI Workflow Platform Partnership"),
+                "body": gen_outreach.get("body", "Outreach proposal dispatched."),
                 "quote_details": state.get("quote_details", {}),
                 "scraped_text": "",
             }]
@@ -169,8 +174,8 @@ async def dispatch_closing_node(state: SalesAgentState) -> Dict[str, Any]:
             check_query = """
             SELECT id FROM sales_prospects 
             WHERE tenant_id = $1 AND (
-              (contact_email IS NOT NULL AND LOWER(contact_email) = LOWER($2)) OR 
-              (contact_phone IS NOT NULL AND contact_phone = $3)
+              (contact_email IS NOT NULL AND $2 != '' AND LOWER(contact_email) = LOWER($2)) OR 
+              (contact_phone IS NOT NULL AND $3 != '' AND contact_phone = $3)
             );
             """
             check_res = await execute_db_query(check_query, [tenant_id, contact_email or '', contact_phone or ''])
