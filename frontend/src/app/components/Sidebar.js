@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { getUser, logout } from '@/lib/api';
+import { getUser, logout, refreshUser } from '@/lib/api';
 import { canAccessRoute, AGENT_ROUTES, getAccessibleAgents } from '@/lib/planGating';
 import DocumentModal from './DocumentModal';
 
@@ -15,6 +15,15 @@ export default function Sidebar() {
 
   useEffect(() => {
     setUser(getUser());
+    refreshUser().then((updated) => {
+      if (updated) setUser(updated);
+    });
+
+    const handleUserUpdate = (e) => {
+      setUser(e?.detail || getUser());
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
   }, []);
 
   if (

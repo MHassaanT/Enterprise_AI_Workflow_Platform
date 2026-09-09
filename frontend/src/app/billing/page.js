@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
-import { getUser, getAuthHeader } from '@/lib/api';
+import { getUser, getAuthHeader, refreshUser, syncSubscription } from '@/lib/api';
 
 const PLANS = [
   {
@@ -56,7 +56,16 @@ export default function BillingPage() {
 
   useEffect(() => {
     setUser(getUser());
+    refreshUser().then((updated) => {
+      if (updated) setUser(updated);
+    });
     loadSubscription();
+
+    const handleUserUpdate = (e) => {
+      setUser(e?.detail || getUser());
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
   }, []);
 
   const loadSubscription = async () => {
@@ -68,10 +77,38 @@ export default function BillingPage() {
       if (!res.ok) throw new Error('Failed to load subscription status');
       const data = await res.json();
       setSubscription(data);
+
+      // Keep user in sync with latest subscription status
+      const currentUser = getUser();
+      if (currentUser && data.plan && data.plan !== 'none') {
+        currentUser.subscriptionPlan = data.plan;
+        currentUser.subscriptionStatus = data.status;
+        localStorage.setItem('ai_platform_user', JSON.stringify(currentUser));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: currentUser }));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncSubscription = async () => {
+    setActionLoading('sync');
+    setError(null);
+    setSuccess(null);
+    try {
+      const syncData = await syncSubscription();
+      if (syncData?.success) {
+        setSuccess('Subscription synced and updated successfully.');
+      } else {
+        setSuccess('Subscription status checked.');
+      }
+      await loadSubscription();
+    } catch (err) {
+      setError(err.message || 'Failed to sync subscription');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -90,19 +127,20 @@ export default function BillingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to change plan');
 
+      // Update local storage so even if redirect happens or user comes back, plan is updated
+      const currentUser = getUser();
+      if (currentUser) {
+        currentUser.subscriptionPlan = newPlan;
+        localStorage.setItem('ai_platform_user', JSON.stringify(currentUser));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: currentUser }));
+      }
+
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         return;
       }
 
       setSuccess(data.message || 'Plan changed successfully.');
-
-      const currentUser = getUser();
-      if (currentUser) {
-        currentUser.subscriptionPlan = newPlan;
-        localStorage.setItem('ai_platform_user', JSON.stringify(currentUser));
-      }
-
       await loadSubscription();
     } catch (err) {
       setError(err.message);
@@ -293,6 +331,19 @@ export default function BillingPage() {
                         Reactivate Subscription
                       </button>
                     )}
+                    <button
+                      onClick={handleSyncSubscription}
+                      disabled={actionLoading === 'sync'}
+                      title="Sync subscription status with payment provider"
+                      className="px-4 py-2 bg-surface-container-high border border-outline-variant rounded-xl text-on-surface-variant font-label-md text-sm hover:text-on-surface hover:bg-surface-container-highest transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {actionLoading === 'sync' ? (
+                        <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                      ) : (
+                        <span className="material-symbols-outlined text-base">sync</span>
+                      )}
+                      Sync Status
+                    </button>
                   </div>
                 </div>
               </section>

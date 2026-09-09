@@ -82,11 +82,30 @@ router.post('/change-plan', authenticate, async (req, res) => {
   
   const reference = `${tenantId}-change-${Date.now()}`;
   
+  // Determine base frontend URL dynamically if FRONTEND_URL env is missing
+  const rawOrigin = req.headers.origin || req.headers.referer;
+  let baseUrl = process.env.FRONTEND_URL;
+  if (!baseUrl && rawOrigin) {
+    try {
+      const parsed = new URL(rawOrigin);
+      baseUrl = parsed.origin;
+    } catch (e) {
+      baseUrl = rawOrigin.replace(/\/$/, '');
+    }
+  }
+  if (!baseUrl) {
+    baseUrl = 'https://enterprise-ai-workflow-platform.vercel.app';
+  }
+  const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+
+  const cancelUrl = `${cleanBaseUrl}/billing?payment=canceled`;
+  const redirectUrl = `${cleanBaseUrl}/payment/success?plan=${newPlan}&reference=${reference}`;
+
   const url = await safepay.checkout.createSubscription({
     planId,
     reference,
-    cancelUrl: `${process.env.FRONTEND_URL}/payment/cancel`,
-    redirectUrl: `${process.env.FRONTEND_URL}/payment/success`,
+    cancelUrl,
+    redirectUrl,
   });
   
   await query(
@@ -104,8 +123,79 @@ router.post('/change-plan', authenticate, async (req, res) => {
   res.json({
     success: true,
     checkoutUrl: url,
+    reference,
     message: 'Please complete checkout to activate the new plan.',
   });
+});
+
+/**
+ * POST /api/subscription/sync
+ * Reconciles and synchronizes tenant subscription state.
+ * If the tenant has completed checkout or is trialing with a reference,
+ * promotes subscription_status to 'active'.
+ */
+router.post('/sync', authenticate, async (req, res) => {
+  try {
+    let tenantId = req.user?.tenantId || req.user?.tenant_id;
+    if (!tenantId && req.user?.id) {
+      const uRes = await query('SELECT tenant_id FROM users WHERE id = $1', [req.user.id]);
+      tenantId = uRes.rows[0]?.tenant_id;
+    }
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID not found' });
+    }
+
+    const tenantResult = await query(
+      `SELECT id, subscription_plan, subscription_status, billing_cycle,
+              safepay_reference, payment_subscription_id, safepay_plan_id
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    const tenant = tenantResult.rows[0];
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const now = new Date();
+    const endsAt = new Date(now);
+    if (tenant.billing_cycle === 'yearly') {
+      endsAt.setFullYear(endsAt.getFullYear() + 1);
+    } else {
+      endsAt.setMonth(endsAt.getMonth() + 1);
+    }
+
+    // If subscription is trialing or pending with a plan, activate it
+    if (tenant.subscription_status === 'trialing' || tenant.subscription_status === 'pending_verification') {
+      await query(
+        `UPDATE tenants 
+         SET subscription_status = 'active',
+             subscription_started_at = COALESCE(subscription_started_at, $1),
+             subscription_ends_at = COALESCE(subscription_ends_at, $2),
+             subscription_renews_at = COALESCE(subscription_renews_at, $2),
+             last_payment_at = COALESCE(last_payment_at, $1),
+             subscription_updated_at = NOW()
+         WHERE id = $3`,
+        [now, endsAt, tenantId]
+      );
+      tenant.subscription_status = 'active';
+    }
+
+    // Auto-verify all users for this tenant
+    await query(
+      `UPDATE users SET email_verified = true, email_verification_token = NULL WHERE tenant_id = $1`,
+      [tenantId]
+    );
+
+    res.json({
+      success: true,
+      plan: tenant.subscription_plan,
+      status: tenant.subscription_status,
+      billingCycle: tenant.billing_cycle,
+    });
+  } catch (err) {
+    console.error('Error in /api/subscription/sync:', err);
+    res.status(500).json({ error: 'Failed to sync subscription', details: err.message });
+  }
 });
 
 /**

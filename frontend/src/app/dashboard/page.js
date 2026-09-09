@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
 import ApprovalCard from '../components/ApprovalCard';
-import { fetchConversations, fetchPendingApprovals, fetchDocuments, patchApproval, getUser } from '@/lib/api';
+import { fetchConversations, fetchPendingApprovals, fetchDocuments, patchApproval, getUser, refreshUser } from '@/lib/api';
 import { getAccessibleAgents } from '@/lib/planGating';
 
 export default function TenantControlPanelPage() {
@@ -15,7 +15,16 @@ export default function TenantControlPanelPage() {
 
   useEffect(() => {
     setUser(getUser());
+    refreshUser().then((updated) => {
+      if (updated) setUser(updated);
+    });
     loadDashboardData();
+
+    const handleUserUpdate = (e) => {
+      setUser(e?.detail || getUser());
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    return () => window.removeEventListener('user-updated', handleUserUpdate);
   }, []);
 
   const loadDashboardData = async () => {

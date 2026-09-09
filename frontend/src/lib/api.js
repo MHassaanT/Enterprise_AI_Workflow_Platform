@@ -20,6 +20,48 @@ export function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export async function refreshUser() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.user) {
+        localStorage.setItem('ai_platform_user', JSON.stringify(data.user));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('user-updated', { detail: data.user }));
+        }
+        return data.user;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to refresh user profile from server:', e);
+  }
+  return getUser();
+}
+
+export async function syncSubscription() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/subscription/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const syncData = await res.json();
+      await refreshUser();
+      return syncData;
+    }
+  } catch (e) {
+    console.warn('Failed to sync subscription:', e);
+  }
+  return null;
+}
+
 export function logout() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('ai_platform_token');

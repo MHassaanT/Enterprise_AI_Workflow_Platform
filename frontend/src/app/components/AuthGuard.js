@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { getToken, getUser } from '@/lib/api';
+import { getToken, getUser, refreshUser } from '@/lib/api';
 import { canAccessRoute } from '@/lib/planGating';
 
 const isPublicRoute = (path) =>
@@ -33,35 +33,53 @@ export default function AuthGuard({ children }) {
       return;
     }
 
-    // Check subscription status for non-billing pages
-    const user = getUser();
-    const subscriptionStatus = user?.subscriptionStatus;
-    const subscriptionPlan = user?.subscriptionPlan;
+    let isMounted = true;
 
-    // If subscription is expired/canceled/none and user is NOT on the billing page
-    // redirect them to billing
-    if (pathname !== '/billing') {
-      const needsSubscription =
-        !subscriptionPlan ||
-        subscriptionPlan === 'none' ||
-        subscriptionStatus === 'canceled' ||
-        subscriptionStatus === 'pending_verification';
+    const checkAccess = (currentUser) => {
+      const subscriptionStatus = currentUser?.subscriptionStatus;
+      const subscriptionPlan = currentUser?.subscriptionPlan;
 
-      if (needsSubscription) {
-        setAuthorized(false);
-        router.replace('/billing');
-        return;
+      // If subscription is expired/canceled/none and user is NOT on the billing page
+      // redirect them to billing
+      if (pathname !== '/billing') {
+        const needsSubscription =
+          !subscriptionPlan ||
+          subscriptionPlan === 'none' ||
+          subscriptionStatus === 'canceled' ||
+          subscriptionStatus === 'pending_verification';
+
+        if (needsSubscription) {
+          if (isMounted) setAuthorized(false);
+          router.replace('/billing');
+          return false;
+        }
       }
-    }
 
-    // Check plan-gated route access
-    if (subscriptionPlan && !canAccessRoute(subscriptionPlan, pathname)) {
-      // User is trying to access a route not included in their plan
-      router.replace('/dashboard');
-      return;
-    }
+      // Check plan-gated route access
+      if (subscriptionPlan && !canAccessRoute(subscriptionPlan, pathname)) {
+        return false;
+      }
 
-    setAuthorized(true);
+      if (isMounted) setAuthorized(true);
+      return true;
+    };
+
+    const initialUser = getUser();
+    const allowedLocally = checkAccess(initialUser);
+
+    // Refresh user profile from server to ensure fresh plan & status
+    refreshUser().then((latestUser) => {
+      if (!isMounted) return;
+      const allowedServer = checkAccess(latestUser);
+      if (!allowedServer && !allowedLocally) {
+        // If neither local nor server allows access to this route, redirect to dashboard
+        router.replace('/dashboard');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [pathname, router]);
 
   const isPublicPage = isPublicRoute(pathname);

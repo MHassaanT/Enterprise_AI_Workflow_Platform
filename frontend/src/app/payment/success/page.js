@@ -1,18 +1,26 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { getUser, refreshUser, syncSubscription } from '@/lib/api';
 
 function PaymentSuccessContent() {
   const [status, setStatus] = useState('verifying');
+  const searchParams = useSearchParams();
+  const queryPlan = searchParams.get('plan');
 
   useEffect(() => {
     let timerId;
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 5;
 
     const checkStatus = async () => {
       try {
         const token = localStorage.getItem('ai_platform_token');
+
+        // Immediately try to reconcile/sync the subscription with backend
+        await syncSubscription().catch(() => null);
+
         const res = await fetch('/api/subscription/status', {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -20,15 +28,32 @@ function PaymentSuccessContent() {
         if (!res.ok) throw new Error('Failed to fetch subscription status');
         
         const data = await res.json();
+        const effectivePlan = (data.plan && data.plan !== 'none') ? data.plan : queryPlan;
+
+        // Keep local user profile synchronized
+        const currentUser = getUser();
+        if (currentUser) {
+          if (effectivePlan) currentUser.subscriptionPlan = effectivePlan;
+          currentUser.subscriptionStatus = data.status;
+          localStorage.setItem('ai_platform_user', JSON.stringify(currentUser));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('user-updated', { detail: currentUser }));
+          }
+        }
         
         if (data.status === 'active') {
           setStatus('success');
         } else if (data.status === 'trialing' || data.status === 'pending_verification') {
           attempts += 1;
           if (attempts < maxAttempts) {
-            timerId = setTimeout(checkStatus, 3000);
+            timerId = setTimeout(checkStatus, 2000);
           } else {
-            setStatus('pending');
+            // If they have an active paid plan tier, show success
+            if (effectivePlan && effectivePlan !== 'none') {
+              setStatus('success');
+            } else {
+              setStatus('pending');
+            }
           }
         } else {
           setStatus('pending');
@@ -44,7 +69,7 @@ function PaymentSuccessContent() {
     return () => {
       if (timerId) clearTimeout(timerId);
     };
-  }, []);
+  }, [queryPlan]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

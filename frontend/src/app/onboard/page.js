@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getUser } from '@/lib/api';
+import { getUser, refreshUser } from '@/lib/api';
 import { getAccessibleAgents } from '@/lib/planGating';
 import DocumentModal from '../components/DocumentModal';
 
@@ -233,6 +233,21 @@ export default function OnboardingPage() {
     if (currentUser?.subscriptionPlan) {
       setUserPlan(currentUser.subscriptionPlan);
     }
+    refreshUser().then((updated) => {
+      if (updated) {
+        setUser(updated);
+        if (updated.subscriptionPlan) {
+          setUserPlan(updated.subscriptionPlan);
+        }
+      }
+    });
+
+    const handleUserUpdate = (e) => {
+      const u = e?.detail || getUser();
+      setUser(u);
+      if (u?.subscriptionPlan) setUserPlan(u.subscriptionPlan);
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
 
     const storageKey = currentUser?.tenantId
       ? `onboarding_completed_steps_${currentUser.tenantId}`
@@ -265,6 +280,10 @@ export default function OnboardingPage() {
     };
 
     loadProgress();
+
+    return () => {
+      window.removeEventListener('user-updated', handleUserUpdate);
+    };
   }, []);
 
   const toggleStep = async (stepId) => {

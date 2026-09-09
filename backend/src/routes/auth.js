@@ -279,6 +279,51 @@ router.get('/subscription-status', authenticate, async (req, res) => {
   });
 });
 
+// ── CURRENT USER & SUBSCRIPTION PROFILE (Authenticated) ──
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    let tenantId = req.user.tenantId;
+
+    const userResult = await query(
+      'SELECT id, email, role, tenant_id, full_name, company_role FROM users WHERE id = $1',
+      [userId]
+    );
+    const user = userResult.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    tenantId = tenantId || user.tenant_id;
+
+    const tenantResult = await query(
+      `SELECT id, name, subscription_plan, subscription_status, billing_cycle,
+              safepay_plan_id, payment_subscription_id, trial_ends_at,
+              subscription_ends_at, subscription_renews_at, subscription_updated_at
+       FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    const tenant = tenantResult.rows[0] || {};
+
+    const userData = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenant_id,
+      fullName: user.full_name,
+      companyRole: user.company_role,
+      subscriptionPlan: tenant.subscription_plan || 'none',
+      subscriptionStatus: tenant.subscription_status || 'pending_verification',
+      tenantName: tenant.name,
+    };
+
+    res.json({ user: userData, tenant });
+  } catch (err) {
+    console.error('Error in /api/auth/me:', err);
+    res.status(500).json({ error: 'Failed to load user profile.', details: err.message });
+  }
+});
+
 // ── LOGIN ──
 // Modified: includes subscription info in JWT and response.
 // Rejects login if email is not verified.
