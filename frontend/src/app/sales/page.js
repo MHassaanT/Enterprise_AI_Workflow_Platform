@@ -980,7 +980,9 @@ export default function SalesDashboard() {
                             <td className="p-sm text-xs">
                               <div className="flex items-center gap-1 font-bold text-amber-300">
                                 <span className="material-symbols-outlined text-[14px]">star</span>
-                                {p.google_rating ? p.google_rating.toFixed(1) : (p.icp_score ? `${p.icp_score.toFixed(0)} fit` : '4.5')}
+                                {p.google_rating && !isNaN(Number(p.google_rating)) && Number(p.google_rating) > 0
+                                  ? Number(p.google_rating).toFixed(1)
+                                  : (p.icp_score && !isNaN(Number(p.icp_score)) ? `${Number(p.icp_score).toFixed(0)} fit` : '4.5')}
                               </div>
                               <div className="text-[11px] text-on-surface-variant line-clamp-1 max-w-[180px]" title={p.address || p.scraped_context}>
                                 {p.address || p.scraped_context || 'Operational Business'}
@@ -1587,7 +1589,9 @@ export default function SalesDashboard() {
                     <div>
                       <span className="text-on-surface-variant block">Google Rating:</span>
                       <span className="font-bold text-amber-300 flex items-center gap-0.5">
-                        ⭐ {selectedProspect.google_rating ? selectedProspect.google_rating.toFixed(1) : (selectedProspect.icp_score ? `${selectedProspect.icp_score.toFixed(0)} fit` : '4.5')}
+                        ⭐ {selectedProspect.google_rating && !isNaN(Number(selectedProspect.google_rating)) && Number(selectedProspect.google_rating) > 0
+                          ? Number(selectedProspect.google_rating).toFixed(1)
+                          : (selectedProspect.icp_score && !isNaN(Number(selectedProspect.icp_score)) ? `${Number(selectedProspect.icp_score).toFixed(0)} fit` : '4.5')}
                       </span>
                       <span className="text-on-surface-variant block text-[11px] line-clamp-1">{selectedProspect.address || 'Operational'}</span>
                     </div>
