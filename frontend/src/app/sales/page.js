@@ -1555,8 +1555,6 @@ export default function SalesDashboard() {
           </div>
         )}
 
-        {/* Modal: Prospect Details & Draft Outreach View (Email or WhatsApp) */}
-        {selectedProspect && (() => {
         {/* Modal: Prospect Details & Draft WhatsApp Outreach View */}
         {selectedProspect && (() => {
           const waBody = selectedProspect.outreach_body || selectedProspect.body || 
