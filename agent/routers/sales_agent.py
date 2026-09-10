@@ -33,15 +33,11 @@ class SalesPipelineRunRequest(BaseModel):
     tenant_id: str
     target_domain: Optional[str] = None
     prospect_limit: Optional[int] = 10
-    auto_send_email: Optional[bool] = False
-    outreach_channel: Optional[str] = "email"
+    auto_send_whatsapp: Optional[bool] = False
+    auto_send_email: Optional[bool] = False  # Deprecated alias
+    outreach_channel: Optional[str] = "whatsapp"
     icp_config: Optional[Dict[str, Any]] = None
     user_id: str = "sales_sdr"
-
-
-class ApolloKeyRequest(BaseModel):
-    tenant_id: str
-    apollo_api_key: str
 
 
 class ICPConfigRequest(BaseModel):
@@ -55,18 +51,18 @@ class ICPConfigRequest(BaseModel):
     playbook_strategy: str = ""
 
 
-class SingleEmailSendRequest(BaseModel):
-    tenant_id: str
-    contact_email: str
-    subject: str
-    body: str
-    prospect_id: Optional[str] = None
-
-
 class SingleWhatsAppSendRequest(BaseModel):
     tenant_id: str
     contact_phone: str
     message: str
+    prospect_id: Optional[str] = None
+
+
+class SingleEmailSendRequest(BaseModel):
+    tenant_id: str
+    contact_email: Optional[str] = ""
+    subject: Optional[str] = ""
+    body: Optional[str] = ""
     prospect_id: Optional[str] = None
 
 
@@ -126,59 +122,10 @@ async def send_single_email(
     request: SingleEmailSendRequest,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
-    if x_internal_token != settings.INTERNAL_SERVICE_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized.")
-
-    tenant_id = _normalize_uuid(request.tenant_id)
-
-    credentials = {}
-    try:
-        from tool_gateway.credentials_manager import fetch_tool_credentials
-        credentials = await fetch_tool_credentials(request.tenant_id, tool_id="gmail")
-        if not credentials or not credentials.get("access_token"):
-            credentials = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-    except Exception as e:
-        logger.warning(f"Fetch credentials error: {e}")
-
-    try:
-        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-        gmail_res = await execute_gmail_tool(
-            tool_name="send_email",
-            arguments={"to": request.contact_email, "subject": request.subject, "body": request.body},
-            credentials=credentials
-        )
-
-        if ("Successfully sent" in gmail_res or "Message ID" in gmail_res) and "Error" not in gmail_res:
-            msg_id = "MSG-GMAIL-" + str(hash(request.contact_email))[-8:]
-            if "Message ID: " in gmail_res:
-                msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
-
-            # Update sales_prospects record in DB
-            await execute_db_query("""
-            UPDATE sales_prospects
-            SET deal_stage = 'OUTREACH_SENT',
-                outreach_subject = $1,
-                outreach_body = $2,
-                gmail_message_id = $3,
-                outreach_channel = 'email',
-                last_channel_used = 'email',
-                updated_at = NOW()
-            WHERE contact_email = $4 OR id::text = $5;
-            """, [request.subject, request.body, msg_id, request.contact_email, str(request.prospect_id or '')])
-
-            return {
-                "success": True,
-                "message": f"Successfully sent email to {request.contact_email} via Gmail API!",
-                "gmail_message_id": msg_id,
-                "deal_stage": "OUTREACH_SENT"
-            }
-        else:
-            return {
-                "success": False,
-                "error": f"Gmail dispatch note: {gmail_res}"
-            }
-    except Exception as e:
-        return {"success": False, "error": f"Failed to send email: {str(e)}"}
+    return {
+        "success": False,
+        "error": "Email outreach has been deprecated and removed. Please use WhatsApp outreach via /send-whatsapp."
+    }
 
 
 @router.post("/run")
@@ -187,9 +134,12 @@ async def run_sales_agent(
     background_tasks: __import__('fastapi').BackgroundTasks,
     x_internal_token: str = Header(alias="X-Internal-Token"),
 ):
-    import time
     run_id = f"sdr-run-{uuid.uuid4().hex[:8]}"
-    logger.info(f"[SALES AGENT ROUTER] Starting /run endpoint in background. run_id='{run_id}', request.tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send={request.auto_send_email}")
+    auto_send = bool(request.auto_send_whatsapp)
+    logger.info(
+        f"[SALES AGENT ROUTER] Starting /run endpoint in background. run_id='{run_id}', "
+        f"tenant_id='{request.tenant_id}', limit={request.prospect_limit}, auto_send_whatsapp={auto_send}"
+    )
 
     RUN_STATUSES[run_id] = {
         "status": "RUNNING",
@@ -204,7 +154,7 @@ async def run_sales_agent(
         "success": True,
         "run_id": run_id,
         "status": "RUNNING",
-        "message": "Sales SDR execution started in the background."
+        "message": "WhatsApp SDR execution started in the background."
     }
 
 async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
@@ -212,14 +162,13 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
     start_time = time.time()
     MAX_DURATION = 420  # 7 minutes
     prospect_limit = request.prospect_limit or 10
+    auto_send_whatsapp = bool(request.auto_send_whatsapp)
 
     total_processed_count = 0
     overall_outreach_batch = []
     overall_logs = []
 
-    
     existing_domains = []
-    existing_emails = []
     existing_phones = []
 
     final_state = {}
@@ -230,25 +179,22 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
             loop_start = time.time()
             logger.info(f"[SALES AGENT ROUTER] Loop iteration starting. total_processed={total_processed_count}/{prospect_limit}, time_elapsed={loop_start - start_time:.1f}s")
             
-            # Re-initialize state for each graph run, but carry over accumulated state
             initial_state = {
                 "tenant_id": request.tenant_id,
                 "run_id": run_id,
                 "user_id": request.user_id,
                 "prospect_limit": prospect_limit - total_processed_count,
                 "target_domain": request.target_domain,
-                "auto_send_email": request.auto_send_email or False,
-                "outreach_channel": request.outreach_channel or "email",
+                "auto_send_whatsapp": auto_send_whatsapp,
+                "outreach_channel": "whatsapp",
                 "icp_config": request.icp_config or {},
-                "raw_accounts": [],
-                "scraped_context": {},
-                "account_fit_passed": True,
-                "discovered_contact": None,
-                "deliverability_result": None,
+                "raw_places": [],
+                "qualified_places": [],
+                "verified_prospects": [],
+                "outreach_batch": [],
                 "icp_score": 0.0,
                 "generated_outreach": None,
                 "outreach_sent": False,
-                "gmail_message_id": None,
                 "whatsapp_message_id": None,
                 "whatsapp_status": "UNVERIFIED",
                 "deal_stage": "DISCOVERED",
@@ -256,7 +202,6 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
                 "logs": [],
                 "answer": "",
                 "existing_domains": existing_domains,
-                "existing_emails": existing_emails,
                 "existing_phones": existing_phones,
             }
 
@@ -270,32 +215,24 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
             for log in final_state.get("logs", []):
                 overall_logs.append(log)
 
-            # Accumulate evaluated domains, emails, and phones to exclude them in the next iteration
-            evaluated_accounts = final_state.get("raw_accounts", [])
-            for acc in evaluated_accounts:
-                domain = acc.get("domain")
+            # Accumulate evaluated domains and phones to exclude them in the next iteration
+            evaluated_places = final_state.get("raw_places", []) or final_state.get("raw_accounts", [])
+            for p in evaluated_places:
+                domain = p.get("domain")
                 if domain:
                     existing_domains.append(domain.lower().strip())
-                    
-            verified_contacts = final_state.get("verified_contacts", [])
-            for contact in verified_contacts:
-                email = contact.get("contact_email")
-                if email:
-                    existing_emails.append(email.lower().strip())
-                phone = contact.get("contact_phone")
+                phone = p.get("contact_phone")
                 if phone:
                     existing_phones.append(phone.strip())
 
             # Deduplicate
             existing_domains = list(set(existing_domains))
-            existing_emails = list(set(existing_emails))
             existing_phones = list(set(existing_phones))
 
             logger.info(f"[SALES AGENT ROUTER] Loop iteration complete. Processed in this run: {len(batch)}. Total: {total_processed_count}/{prospect_limit}.")
             
-            # Optional: if no raw accounts were found, break early to avoid infinite fast loops
-            if not evaluated_accounts:
-                logger.warning(f"[SALES AGENT ROUTER] No raw accounts found in this iteration. Breaking early to prevent infinite loop.")
+            if not evaluated_places:
+                logger.warning(f"[SALES AGENT ROUTER] No places found in this iteration. Breaking early to prevent infinite loop.")
                 break
 
         # Final logs logging
@@ -307,20 +244,18 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
         final_result = {
             "success": True,
             "run_id": run_id,
-            "answer": f"Sales SDR execution complete. Total processed: {total_processed_count}.",
+            "answer": f"WhatsApp SDR execution complete. Total processed: {total_processed_count}.",
             "icp_score": first_contact.get("icp_score") if first_contact else final_state.get("icp_score"),
             "discovered_contact": first_contact or final_state.get("discovered_contact"),
             "outreach_batch": overall_outreach_batch,
             "prospects": overall_outreach_batch,
             "processed_count": total_processed_count,
-            "deliverability_result": final_state.get("deliverability_result"),
             "generated_outreach": final_state.get("generated_outreach"),
             "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage"),
-            "gmail_message_id": first_contact.get("gmail_message_id") if first_contact else final_state.get("gmail_message_id"),
             "whatsapp_message_id": first_contact.get("whatsapp_message_id") if first_contact else final_state.get("whatsapp_message_id"),
-            "whatsapp_status": first_contact.get("whatsapp_status") if first_contact else final_state.get("whatsapp_status"),
+            "whatsapp_status": first_contact.get("whatsapp_status", "ON_WHATSAPP"),
             "contact_phone": first_contact.get("contact_phone") if first_contact else None,
-            "outreach_channel": request.outreach_channel or "email",
+            "outreach_channel": "whatsapp",
             "logs": overall_logs,
         }
 
@@ -713,10 +648,10 @@ async def check_email_replies(
 
         if request.simulate_reply and (not request.prospect_id or request.prospect_id == p_id):
             inbound_text = request.simulated_text or f"Hi! Thanks for reaching out about the AI platform for {company}. We are very interested in scheduling a demo and reviewing your Enterprise proposal and pricing details. Please send us your formal proposal!"
-            reply_channel = request.channel if request.channel in ("email", "whatsapp") else last_channel
+            reply_channel = "whatsapp"
         else:
-            # 1. Check WhatsApp message log if channel allows and prospect has phone
-            if (request.channel in ("whatsapp", "all") or last_channel == "whatsapp") and phone:
+            # Check WhatsApp message log for incoming messages from this prospect's phone
+            if phone:
                 try:
                     clean_phone = phone.replace("+", "").replace("-", "").replace(" ", "")
                     wa_res = await execute_db_query("""
@@ -736,62 +671,35 @@ async def check_email_replies(
                 except Exception as e:
                     logger.warning(f"WhatsApp message log check for {phone} notice: {e}")
 
-            # 2. If no WhatsApp message found and channel allows email, check Gmail API
-            if not inbound_text and (request.channel in ("email", "all") or last_channel == "email") and email:
-                try:
-                    from tool_gateway.credentials_manager import fetch_tool_credentials
-                    creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-                    if creds and creds.get("access_token"):
-                        from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-                        gmail_res = await execute_gmail_tool(
-                            tool_name="inbox",
-                            arguments={"q": f"from:{email}", "limit": 3},
-                            credentials=creds
-                        )
-                        if "Found" in gmail_res and "messages" in gmail_res:
-                            # Extract first message details
-                            inbound_text = f"Received message from {contact_name} ({email}) regarding partnership proposal."
-                            reply_channel = "email"
-                except Exception as e:
-                    logger.warning(f"Gmail inbox check for {email} notice: {e}")
-
         if inbound_text:
             replies_count += 1
-            # Generate AI Response Copy with LLM adapted to the active channel
-            channel_instruction = (
-                "Generate a concise, conversational, professional WhatsApp reply (emojis allowed, no email sign-offs, direct next step/CTA)."
-                if reply_channel == "whatsapp"
-                else "Generate a professional, persuasive sales email reply. Address their questions/interest directly, highlight key benefits, offer next steps (like reviewing our agreement or booking a 15-min call), and maintain an executive tone."
-            )
-            prompt = f"""You are an elite B2B Sales Executive replying to a prospect {reply_channel.upper()} message.
+            # Generate AI WhatsApp Response Copy
+            prompt = f"""You are an elite B2B Sales Executive replying to a prospect WhatsApp message.
 
 PROSPECT DETAILS:
 Name: {contact_name}
 Company: {company}
-Title: {p.get('contact_title', 'Executive')}
-Channel: {reply_channel}
+Title: {p.get('contact_title', 'Owner / General Manager')}
+Channel: WhatsApp
 Previous Outreach Body: {p.get('outreach_body', '')[:300]}
 
 INBOUND PROSPECT REPLY:
 "{inbound_text}"
 
 INSTRUCTIONS:
-{channel_instruction}
+Generate a concise, conversational, professional WhatsApp reply (tasteful emojis allowed, no email sign-offs, clear next step/CTA).
 
 Return ONLY the response message body text (no markdown wrappers).
 """
             llm = get_llm()
             try:
                 llm_res = await llm.ainvoke([
-                    SystemMessage(content=f"You are a professional B2B sales representative drafting contextual {reply_channel} replies."),
+                    SystemMessage(content="You are a professional B2B sales representative drafting conversational WhatsApp replies."),
                     HumanMessage(content=prompt)
                 ])
                 ai_draft = llm_res.content.strip()
             except Exception as e:
-                if reply_channel == "whatsapp":
-                    ai_draft = f"Hi {contact_name}! 👋 Thanks for reaching out. We'd love to share our enterprise proposal and schedule a quick walkthrough. When works best for you?"
-                else:
-                    ai_draft = f"Hi {contact_name},\n\nThank you for your response! We'd be delighted to share our proposal and arrange a walkthrough. Let us know your preferred time slot.\n\nBest regards,\nSales Team"
+                ai_draft = f"Hi {contact_name}! 👋 Thanks for reaching out. We'd love to share our enterprise proposal and schedule a quick walkthrough. When works best for you? ⚡"
 
             # Determine new deal stage
             new_stage = p.get("deal_stage", "REPLIED")
@@ -850,78 +758,39 @@ async def send_ai_reply(
     prospect = res["rows"][0]
     email = prospect.get("contact_email")
     phone = prospect.get("contact_phone")
-    target_channel = request.channel if request.channel in ("email", "whatsapp") else (prospect.get("last_channel_used") or prospect.get("outreach_channel") or "email")
+    if not phone:
+        return {"success": False, "error": "Prospect has no phone number for WhatsApp reply."}
 
-    if target_channel == "whatsapp" and phone:
-        # Dispatch WhatsApp reply via Baileys adapter
-        wa_msg_id = "MSG-REPLY-WA-" + str(hash(phone))[-8:]
-        try:
-            from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
-            wa_res = await execute_whatsapp_tool(
-                tool_name="whatsapp_send_message",
-                arguments={"recipient": phone, "message": request.reply_text},
-                tenant_id=request.tenant_id
-            )
-            if "messageId: " in wa_res:
-                wa_msg_id = f"MSG-WA-{wa_res.split('messageId: ')[-1].split()[0].strip()}"
-        except Exception as e:
-            logger.warning(f"Send reply WhatsApp dispatch notice: {e}")
+    # Dispatch WhatsApp reply via Baileys adapter
+    wa_msg_id = "MSG-REPLY-WA-" + str(hash(phone))[-8:]
+    try:
+        from tool_gateway.adapters.whatsapp_adapter import execute_whatsapp_tool
+        wa_res = await execute_whatsapp_tool(
+            tool_name="whatsapp_send_message",
+            arguments={"recipient": phone, "message": request.reply_text},
+            tenant_id=request.tenant_id
+        )
+        if "messageId: " in wa_res:
+            wa_msg_id = f"MSG-WA-{wa_res.split('messageId: ')[-1].split()[0].strip()}"
+    except Exception as e:
+        logger.warning(f"Send reply WhatsApp dispatch notice: {e}")
 
-        await execute_db_query("""
-        UPDATE sales_prospects SET
-          reply_status = 'AI_REPLIED',
-          deal_stage = 'REPLIED',
-          whatsapp_message_id = $1,
-          last_channel_used = 'whatsapp',
-          updated_at = NOW()
-        WHERE id::text = $2;
-        """, [wa_msg_id, str(request.prospect_id)])
+    await execute_db_query("""
+    UPDATE sales_prospects SET
+      reply_status = 'AI_REPLIED',
+      deal_stage = 'REPLIED',
+      whatsapp_message_id = $1,
+      last_channel_used = 'whatsapp',
+      updated_at = NOW()
+    WHERE id::text = $2;
+    """, [wa_msg_id, str(request.prospect_id)])
 
-        return {
-            "success": True,
-            "message": f"AI Reply successfully sent to {phone} via WhatsApp!",
-            "whatsapp_message_id": wa_msg_id,
-            "channel": "whatsapp"
-        }
-    else:
-        # Dispatch Gmail reply
-        subject = f"Re: {prospect.get('outreach_subject') or 'AI Workflow Platform Partnership'}"
-        creds = {}
-        try:
-            from tool_gateway.credentials_manager import fetch_tool_credentials
-            creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-        except Exception:
-            pass
-
-        gmail_msg_id = "MSG-REPLY-" + str(hash(email or ''))[-8:]
-        try:
-            from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-            gmail_res = await execute_gmail_tool(
-                tool_name="send_email",
-                arguments={"to": email, "subject": subject, "body": request.reply_text},
-                credentials=creds
-            )
-            if "Message ID: " in gmail_res:
-                gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
-        except Exception as e:
-            logger.warning(f"Send reply Gmail dispatch notice: {e}")
-
-        await execute_db_query("""
-        UPDATE sales_prospects SET
-          reply_status = 'AI_REPLIED',
-          deal_stage = 'REPLIED',
-          gmail_message_id = $1,
-          last_channel_used = 'email',
-          updated_at = NOW()
-        WHERE id::text = $2;
-        """, [gmail_msg_id, str(request.prospect_id)])
-
-        return {
-            "success": True,
-            "message": f"AI Reply successfully sent to {email} via Gmail!",
-            "gmail_message_id": gmail_msg_id,
-            "channel": "email"
-        }
+    return {
+        "success": True,
+        "message": f"AI Reply successfully sent to {phone} via WhatsApp!",
+        "whatsapp_message_id": wa_msg_id,
+        "channel": "whatsapp"
+    }
 
 
 @router.post("/proposals/draft")
@@ -1108,69 +977,9 @@ Please reply directly to this WhatsApp message to confirm acceptance and proceed
             "channel": "whatsapp"
         }
     else:
-        subject = proposal.get("title") or f"Formal B2B Proposal & Agreement for {company}"
-        body = f"""Dear {contact_name},
-
-We are pleased to present our formal Enterprise Proposal for {company}.
-
-PROPOSAL OVERVIEW:
-• Tier: {proposal.get('pricing_tier', 'Enterprise')}
-• Annual Value: ${proposal.get('deal_value', 50000):,.2f}
-• Payment Terms: {proposal.get('payment_terms', 'Net 30 Days')}
-
-EXECUTIVE SUMMARY:
-{proposal.get('executive_summary', '')}
-
-KEY DELIVERABLES:
-""" + "\n".join([f"- {d}" for d in proposal.get('deliverables', [])]) + f"""
-
-TERMS & SLA:
-{proposal.get('agreement_terms', 'Standard SLA applies.')}
-
-Please reply to this email to confirm acceptance and proceed to onboarding.
-
-Best regards,
-Enterprise Sales Team
-"""
-
-        # Dispatch Email via Gmail API Adapter
-        creds = {}
-        try:
-            from tool_gateway.credentials_manager import fetch_tool_credentials
-            creds = await fetch_tool_credentials(tenant_id, tool_id="gmail")
-        except Exception:
-            pass
-
-        gmail_msg_id = "MSG-PROPOSAL-" + str(hash(email or ''))[-8:]
-        try:
-            from tool_gateway.adapters.gmail_adapter import execute_gmail_tool
-            gmail_res = await execute_gmail_tool(
-                tool_name="send_email",
-                arguments={"to": email, "subject": subject, "body": body},
-                credentials=creds
-            )
-            if "Message ID: " in gmail_res:
-                gmail_msg_id = f"MSG-GMAIL-{gmail_res.split('Message ID: ')[-1].strip()}"
-        except Exception as e:
-            logger.warning(f"Proposal Gmail dispatch notice: {e}")
-
-        await execute_db_query("""
-        UPDATE sales_prospects SET
-          proposal_status = 'SENT',
-          deal_stage = 'PROPOSAL_SENT',
-          gmail_message_id = $1,
-          last_channel_used = 'email',
-          updated_at = NOW()
-        WHERE id::text = $2;
-        """, [gmail_msg_id, str(request.prospect_id)])
-
         return {
-            "success": True,
-            "message": f"Human approved! Proposal & agreement successfully dispatched to {email} via Gmail.",
-            "proposal_status": "SENT",
-            "deal_stage": "PROPOSAL_SENT",
-            "gmail_message_id": gmail_msg_id,
-            "channel": "email"
+            "success": False,
+            "error": "Prospect has no phone number for WhatsApp proposal dispatch."
         }
 
 

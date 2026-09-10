@@ -156,9 +156,9 @@ async def contact_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
 
         return contact
 
-    # Parallel contact discovery bounded by prospect_limit
-    accounts_to_process = scraped_accounts[:prospect_limit]
-    logger.info(f"[STAGE 3] Processing {len(accounts_to_process)} accounts (prospect_limit={prospect_limit})")
+    # Parallel contact discovery across qualified candidate accounts to ensure Stage 4 has sufficient pool
+    accounts_to_process = scraped_accounts[:max(prospect_limit * 6, 30)]
+    logger.info(f"[STAGE 3] Processing {len(accounts_to_process)} candidate accounts for target prospect_limit={prospect_limit}")
 
     if accounts_to_process:
         raw_discovered = await asyncio.gather(*[_discover_single(acc) for acc in accounts_to_process])

@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://hassan:zareaai123@localhost:5432/ai_platform"
     ENCRYPTION_KEY: str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-    # LLM Gateway — "openrouter" | "gemini" | "ollama"
-    LLM_PROVIDER: str = "openrouter"
+    # LLM Gateway — "gemini" | "openrouter" | "ollama"
+    LLM_PROVIDER: str = "gemini"
 
     # OpenRouter (OpenAI-compatible)
     OPENROUTER_API_KEY: str = ""
@@ -25,18 +25,20 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    # Google Places API (New)
+    GOOGLE_PLACES_API_KEY: str = ""
+    GOOGLE_PLACES_API: str = ""
+
     # Ollama (local)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
 
-    # Search API (Serper.dev) — used for B2B company discovery in Sales Agent
+    # Search API (Serper.dev) — fallback for Places discovery
     SERPER_API_KEY: str = ""
 
-    # Emailable API — primary verification fallback when Port 25 fails
-    EMAILABLE_API_KEY: str = ""
-
-    # ZeroBounce API — legacy fallback
-    ZEROBOUNCE_API_KEY: str = ""
+    @property
+    def places_api_key(self) -> str:
+        return self.GOOGLE_PLACES_API_KEY or self.GOOGLE_PLACES_API or self.GEMINI_API_KEY
 
     model_config = {"env_file": env_path, "extra": "ignore"}
 

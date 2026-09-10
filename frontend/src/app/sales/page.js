@@ -28,10 +28,9 @@ export default function SalesDashboard() {
 
   // SDR Execution Settings
   const [prospectLimit, setProspectLimit] = useState(10);
-  const [outreachChannel, setOutreachChannel] = useState('email'); // 'email' | 'whatsapp'
+  const [outreachChannel, setOutreachChannel] = useState('whatsapp');
   const [whatsappStatus, setWhatsappStatus] = useState(null);
-  const [autoSendEmail, setAutoSendEmail] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
+  const [autoSendWhatsApp, setAutoSendWhatsApp] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [icpBuilt, setIcpBuilt] = useState(false);
   const [savingIcp, setSavingIcp] = useState(false);
@@ -269,15 +268,15 @@ export default function SalesDashboard() {
   const handleRunPipeline = async (e) => {
     e.preventDefault();
     setRunningPipeline(true);
-    setMessage(`⏳ Starting campaign (${outreachChannel.toUpperCase()})... Please wait while the AI Agent works in the background.`);
+    setMessage(`⏳ Starting WhatsApp SDR campaign... Querying Google Places API & evaluating with Gemini...`);
     try {
       const res = await fetch('/api/v1/sales/pipeline/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           prospect_limit: Math.max(1, parseInt(prospectLimit) || 1),
-          auto_send_email: autoSendEmail,
-          outreach_channel: outreachChannel,
+          auto_send_whatsapp: autoSendWhatsApp,
+          outreach_channel: 'whatsapp',
           icp_config: icpConfig,
         }),
       });
@@ -754,55 +753,34 @@ export default function SalesDashboard() {
             <hr className="border-outline-variant my-xs" />
 
             <h2 className="font-title-md text-title-md text-on-surface flex items-center gap-2 m-0">
-              <span className="material-symbols-outlined text-primary">tune</span> Step 2: Campaign Settings
+              <span className="material-symbols-outlined text-emerald-400">tune</span> Step 2: Campaign Settings
             </h2>
 
             <form onSubmit={handleRunPipeline} className="flex flex-col gap-md">
-              <div>
-                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Outreach Channel</label>
-                <div className="grid grid-cols-2 gap-2 bg-background p-1 border border-outline rounded-md">
-                  <button
-                    type="button"
-                    onClick={() => setOutreachChannel('email')}
-                    className={`py-1.5 px-3 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      outreachChannel === 'email'
-                        ? 'bg-primary text-on-primary shadow'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">mail</span> Email
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOutreachChannel('whatsapp');
-                      fetchWhatsAppStatus();
-                    }}
-                    className={`py-1.5 px-3 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      outreachChannel === 'whatsapp'
-                        ? 'bg-emerald-600 text-white shadow'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px]">chat</span> WhatsApp
-                  </button>
+              {/* WhatsApp SDR Channel Status */}
+              <div className="p-3 bg-emerald-950/40 border border-emerald-700/50 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-emerald-300 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[18px]">chat</span> WhatsApp SDR Channel
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-900/60 text-emerald-200 border border-emerald-600/40">
+                    {whatsappStatus?.status === 'connected' ? 'Connected' : 'Not Paired'}
+                  </span>
                 </div>
-                {outreachChannel === 'whatsapp' && (
-                  <div className="mt-1.5 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded text-[11px] text-emerald-300 flex items-center justify-between">
-                    <span>
-                      {whatsappStatus?.status === 'connected'
-                        ? (whatsappStatus.phoneNumber ? `✅ WhatsApp connected (${whatsappStatus.phoneNumber})` : '✅ WhatsApp session active')
-                        : '⚠️ WhatsApp not connected'}
-                    </span>
-                    <Link href="/mcp" className="underline font-bold text-emerald-200 hover:text-white">
-                      Pair Session
-                    </Link>
-                  </div>
-                )}
+                <div className="flex items-center justify-between mt-1.5 text-[11px] text-emerald-400/90">
+                  <span>
+                    {whatsappStatus?.status === 'connected'
+                      ? (whatsappStatus.phoneNumber ? `Active session: ${whatsappStatus.phoneNumber}` : 'Baileys WhatsApp connected and ready.')
+                      : '⚠️ No paired session. Please pair session in Integration Hub.'}
+                  </span>
+                  <Link href="/mcp" className="underline font-bold text-emerald-200 hover:text-white">
+                    Integration Hub
+                  </Link>
+                </div>
               </div>
 
               <div>
-                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Profiles Stop Limit (Target Prospects)</label>
+                <label className="text-body-sm text-on-surface-variant font-label-md block mb-1">Target Prospects Count</label>
                 <input
                   type="number"
                   min="1"
@@ -823,20 +801,20 @@ export default function SalesDashboard() {
               <div className="flex items-center justify-between p-sm bg-background border border-outline-variant rounded-md">
                 <div>
                   <span className="text-body-sm font-label-md text-on-surface block font-bold">
-                    {outreachChannel === 'whatsapp' ? 'Auto-Send WhatsApp' : 'Auto-Send Emails'}
+                    Auto-Send via WhatsApp
                   </span>
                   <span className="text-xs text-on-surface-variant">
-                    {outreachChannel === 'whatsapp' ? 'Verify Baileys onWhatsApp & dispatch' : 'Dispatch initial outreach automatically'}
+                    Automatically dispatch generated pitches to verified WhatsApp prospects
                   </span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={autoSendEmail}
-                    onChange={(e) => setAutoSendEmail(e.target.checked)}
+                    checked={autoSendWhatsApp}
+                    onChange={(e) => setAutoSendWhatsApp(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                  <div className="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                 </label>
               </div>
 
@@ -957,9 +935,9 @@ export default function SalesDashboard() {
                       <thead>
                         <tr className="border-b border-outline-variant text-on-surface-variant font-label-md">
                           <th className="p-sm">Company</th>
-                          <th className="p-sm">Contact</th>
-                          <th className="p-sm">Email</th>
-                          <th className="p-sm">Phone / WhatsApp</th>
+                          <th className="p-sm">Target Role</th>
+                          <th className="p-sm">WhatsApp Phone</th>
+                          <th className="p-sm">Google Rating & Location</th>
                           <th className="p-sm">Stage</th>
                           <th className="p-sm text-right">Actions</th>
                         </tr>
@@ -969,17 +947,16 @@ export default function SalesDashboard() {
                           <tr key={idx} className="border-b border-outline-variant/50 hover:bg-surface-variant/30">
                             <td className="p-sm">
                               <div className="font-bold text-on-surface">{p.company_name}</div>
-                              <div className="text-xs text-on-surface-variant">{p.domain}</div>
+                              <div className="text-xs text-on-surface-variant font-mono">{p.domain}</div>
                             </td>
                             <td className="p-sm">
-                              <div>{p.contact_name || 'Executive'}</div>
-                              <div className="text-xs text-on-surface-variant">{p.contact_title || 'Decision Maker'}</div>
+                              <div className="font-medium text-on-surface">{p.contact_name || 'Business Owner'}</div>
+                              <div className="text-xs text-on-surface-variant">{p.contact_title || 'Owner / General Manager'}</div>
                             </td>
-                            <td className="p-sm font-mono text-xs">{p.contact_email}</td>
                             <td className="p-sm font-mono text-xs">
                               {p.contact_phone ? (
                                 <div className="flex flex-col gap-0.5">
-                                  <span>{p.contact_phone}</span>
+                                  <span className="font-bold text-emerald-400">{p.contact_phone}</span>
                                   {p.whatsapp_status === 'ON_WHATSAPP' && (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-900/50 text-emerald-300 rounded text-[10px] font-bold w-fit">
                                       <span className="material-symbols-outlined text-[11px]">check_circle</span> On WhatsApp
@@ -1000,10 +977,20 @@ export default function SalesDashboard() {
                                 <span className="text-on-surface-variant italic text-[11px]">No phone</span>
                               )}
                             </td>
+                            <td className="p-sm text-xs">
+                              <div className="flex items-center gap-1 font-bold text-amber-300">
+                                <span className="material-symbols-outlined text-[14px]">star</span>
+                                {p.google_rating ? p.google_rating.toFixed(1) : (p.icp_score ? `${p.icp_score.toFixed(0)} fit` : '4.5')}
+                              </div>
+                              <div className="text-[11px] text-on-surface-variant line-clamp-1 max-w-[180px]" title={p.address || p.scraped_context}>
+                                {p.address || p.scraped_context || 'Operational Business'}
+                              </div>
+                            </td>
                             <td className="p-sm">
                               <div className="flex flex-col gap-1 items-start">
                                 <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                                   p.deal_stage === 'CLOSED_WON' ? 'bg-emerald-900/50 text-emerald-300' :
+                                  p.deal_stage === 'OUTREACH_SENT' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/40' :
                                   p.deal_stage === 'PROPOSAL_SENT' ? 'bg-blue-900/40 text-blue-300' :
                                   p.deal_stage === 'PROPOSAL_DRAFTED' ? 'bg-amber-900/40 text-amber-300' :
                                   p.deal_stage === 'REPLIED' ? 'bg-purple-900/40 text-purple-300' :
@@ -1011,23 +998,17 @@ export default function SalesDashboard() {
                                 }`}>
                                   {p.deal_stage || 'DISCOVERED'}
                                 </span>
-                                {(p.outreach_channel === 'whatsapp' || p.last_channel_used === 'whatsapp') ? (
-                                  <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-0.5">
-                                    <span className="material-symbols-outlined text-[12px]">chat</span> WhatsApp
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-blue-300 font-bold flex items-center gap-0.5">
-                                    <span className="material-symbols-outlined text-[12px]">mail</span> Email
-                                  </span>
-                                )}
+                                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-0.5">
+                                  <span className="material-symbols-outlined text-[12px]">chat</span> WhatsApp
+                                </span>
                               </div>
                             </td>
                             <td className="p-sm text-right flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => setSelectedProspect(p)}
-                                className="px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 rounded-md text-xs font-bold transition-all flex items-center gap-1"
+                                className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-md text-xs font-bold transition-all flex items-center gap-1"
                               >
-                                <span className="material-symbols-outlined text-[15px]">visibility</span> View Draft
+                                <span className="material-symbols-outlined text-[15px]">chat</span> View Pitch
                               </button>
                             </td>
                           </tr>
@@ -1576,16 +1557,12 @@ export default function SalesDashboard() {
 
         {/* Modal: Prospect Details & Draft Outreach View (Email or WhatsApp) */}
         {selectedProspect && (() => {
-          const isWaChannel = selectedProspect.outreach_channel === 'whatsapp' || selectedProspect.last_channel_used === 'whatsapp';
-          const emailSubject = selectedProspect.outreach_subject || selectedProspect.subject || 'Autonomous Workflow Velocity & Partnership';
-          const emailBody = selectedProspect.outreach_body || selectedProspect.body || (isWaChannel 
-            ? `Hi ${selectedProspect.contact_name || 'there'}! 👋 I came across ${selectedProspect.company_name || 'your enterprise'} and wanted to connect about automating workflows with enterprise AI agents. When works best for a quick 10-min chat?`
-            : `Hi ${selectedProspect.contact_name || 'Executive'},\n\nI noticed ${selectedProspect.company_name || 'your enterprise'}'s ongoing digital initiatives. Our autonomous platform can streamline your outreach and operations with zero vendor lock-in...\n\nWould you be open to a 15-minute call next week?\n\nBest regards,\nAccount Executive`
-          );
+        {/* Modal: Prospect Details & Draft WhatsApp Outreach View */}
+        {selectedProspect && (() => {
+          const waBody = selectedProspect.outreach_body || selectedProspect.body || 
+            `Hi ${selectedProspect.contact_name || selectedProspect.company_name}! 👋 I came across your business and wanted to connect about automating workflows with enterprise AI agents. Open to a quick 5-min chat this week?`;
           const isSent = selectedProspect.deal_stage === 'OUTREACH_SENT' || 
-            (selectedProspect.gmail_message_id && selectedProspect.gmail_message_id !== '' && selectedProspect.gmail_message_id !== 'NOT_SENT') ||
             (selectedProspect.whatsapp_message_id && selectedProspect.whatsapp_message_id !== '' && selectedProspect.whatsapp_message_id !== 'NOT_SENT');
-          const sentViaWa = Boolean(selectedProspect.whatsapp_message_id && selectedProspect.whatsapp_message_id !== 'NOT_SENT');
 
           return (
             <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1593,7 +1570,7 @@ export default function SalesDashboard() {
                 <div className="flex justify-between items-center mb-md border-b border-outline-variant pb-sm">
                   <div>
                     <h3 className="font-title-md text-on-surface m-0 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-primary">business</span>
+                      <span className="material-symbols-outlined text-emerald-400">business</span>
                       {selectedProspect.company_name}
                     </h3>
                     <span className="text-xs text-on-surface-variant font-mono">{selectedProspect.domain}</span>
@@ -1605,16 +1582,19 @@ export default function SalesDashboard() {
                   {/* Prospect Header Info */}
                   <div className="p-sm bg-background border border-outline-variant/60 rounded-md grid grid-cols-3 gap-xs text-xs">
                     <div>
-                      <span className="text-on-surface-variant block">Decision Maker:</span>
-                      <span className="font-bold text-on-surface">{selectedProspect.contact_name || 'Executive'}</span>
-                      <span className="text-on-surface-variant block">{selectedProspect.contact_title || 'Decision Maker'}</span>
+                      <span className="text-on-surface-variant block">Target Role:</span>
+                      <span className="font-bold text-on-surface">{selectedProspect.contact_name || 'Business Owner'}</span>
+                      <span className="text-on-surface-variant block">{selectedProspect.contact_title || 'Owner / General Manager'}</span>
                     </div>
                     <div>
-                      <span className="text-on-surface-variant block">Email Address:</span>
-                      <span className="font-mono text-primary font-bold">{selectedProspect.contact_email || 'None'}</span>
+                      <span className="text-on-surface-variant block">Google Rating:</span>
+                      <span className="font-bold text-amber-300 flex items-center gap-0.5">
+                        ⭐ {selectedProspect.google_rating ? selectedProspect.google_rating.toFixed(1) : (selectedProspect.icp_score ? `${selectedProspect.icp_score.toFixed(0)} fit` : '4.5')}
+                      </span>
+                      <span className="text-on-surface-variant block text-[11px] line-clamp-1">{selectedProspect.address || 'Operational'}</span>
                     </div>
                     <div>
-                      <span className="text-on-surface-variant block">Phone / WhatsApp:</span>
+                      <span className="text-on-surface-variant block">WhatsApp Phone:</span>
                       <span className="font-mono text-emerald-400 font-bold">{selectedProspect.contact_phone || 'None'}</span>
                       <div className="mt-0.5">
                         {selectedProspect.whatsapp_status === 'ON_WHATSAPP' && (
@@ -1636,31 +1616,19 @@ export default function SalesDashboard() {
                     </div>
                   </div>
 
-                  {/* Subject Line Field (Email only) */}
-                  {!isWaChannel ? (
-                    <div>
-                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Outreach Subject Line</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={emailSubject}
-                        className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-semibold text-sm"
-                      />
-                    </div>
-                  ) : (
-                    <div className="p-2 bg-emerald-950/20 border border-emerald-800/30 rounded text-xs text-emerald-300 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[15px]">chat</span>
-                      <span>WhatsApp Direct Message (Subject line not applicable)</span>
-                    </div>
-                  )}
+                  {/* WhatsApp Channel Indicator */}
+                  <div className="p-2 bg-emerald-950/30 border border-emerald-800/40 rounded text-xs text-emerald-300 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px]">chat</span>
+                    <span>Direct WhatsApp Outreach Pitch (Gemini-Generated)</span>
+                  </div>
 
                   {/* Outreach Body Field */}
                   <div>
                     <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
-                      Drafted {isWaChannel ? 'WhatsApp Message' : 'Cold Email'} Body
+                      Personalized WhatsApp Pitch
                     </label>
                     <div className="p-md bg-background border border-outline rounded-md text-body-sm font-mono text-on-surface whitespace-pre-line leading-relaxed max-h-60 overflow-y-auto">
-                      {emailBody}
+                      {waBody}
                     </div>
                   </div>
 
@@ -1684,26 +1652,14 @@ export default function SalesDashboard() {
                             <span className={`material-symbols-outlined text-[18px] ${sendingWhatsApp ? 'animate-spin' : ''}`}>
                               {sendingWhatsApp ? 'sync' : 'chat'}
                             </span>
-                            {sendingWhatsApp ? 'Sending WA...' : 'Send WhatsApp'}
-                          </button>
-                        )}
-                        {selectedProspect.contact_email && (
-                          <button
-                            onClick={() => handleSendSingleOutreachEmail(selectedProspect)}
-                            disabled={sendingEmail}
-                            className="px-md py-sm bg-primary hover:bg-primary/90 text-on-primary font-label-md rounded-md text-body-sm flex items-center gap-2 shadow transition-all"
-                          >
-                            <span className={`material-symbols-outlined text-[18px] ${sendingEmail ? 'animate-spin' : ''}`}>
-                              {sendingEmail ? 'sync' : 'mail'}
-                            </span>
-                            {sendingEmail ? 'Sending Email...' : 'Send Email'}
+                            {sendingWhatsApp ? 'Dispatching...' : 'Send WhatsApp Message'}
                           </button>
                         )}
                       </div>
                     ) : (
                       <span className="px-md py-sm bg-emerald-900/40 text-emerald-300 border border-emerald-700/50 rounded-md text-xs font-bold flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                        Outreach Already Sent via {sentViaWa ? 'WhatsApp' : 'Gmail'}
+                        WhatsApp Message Dispatched
                       </span>
                     )}
                   </div>

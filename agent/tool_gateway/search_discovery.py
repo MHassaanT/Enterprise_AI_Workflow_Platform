@@ -31,7 +31,10 @@ NON_COMPANY_DOMAINS = {
     "indeed.com", "yelp.com", "trustpilot.com", "g2.com", "capterra.com",
     "getapp.com", "trustradius.com", "sourceforge.net", "dnb.com", "ensun.io",
     "clutch.co", "techreviewer.co", "goodfirms.co", "themanifest.com", "sortlist.com",
-    "upwork.com", "fiverr.com",
+    "upwork.com", "fiverr.com", "yellowpages.com", "superpages.com", "whitepages.com",
+    "manta.com", "bbb.org", "chamberofcommerce.com", "ncass.org.uk", "ifdaonline.org",
+    "foodprocessing.com", "snackandbakery.com", "forwardfooding.com", "wellfound.com",
+    "landbase.com",
     "zoominfo.com", "lusha.com", "d7leadfinder.com", "mustakbil.com", "urdupoint.com",
     "f6s.com", "scribd.com", "pakistanies.com", "builtin.com", "builtinnyc.com",
     "builtincolorado.com", "builtinchicago.org", "project-equity.org", "partnerslate.com",
@@ -52,7 +55,7 @@ NON_COMPANY_DOMAINS = {
     "github.com", "gitlab.com", "bitbucket.org", "stackoverflow.com",
     "npmjs.com", "pypi.org",
     # Gov / edu
-    "gov", "edu", "mil",
+    "gov", "edu", "mil", "gov.uk", "ac.uk", "gov.pk",
     # App stores
     "apps.apple.com", "play.google.com",
     # Generic platforms
@@ -126,7 +129,7 @@ def _build_queries(
 ) -> List[str]:
     """
     Builds 3-5 query variants from ICP config fields.
-    Uses no hardcoded industries or regions — everything comes from the ICP.
+    Differentiates tech vs non-tech industries to prevent hardcoded SaaS/software bias.
     """
     size_hint = _build_size_hint(company_size_min, company_size_max)
     region_str = region.strip() if region else ""
@@ -137,23 +140,47 @@ def _build_queries(
         if not industry:
             continue
 
-        if region_str:
-            templates_to_use = [
-                f"{industry} company in {region_str}",
-                f"{industry} business in {region_str}",
-                f"best {industry} in {region_str}",
-                f"{industry} companies {size_hint} employees {region_str}",
-            ]
+        is_tech = any(k in industry.lower() for k in ["software", "saas", "tech", "technology", "platform", "app", "cloud", "developer", "cybersecurity", "ai"])
+        if is_tech:
+            if region_str:
+                templates_to_use = [
+                    f"{industry} companies in {region_str}",
+                    f"top {industry} platforms in {region_str}",
+                    f"{industry} software companies in {region_str}",
+                    f"best {industry} businesses {region_str}",
+                    f"{industry} technology startups in {region_str}",
+                ]
+            else:
+                templates_to_use = [
+                    f"{industry} companies",
+                    f"top {industry} platforms",
+                    f"{industry} software companies",
+                    f"leading {industry} technology companies",
+                    f"{industry} technology startups",
+                ]
         else:
-            templates_to_use = [
-                f"{industry} software companies",
-                f"top {industry} SaaS platforms",
-                f"{industry} technology companies",
-                f"{industry} B2B startups",
-                f"best {industry} platforms {size_hint}".strip(),
-            ]
+            if region_str:
+                templates_to_use = [
+                    f"{industry} companies in {region_str}",
+                    f"{industry} businesses in {region_str}",
+                    f"commercial {industry} suppliers in {region_str}",
+                    f"wholesale {industry} companies in {region_str}",
+                    f"top {industry} brands in {region_str}",
+                    f"{industry} manufacturers in {region_str}",
+                    f"best {industry} in {region_str}",
+                ]
+            else:
+                templates_to_use = [
+                    f"{industry} companies",
+                    f"{industry} businesses",
+                    f"commercial {industry} suppliers",
+                    f"wholesale {industry} companies",
+                    f"top {industry} brands",
+                    f"leading {industry} manufacturers",
+                    f"{industry} distributors",
+                ]
 
-        for query in templates_to_use[:3]:
+        for query in templates_to_use[:4]:
             # Clean up double spaces from empty substitutions
             query = " ".join(query.split())
             queries.append(query)
@@ -166,7 +193,7 @@ def _build_queries(
             seen.add(q)
             unique_queries.append(q)
 
-    return unique_queries[:10]  # Cap at 10 queries
+    return unique_queries[:12]  # Cap at 12 queries
 
 
 async def _get_serper_api_key(tenant_id: str) -> Optional[str]:
@@ -308,9 +335,14 @@ async def search_company_accounts(
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
 
-                # Infer company name: prefer title text, clean up suffixes
-                company_name = title.split(" - ")[0].split(" | ")[0].split(" — ")[0].strip()
-                if not company_name or len(company_name) > 80:
+                # Infer company name: prefer title text, clean up suffixes and article prefixes
+                company_name = title.split(" - ")[0].split(" | ")[0].split(" — ")[0].split(" : ")[0].strip()
+                low_name = company_name.lower()
+                guide_prefixes = ("how to", "start a", "guide to", "the complete", "best ", "top 10", "10 best", "list of", "where to", "what is")
+                if any(low_name.startswith(p) for p in guide_prefixes) or len(company_name) > 60:
+                    clean_dom = domain.split(".")[0].replace("-", " ").title()
+                    company_name = clean_dom
+                if not company_name:
                     company_name = domain.split(".")[0].title()
 
                 # Determine which industry query matched this result

@@ -88,7 +88,7 @@ async def business_understanding_node(state: SalesAgentState) -> Dict[str, Any]:
     if provided_raw:
         raw_accounts = provided_raw
     else:
-        fetch_limit = max(prospect_limit * 4, 40)
+        fetch_limit = max(prospect_limit * 10, 50)
         sourcing_res = await search_company_accounts(
             tenant_id=tenant_id,
             target_industries=target_industries,

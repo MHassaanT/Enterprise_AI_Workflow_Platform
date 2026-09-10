@@ -101,13 +101,14 @@ router.get('/prospects', async (req, res) => {
   }
 });
 
-// POST /api/v1/sales/pipeline/run — Trigger autonomous 6-stage AI SDR pipeline
+// POST /api/v1/sales/pipeline/run — Trigger autonomous AI WhatsApp SDR pipeline
 router.post('/pipeline/run', async (req, res) => {
   try {
     const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || req.body.tenant_id || '00000000-0000-0000-0000-000000000000';
-    const { target_domain, prospect_limit, icp_config, auto_send_email, outreach_channel } = req.body;
+    const { target_domain, prospect_limit, icp_config, auto_send_whatsapp, auto_send_email, outreach_channel } = req.body;
+    const effectiveAutoSend = Boolean(auto_send_whatsapp || auto_send_email);
 
-    console.log(`[BACKEND RUN PIPELINE] Initiating campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send=${auto_send_email}, channel=${outreach_channel || 'email'}`);
+    console.log(`[BACKEND RUN PIPELINE] Initiating WhatsApp campaign. tenantId='${tenantId}', limit=${prospect_limit}, auto_send_whatsapp=${effectiveAutoSend}`);
 
     const response = await axios.post(
       `${AGENT_URL}/agent/sales/run`,
@@ -115,8 +116,9 @@ router.post('/pipeline/run', async (req, res) => {
         tenant_id: tenantId,
         target_domain: target_domain || null,
         prospect_limit: parseInt(prospect_limit) || 10,
-        auto_send_email: auto_send_email || false,
-        outreach_channel: outreach_channel || 'email',
+        auto_send_whatsapp: effectiveAutoSend,
+        auto_send_email: false,
+        outreach_channel: 'whatsapp',
         icp_config: icp_config || null,
         user_id: req.user?.id || 'sales_user'
       },

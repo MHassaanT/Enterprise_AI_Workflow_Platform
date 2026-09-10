@@ -1,55 +1,57 @@
 """
-AI Sales Agent (AI SDR/BDR) State Schema
+AI Sales Agent (Autonomous WhatsApp SDR) State Schema.
+Exclusively structured for Google Places Discovery, Gemini Evaluation,
+Baileys onWhatsApp verification, and WhatsApp outreach dispatch.
 """
 from typing import TypedDict, Optional, List, Dict, Any
 
-class SalesAgentState(TypedDict):
+
+class SalesAgentState(TypedDict, total=False):
     tenant_id: str
     run_id: str
     user_id: str
-    
+
     # Execution parameters
     prospect_limit: Optional[int]
     target_domain: Optional[str]
-    auto_send_email: Optional[bool]
-    outreach_channel: Optional[str]  # 'email' | 'whatsapp'
-    
-    # State tracking for looping
+    auto_send_whatsapp: Optional[bool]
+    outreach_channel: Optional[str]  # Always 'whatsapp'
+
+    # Deduplication tracking across loops
     existing_domains: List[str]
-    existing_emails: List[str]
     existing_phones: List[str]
-    
-    # Stage 1: Sourcing & Business Understanding
+
+    # Stage 1: Google Places Discovery
     icp_config: Dict[str, Any]
-    raw_accounts: List[Dict[str, Any]]
-    
-    # Stage 2: Account Fit Check (Crawl4AI)
-    scraped_accounts: List[Dict[str, Any]]
-    scraped_context: Dict[str, Any]
+    raw_places: List[Dict[str, Any]]
+
+    # Stage 2: Gemini Evaluation (ICP Qualification & Fit Scoring)
+    qualified_places: List[Dict[str, Any]]
     account_fit_passed: bool
-    
-    # Stage 3: Contact Discovery (Search + Pattern Inference)
-    discovered_contacts: List[Dict[str, Any]]
-    discovered_contact: Optional[Dict[str, Any]]
-    
-    # Stage 4: Deliverability Guard (Email Verifier)
-    verified_contacts: List[Dict[str, Any]]
-    deliverability_result: Optional[Dict[str, Any]]
-    
-    # Stage 5: Scoring & Copy Generation (OpenRouter LLM)
+
+    # Stage 3: Baileys onWhatsApp Deliverability Guard
+    verified_prospects: List[Dict[str, Any]]
+
+    # Stage 4: Gemini WhatsApp Pitch Generation
     outreach_batch: List[Dict[str, Any]]
     icp_score: float
     generated_outreach: Optional[Dict[str, Any]]
-    
-    # Stage 6: Dispatch & CRM Deal Logging (Gmail API & WhatsApp MCP)
+
+    # Stage 5: WhatsApp Dispatch & CRM Persistence
     processed_count: int
     outreach_sent: bool
-    gmail_message_id: Optional[str]
     whatsapp_message_id: Optional[str]
     whatsapp_status: Optional[str]
     deal_stage: str
     quote_details: Optional[Dict[str, Any]]
-    
+
     # Execution Audit Trail
     logs: List[Dict[str, Any]]
     answer: str
+
+    # Backward compatibility aliases
+    discovered_contact: Optional[Dict[str, Any]]
+    discovered_contacts: List[Dict[str, Any]]
+    verified_contacts: List[Dict[str, Any]]
+    scraped_accounts: List[Dict[str, Any]]
+    raw_accounts: List[Dict[str, Any]]

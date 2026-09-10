@@ -66,7 +66,9 @@ async def account_fit_research_node(state: SalesAgentState) -> Dict[str, Any]:
                 scraped_text = f"{company_name} ({domain}) - {search_snip}"
                 scrape_method = "serper_search_snippet"
             else:
-                scraped_text = f"{company_name} ({domain}) - Food business, restaurant, bakery, or food manufacturing enterprise in {icp_config.get('region', 'Lahore Pakistan')}."
+                ind_str = ", ".join(target_industries) if target_industries else "commercial enterprise"
+                reg_str = f" in {icp_config.get('region')}" if icp_config.get('region') else ""
+                scraped_text = f"{company_name} ({domain}) - Operating in {ind_str}{reg_str}."
                 scrape_method = "metadata_fallback"
 
         # 2. LLM ICP Evaluation, Email Extraction, and Phone Number Discovery
@@ -82,9 +84,13 @@ SCRAPED WEBSITE CONTENT ({company_name} - {domain}):
 {scraped_text[:1500]}
 
 INSTRUCTIONS:
-1. Evaluate if this company's business matches our Target Industries and ICP.
-2. Extract ANY email addresses visible in the text (e.g. info@, sales@, press@, or personal emails). Do NOT make up emails.
-3. Extract ANY telephone / mobile / WhatsApp numbers visible in the text (e.g. +1..., +44..., +92..., or local business contact lines). Do NOT make up numbers.
+1. STRICT ICP QUALIFICATION:
+   - The company MUST DIRECTLY OPERATE within one of our Target Industries: {target_industries}.
+     (e.g., if target industry is "Food" or "Bakery", the company must actually produce, bake, manufacture, wholesale distribute, or retail food/baked goods).
+   - REJECT TECH & SERVICE VENDORS: Immediately mark is_qualified: false if this company merely sells software, POS, apps, SaaS, insurance, consulting, marketing, or IT tools TO businesses in {target_industries}, UNLESS our Target Industries explicitly ask for software/tech.
+   - REJECT NON-COMPANIES: Disqualify trade associations, government agencies, educational guides, blogs, magazines, and directories.
+2. Extract ANY real email addresses visible in the text (e.g. info@, sales@, press@, or personal emails). Do NOT make up emails.
+3. Extract ANY real telephone / mobile / WhatsApp numbers visible in the text (e.g. +1..., +44..., +92..., or local business contact lines). Do NOT make up numbers.
 4. Check for invalid parked domains (e.g. "domain for sale", "404 not found", etc.).
 
 Return ONLY a valid JSON object matching this schema exactly:
@@ -134,10 +140,11 @@ Return ONLY a valid JSON object matching this schema exactly:
                 if len(clean_digits) >= 8 and clean_digits not in pattern_phones:
                     pattern_phones.append(clean_digits)
 
+        default_ind = target_industries[0] if target_industries else "General"
         return {
             "company_name": company_name,
             "domain": domain,
-            "industry": account.get("industry", "Software"),
+            "industry": account.get("industry") or default_ind,
             "scraped_text": scraped_text[:1500],
             "scrape_method": scrape_method,
             "qualified": qualified,
@@ -147,7 +154,7 @@ Return ONLY a valid JSON object matching this schema exactly:
         }
 
     # 3. Parallelize scraping and evaluation
-    eval_limit = max(prospect_limit * 6, 30)
+    eval_limit = max(prospect_limit * 8, 40)
     accounts_to_scrape = raw_accounts[:eval_limit]
     all_evaluated = await asyncio.gather(*[_scrape_and_evaluate(acc) for acc in accounts_to_scrape])
 
