@@ -76,6 +76,7 @@ app.include_router(agent_router, prefix="/agent", tags=["Agent"])
 app.include_router(sales_router, prefix="/agent/sales", tags=["Sales Agent"])
 app.include_router(procurement_router, tags=["Procurement Agent"])
 app.include_router(finance_router, prefix="/agent/finance", tags=["Finance Agent"])
+app.include_router(finance_router, prefix="/api/v1/finance", tags=["Finance Agent"])
 app.include_router(coding_router, prefix="/agent/coding", tags=["Coding Agent"])
 app.include_router(analytics_router, prefix="/agent/analytics", tags=["Analytics Agent"])
 

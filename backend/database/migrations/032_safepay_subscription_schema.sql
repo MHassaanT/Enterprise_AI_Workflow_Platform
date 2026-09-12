@@ -1,8 +1,19 @@
--- Rename Paddle columns to generic payment provider columns
-ALTER TABLE tenants 
-    RENAME COLUMN paddle_subscription_id TO payment_subscription_id;
-ALTER TABLE tenants 
-    RENAME COLUMN paddle_customer_id TO payment_customer_id;
+-- Rename Paddle columns to generic payment provider columns if they exist
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tenants' AND column_name = 'paddle_subscription_id'
+    ) THEN
+        ALTER TABLE tenants RENAME COLUMN paddle_subscription_id TO payment_subscription_id;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tenants' AND column_name = 'paddle_customer_id'
+    ) THEN
+        ALTER TABLE tenants RENAME COLUMN paddle_customer_id TO payment_customer_id;
+    END IF;
+END $$;
 
 -- Add SafePay-specific columns
 ALTER TABLE tenants 
@@ -23,4 +34,4 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_webhook_events_event_id ON webhook_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id);

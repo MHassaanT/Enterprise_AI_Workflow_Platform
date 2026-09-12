@@ -59,6 +59,13 @@ export default function ApprovalsAndAppointmentsPage() {
   });
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'appointments' || tabParam === 'approvals' || tabParam === 'issues') {
+        setActiveTab(tabParam);
+      }
+    }
     loadApprovals();
     loadAppointments();
     loadIssues();

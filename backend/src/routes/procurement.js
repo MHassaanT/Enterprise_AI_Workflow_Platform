@@ -137,7 +137,7 @@ router.post('/requests', upload.array('documents', 5), async (req, res) => {
   }
 });
 
-// GET /api/v1/procurement/requests/:id — Fetch single request detail & vendors
+// GET /api/v1/procurement/requests/:id — Fetch single request detail, vendors, and appointment
 router.get('/requests/:id', async (req, res) => {
   try {
     const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
@@ -146,6 +146,7 @@ router.get('/requests/:id', async (req, res) => {
     let reqRecord = null;
     let vendors = [];
     let docs = [];
+    let appointment = null;
 
     try {
       const rRes = await query(`SELECT * FROM procurement_requests WHERE id = $1;`, [reqId], tenantId);
@@ -153,11 +154,29 @@ router.get('/requests/:id', async (req, res) => {
         reqRecord = rRes.rows[0];
       }
 
-      const vRes = await query(`SELECT * FROM procurement_vendors WHERE procurement_id = $1 ORDER BY created_at ASC;`, [reqId], tenantId);
+      const vRes = await query(
+        `SELECT id, procurement_id, vendor_name, vendor_phone, domain, place_id, address,
+                google_rating, review_count, whatsapp_status, contact_status, quote_amount,
+                lead_time_days, sla_terms, payment_terms, received_quote_payload,
+                whatsapp_message_id, interview_availability, appointment_id, created_at
+         FROM procurement_vendors 
+         WHERE procurement_id = $1 
+         ORDER BY created_at ASC;`,
+        [reqId],
+        tenantId
+      );
       vendors = vRes.rows;
 
       const dRes = await query(`SELECT id, filename, mime_type, created_at FROM procurement_documents WHERE procurement_id = $1;`, [reqId], tenantId);
       docs = dRes.rows;
+
+      // If appointment scheduled, load appointment details
+      if (reqRecord && reqRecord.appointment_id) {
+        const aRes = await query(`SELECT * FROM appointments WHERE id = $1;`, [reqRecord.appointment_id], tenantId);
+        if (aRes.rows.length > 0) {
+          appointment = aRes.rows[0];
+        }
+      }
     } catch (e) {
       console.warn('Query warning for single request:', e.message);
     }
@@ -166,7 +185,8 @@ router.get('/requests/:id', async (req, res) => {
       success: true,
       request: reqRecord,
       vendors,
-      documents: docs
+      documents: docs,
+      appointment
     });
   } catch (err) {
     console.error('Error fetching request details:', err);
@@ -214,6 +234,7 @@ router.post('/requests/:id/subagent/:stage', async (req, res) => {
 
     // Update database records based on sub-agent output
     try {
+      // 1. Google Places Vendor Discovery Output
       if (data.research_report) {
         await query(
           `UPDATE procurement_requests SET research_report = $1, current_stage = $2, active_subagent = $3, updated_at = NOW() WHERE id = $4;`,
@@ -221,16 +242,43 @@ router.post('/requests/:id/subagent/:stage', async (req, res) => {
           tenantId
         );
         if (data.vendors && data.vendors.length > 0) {
+          // Clear any previous discovered vendors for this request to prevent duplication
+          await query(`DELETE FROM procurement_vendors WHERE procurement_id = $1;`, [reqId], tenantId);
           for (let v of data.vendors) {
             await query(
-              `INSERT INTO procurement_vendors (procurement_id, tenant_id, vendor_name, vendor_email, domain, deliverability_status, contact_status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7);`,
-              [reqId, tenantId, v.vendor_name, v.vendor_email, v.domain, v.deliverability_status || 'VALID', 'DISCOVERED'],
+              `INSERT INTO procurement_vendors (
+                 procurement_id, tenant_id, vendor_name, vendor_phone, domain, place_id,
+                 address, google_rating, review_count, whatsapp_status, contact_status
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'DISCOVERED');`,
+              [
+                reqId, tenantId, v.vendor_name, v.vendor_phone || null, v.domain || null,
+                v.place_id || null, v.address || null, v.google_rating || 0.0,
+                v.review_count || 0, v.whatsapp_status || 'ON_WHATSAPP'
+              ],
               tenantId
             );
           }
         }
-      } else if (data.comparison_matrix) {
+      } 
+      // 2. WhatsApp RFQ Outreach Output
+      else if (data.dispatched_vendors) {
+        await query(
+          `UPDATE procurement_requests SET current_stage = $1, active_subagent = $2, updated_at = NOW() WHERE id = $3;`,
+          [data.next_stage, data.active_subagent, reqId],
+          tenantId
+        );
+        for (let v of data.dispatched_vendors) {
+          await query(
+            `UPDATE procurement_vendors 
+             SET contact_status = 'RFQ_SENT', whatsapp_message_id = $1
+             WHERE procurement_id = $2 AND (id = $3 OR vendor_name = $4 OR vendor_phone = $5);`,
+            [v.whatsapp_message_id || null, reqId, v.id || null, v.vendor_name, v.vendor_phone || null],
+            tenantId
+          );
+        }
+      }
+      // 3. WhatsApp Quote Synthesis & Comparison Matrix Output
+      else if (data.comparison_matrix) {
         await query(
           `UPDATE procurement_requests SET comparison_matrix = $1, current_stage = $2, active_subagent = $3, updated_at = NOW() WHERE id = $4;`,
           [JSON.stringify(data.comparison_matrix), data.next_stage, data.active_subagent, reqId],
@@ -241,41 +289,11 @@ router.post('/requests/:id/subagent/:stage', async (req, res) => {
             await query(
               `UPDATE procurement_vendors 
                SET quote_amount = $1, lead_time_days = $2, payment_terms = $3, sla_terms = $4, contact_status = 'REPLIED', received_quote_payload = $5
-               WHERE procurement_id = $6 AND (vendor_name = $7 OR domain = $8);`,
-              [v.quote_amount, v.lead_time_days, v.payment_terms, v.sla_terms, JSON.stringify(v.received_quote_payload || {}), reqId, v.vendor_name, v.domain],
+               WHERE procurement_id = $6 AND (vendor_name = $7 OR domain = $8 OR vendor_phone = $9);`,
+              [v.quote_amount, v.lead_time_days, v.payment_terms, v.sla_terms, JSON.stringify(v.received_quote_payload || {}), reqId, v.vendor_name, v.domain, v.vendor_phone],
               tenantId
             );
           }
-        }
-      } else if (data.final_report) {
-        await query(
-          `UPDATE procurement_requests SET final_report = $1, po_number = $2, current_stage = 'COMPLETED', active_subagent = 'completed', updated_at = NOW() WHERE id = $3;`,
-          [JSON.stringify(data.final_report), data.po_number, reqId],
-          tenantId
-        );
-        // Also insert into purchase_orders table if available
-        if (data.finance_sync_payload && data.finance_sync_payload.po_record) {
-          const po = data.finance_sync_payload.po_record;
-          await query(
-            `CREATE TABLE IF NOT EXISTS purchase_orders (
-              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-              tenant_id UUID NOT NULL,
-              po_number VARCHAR(100) NOT NULL UNIQUE,
-              vendor_name VARCHAR(255) NOT NULL,
-              vendor_email VARCHAR(255),
-              amount NUMERIC(15, 2) DEFAULT 0.00,
-              line_items JSONB DEFAULT '[]'::jsonb,
-              status VARCHAR(50) DEFAULT 'APPROVED',
-              created_at TIMESTAMPTZ DEFAULT NOW()
-            );`
-          );
-          await query(
-            `INSERT INTO purchase_orders (tenant_id, po_number, vendor_name, vendor_email, amount, line_items, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'APPROVED')
-             ON CONFLICT (po_number) DO NOTHING;`,
-            [tenantId, po.po_number, po.vendor_name, po.vendor_email, po.amount, JSON.stringify(po.line_items)],
-            tenantId
-          );
         }
       }
     } catch (e) {
@@ -289,12 +307,12 @@ router.post('/requests/:id/subagent/:stage', async (req, res) => {
   }
 });
 
-// POST /api/v1/procurement/requests/:id/select-vendor — HITL Selection Decision
+// POST /api/v1/procurement/requests/:id/select-vendor — HITL Vendor Selection -> Schedule WhatsApp Interview
 router.post('/requests/:id/select-vendor', async (req, res) => {
   try {
     const tenantId = req.user?.tenantId || req.user?.tenant_id || req.headers['x-tenant-id'] || '00000000-0000-0000-0000-000000000000';
     const reqId = req.params.id;
-    const { selected_vendor_id, selection_notes } = req.body;
+    const { selected_vendor_id, selection_notes, preferred_date, preferred_time } = req.body;
 
     if (!selected_vendor_id) {
       return res.status(400).json({ error: 'selected_vendor_id is required.' });
@@ -310,127 +328,95 @@ router.post('/requests/:id/select-vendor', async (req, res) => {
       vendors = vRes.rows;
     } catch (e) {}
 
-    // Update request record with decision
-    try {
-      await query(
-        `UPDATE procurement_requests 
-         SET selected_vendor_id = $1, selection_notes = $2, current_stage = 'VENDOR_SELECTED', active_subagent = 'vendor_comms', updated_at = NOW()
-         WHERE id = $3;`,
-        [selected_vendor_id, selection_notes || '', reqId],
-        tenantId
-      );
-    } catch (e) {}
-
-    // Invoke Vendor Communications Sub-Agent (Sub-Agent 5)
-    const commsRes = await axios.post(
+    // Invoke Interview Scheduler Sub-Agent (Sub-Agent 5)
+    // Sends WhatsApp invitation, collects availability, books appointment into `appointments` table
+    const agentRes = await axios.post(
       `${AGENT_URL}/agent/procurement/run-supervisor`,
       {
         id: reqId,
         stage: 'AWAITING_SELECTION',
         tenant_id: tenantId,
         title: reqRecord.title,
+        department: reqRecord.department,
         selected_vendor_id,
         selection_notes,
-        vendors
+        vendors,
+        preferred_date,
+        preferred_time
       },
-      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
+      { headers: { 'X-Internal-Token': INTERNAL_TOKEN }, timeout: 60000 }
     );
 
-    // Update vendor statuses in DB
-    const commsData = commsRes.data;
-    if (commsData.all_vendors) {
-      for (let v of commsData.all_vendors) {
-        try {
-          await query(
-            `UPDATE procurement_vendors 
-             SET contact_status = $1, rejection_reason = $2
-             WHERE procurement_id = $3 AND (id = $4 OR vendor_name = $5);`,
-            [v.contact_status, v.rejection_reason || null, reqId, v.id || null, v.vendor_name],
-            tenantId
-          );
-        } catch (e) {}
-      }
-    }
+    const data = agentRes.data;
+    const appointmentId = data.appointment?.id || null;
 
-    // Auto-trigger Finance Sync Sub-Agent (Sub-Agent 6)
-    const finRes = await axios.post(
-      `${AGENT_URL}/agent/procurement/run-supervisor`,
-      {
-        id: reqId,
-        stage: 'NOTIFIED',
-        tenant_id: tenantId,
-        title: reqRecord.title,
-        department: reqRecord.department,
-        selected_vendor: commsData.selected_vendor || vendors[0]
-      },
-      { headers: { 'X-Internal-Token': INTERNAL_TOKEN } }
-    );
-
-    const finData = finRes.data;
+    // Update procurement_requests record: Stage is INTERVIEW_SCHEDULED, agent duty is finished
     try {
       await query(
         `UPDATE procurement_requests 
-         SET final_report = $1, po_number = $2, current_stage = 'COMPLETED', active_subagent = 'completed', updated_at = NOW() 
-         WHERE id = $3;`,
-        [JSON.stringify(finData.final_report || {}), finData.po_number, reqId],
+         SET selected_vendor_id = $1, 
+             selection_notes = $2, 
+             appointment_id = $3, 
+             interview_scheduled_at = NOW(), 
+             current_stage = 'INTERVIEW_SCHEDULED', 
+             active_subagent = 'agent_duty_complete', 
+             final_report = $4,
+             updated_at = NOW()
+         WHERE id = $5;`,
+        [selected_vendor_id, selection_notes || '', appointmentId, JSON.stringify(data), reqId],
         tenantId
       );
-      if (finData.finance_sync_payload && finData.finance_sync_payload.po_record) {
-        const po = finData.finance_sync_payload.po_record;
-        await query(
-          `CREATE TABLE IF NOT EXISTS purchase_orders (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tenant_id UUID NOT NULL,
-            po_number VARCHAR(100) NOT NULL UNIQUE,
-            vendor_name VARCHAR(255) NOT NULL,
-            vendor_email VARCHAR(255),
-            amount NUMERIC(15, 2) DEFAULT 0.00,
-            line_items JSONB DEFAULT '[]'::jsonb,
-            status VARCHAR(50) DEFAULT 'APPROVED',
-            created_at TIMESTAMPTZ DEFAULT NOW()
-          );`
-        );
-        await query(
-          `INSERT INTO purchase_orders (tenant_id, po_number, vendor_name, vendor_email, amount, line_items, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'APPROVED')
-           ON CONFLICT (po_number) DO NOTHING;`,
-          [tenantId, po.po_number, po.vendor_name, po.vendor_email, po.amount, JSON.stringify(po.line_items)],
-          tenantId
-        );
-      }
 
-      if (finData.finance_sync_payload && finData.finance_sync_payload.gl_ledger_entry) {
-        const gl = finData.finance_sync_payload.gl_ledger_entry;
-        await query(
-          `CREATE TABLE IF NOT EXISTS general_ledger (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            tenant_id UUID NOT NULL,
-            agent_name VARCHAR(100) NOT NULL,
-            transaction_type VARCHAR(100) NOT NULL,
-            amount NUMERIC(15, 2) DEFAULT 0.00,
-            reference_id VARCHAR(100),
-            description TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-          );`
-        );
-        await query(
-          `INSERT INTO general_ledger (tenant_id, agent_name, transaction_type, amount, reference_id, description)
-           VALUES ($1, 'ProcurementAgent', 'EXPENSE_RESERVE', $2, $3, $4);`,
-          [tenantId, gl.amount, gl.reference_id || finData.po_number, gl.description || 'Expense reserve for PO'],
-          tenantId
-        );
-      }
-    } catch (e) {}
+      // Update selected vendor in procurement_vendors
+      const selVendor = data.selected_vendor || {};
+      await query(
+        `UPDATE procurement_vendors 
+         SET contact_status = 'INTERVIEW_SCHEDULED', 
+             appointment_id = $1, 
+             interview_requested_at = NOW(), 
+             interview_availability = $2, 
+             whatsapp_message_id = $3
+         WHERE procurement_id = $4 AND (id = $5 OR vendor_name = $6);`,
+        [
+          appointmentId,
+          selVendor.interview_availability || 'Confirmed availability',
+          selVendor.whatsapp_message_id || null,
+          reqId,
+          selected_vendor_id,
+          selVendor.vendor_name || ''
+        ],
+        tenantId
+      );
 
+      // Other non-selected vendors are marked NOT_SHORTLISTED (no regret emails/calls dispatched)
+      await query(
+        `UPDATE procurement_vendors 
+         SET contact_status = 'NOT_SHORTLISTED'
+         WHERE procurement_id = $1 AND id != $2 AND vendor_name != $3;`,
+        [reqId, selected_vendor_id, selVendor.vendor_name || ''],
+        tenantId
+      );
+    } catch (dbErr) {
+      console.warn('DB update after interview scheduling warning:', dbErr.message);
+    }
+
+    // IMPORTANT: No Finance Agent sync, No Purchase Orders created, No GL entries reserved.
+    // Agent duties are officially over.
     return res.json({
       success: true,
       selected_vendor_id,
-      comms_result: commsData,
-      finance_sync_result: finData
+      current_stage: 'INTERVIEW_SCHEDULED',
+      active_subagent: 'agent_duty_complete',
+      agent_duty_complete: true,
+      appointment: data.appointment,
+      whatsapp_outreach: data.whatsapp_outreach,
+      closing_instructions: data.closing_instructions || (
+        "Vendor interview scheduled successfully via WhatsApp. Human company representative will conduct the interview and handle final decisions."
+      )
     });
   } catch (err) {
     console.error('Error submitting vendor selection decision:', err.message);
-    return res.status(500).json({ error: 'Failed to submit vendor selection decision.' });
+    return res.status(500).json({ error: 'Failed to execute interview scheduling.' });
   }
 });
 

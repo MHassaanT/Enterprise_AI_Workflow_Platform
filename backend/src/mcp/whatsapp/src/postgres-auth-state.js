@@ -57,6 +57,25 @@ const decryptData = (encryptedText) => {
   }
 };
 
+// Module-level in-memory cache: tenantId -> { creds, keys: Map() }
+const authCache = new Map();
+
+const getTenantAuth = (tenantId) => {
+  let auth = authCache.get(tenantId);
+  if (!auth) {
+    auth = {
+      creds: null,
+      keys: new Map(),
+    };
+    authCache.set(tenantId, auth);
+  }
+  return auth;
+};
+
+const clearAuthState = (tenantId) => {
+  authCache.delete(tenantId);
+};
+
 /**
  * Custom Multi-Tenant PostgreSQL Auth State Adapter for Baileys
  *
@@ -65,6 +84,7 @@ const decryptData = (encryptedText) => {
  *   - saveCreds: () => Promise<void>
  *
  * All reads and writes are strictly scoped to tenant_id.
+ * Features an in-memory hot cache for instant, zero-latency key lookup and storage during handshakes.
  *
  * @param {string} tenantId - Tenant UUID
  * @param {Function} dbQuery - Database query function: (text, params, tenantId) => Promise<result>
@@ -74,57 +94,89 @@ const usePostgresAuthState = async (tenantId, dbQuery) => {
     throw new Error('usePostgresAuthState requires a valid tenantId.');
   }
 
-  // 1. Fetch existing creds from whatsapp_sessions for this tenant
-  let creds = null;
-  try {
-    const sessionRes = await dbQuery(
-      `SELECT creds_data FROM whatsapp_sessions WHERE tenant_id = $1`,
-      [tenantId],
-      tenantId
-    );
+  const tenantAuth = getTenantAuth(tenantId);
 
-    if (sessionRes.rows.length > 0 && sessionRes.rows[0].creds_data) {
-      creds = decryptData(sessionRes.rows[0].creds_data);
+  // 1. Fetch existing creds from memory or database
+  if (!tenantAuth.creds) {
+    try {
+      const sessionRes = await dbQuery(
+        `SELECT creds_data FROM whatsapp_sessions WHERE tenant_id = $1`,
+        [tenantId],
+        tenantId
+      );
+
+      if (sessionRes.rows.length > 0 && sessionRes.rows[0].creds_data) {
+        tenantAuth.creds = decryptData(sessionRes.rows[0].creds_data);
+      }
+    } catch (err) {
+      console.warn(`[WhatsApp Auth] Could not read existing session for tenant ${tenantId}:`, err.message);
     }
-  } catch (err) {
-    console.warn(`[WhatsApp Auth] Could not read existing session for tenant ${tenantId}:`, err.message);
   }
 
   // If no saved creds or decryption returned null, initialize fresh credentials
-  if (!creds) {
-    creds = initAuthCreds();
+  if (!tenantAuth.creds) {
+    tenantAuth.creds = initAuthCreds();
   }
 
-  // 2. Build key store (get, set)
+  // CRITICAL: If credentials are not registered and not in an active pairing-code request,
+  // ensure `me` and `account` are undefined so Baileys initiates a registration handshake (QR)
+  // rather than a resume-login handshake for an unverified JID.
+  if (!tenantAuth.creds.registered && !tenantAuth.isPairingCodePending) {
+    delete tenantAuth.creds.me;
+    delete tenantAuth.creds.account;
+    delete tenantAuth.creds.signalIdentities;
+    delete tenantAuth.creds.pairingCode;
+  }
+
+  const creds = tenantAuth.creds;
+
+  // 2. Build key store (get, set) with hot in-memory lookup
   const keys = {
     get: async (type, ids) => {
       const data = {};
       if (!ids || ids.length === 0) return data;
 
-      try {
-        const res = await dbQuery(
-          `SELECT key_id, key_data FROM whatsapp_auth_keys 
-           WHERE tenant_id = $1 AND key_category = $2 AND key_id = ANY($3::text[])`,
-          [tenantId, type, ids],
-          tenantId
-        );
+      const missingIds = [];
+      for (const id of ids) {
+        const cacheKey = `${type}:${id}`;
+        if (tenantAuth.keys.has(cacheKey)) {
+          data[id] = tenantAuth.keys.get(cacheKey);
+        } else {
+          missingIds.push(id);
+        }
+      }
 
-        const foundMap = {};
-        for (const row of res.rows) {
-          let value = decryptData(row.key_data);
-          if (type === 'app-state-sync-key' && value) {
-            value = proto.Message.AppStateSyncKeyData.fromObject(value);
+      if (missingIds.length > 0) {
+        try {
+          const res = await dbQuery(
+            `SELECT key_id, key_data FROM whatsapp_auth_keys 
+             WHERE tenant_id = $1 AND key_category = $2 AND key_id = ANY($3::text[])`,
+            [tenantId, type, missingIds.map(String)],
+            tenantId
+          );
+
+          const foundMap = {};
+          for (const row of res.rows) {
+            let value = decryptData(row.key_data);
+            if (type === 'app-state-sync-key' && value) {
+              value = proto.Message.AppStateSyncKeyData.fromObject(value);
+            }
+            foundMap[row.key_id] = value;
+            tenantAuth.keys.set(`${type}:${row.key_id}`, value);
           }
-          foundMap[row.key_id] = value;
-        }
 
-        for (const id of ids) {
-          data[id] = foundMap[id] || null;
-        }
-      } catch (err) {
-        console.error(`[WhatsApp Auth] Error getting keys for ${type} (tenant ${tenantId}):`, err.message);
-        for (const id of ids) {
-          data[id] = null;
+          for (const id of missingIds) {
+            const val = foundMap[String(id)] ?? null;
+            data[id] = val;
+            if (!tenantAuth.keys.has(`${type}:${id}`)) {
+              tenantAuth.keys.set(`${type}:${id}`, val);
+            }
+          }
+        } catch (err) {
+          console.error(`[WhatsApp Auth] Error getting keys for ${type} (tenant ${tenantId}):`, err.message);
+          for (const id of missingIds) {
+            data[id] = null;
+          }
         }
       }
 
@@ -138,51 +190,76 @@ const usePostgresAuthState = async (tenantId, dbQuery) => {
       for (const category in data) {
         for (const id in data[category]) {
           const value = data[category][id];
+          const cacheKey = `${category}:${id}`;
           if (value) {
+            tenantAuth.keys.set(cacheKey, value);
             const encrypted = encryptData(value);
-            insertTasks.push({ category, id, encrypted });
+            insertTasks.push({ category, id: String(id), encrypted });
           } else {
-            deleteTasks.push({ category, id });
+            tenantAuth.keys.delete(cacheKey);
+            deleteTasks.push({ category, id: String(id) });
           }
         }
       }
 
-      // Upsert keys in batches or transactions
-      for (const item of insertTasks) {
+      // Upsert keys in batches of 50 asynchronously
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < insertTasks.length; i += BATCH_SIZE) {
+        const batch = insertTasks.slice(i, i + BATCH_SIZE);
+        const values = [];
+        const placeholders = [];
+        let idx = 1;
+        for (const item of batch) {
+          placeholders.push(`($${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, NOW())`);
+          values.push(tenantId, item.category, item.id, item.encrypted);
+          idx += 4;
+        }
+
         try {
           await dbQuery(
             `INSERT INTO whatsapp_auth_keys (tenant_id, key_category, key_id, key_data, updated_at)
-             VALUES ($1, $2, $3, $4, NOW())
+             VALUES ${placeholders.join(', ')}
              ON CONFLICT (tenant_id, key_category, key_id) DO UPDATE SET
                key_data = EXCLUDED.key_data,
                updated_at = NOW()`,
-            [tenantId, item.category, item.id, item.encrypted],
+            values,
             tenantId
           );
         } catch (err) {
-          console.error(`[WhatsApp Auth] Error upserting key ${item.category}/${item.id}:`, err.message);
+          console.error(`[WhatsApp Auth] Error batch upserting keys (tenant ${tenantId}):`, err.message);
         }
       }
 
-      // Delete removed keys
-      for (const item of deleteTasks) {
-        try {
-          await dbQuery(
-            `DELETE FROM whatsapp_auth_keys 
-             WHERE tenant_id = $1 AND key_category = $2 AND key_id = $3`,
-            [tenantId, item.category, item.id],
-            tenantId
-          );
-        } catch (err) {
-          console.error(`[WhatsApp Auth] Error deleting key ${item.category}/${item.id}:`, err.message);
+      // Delete removed keys in batches grouped by category
+      if (deleteTasks.length > 0) {
+        const byCat = {};
+        for (const item of deleteTasks) {
+          byCat[item.category] = byCat[item.category] || [];
+          byCat[item.category].push(item.id);
+        }
+        for (const cat in byCat) {
+          try {
+            await dbQuery(
+              `DELETE FROM whatsapp_auth_keys 
+               WHERE tenant_id = $1 AND key_category = $2 AND key_id = ANY($3::text[])`,
+              [tenantId, cat, byCat[cat]],
+              tenantId
+            );
+          } catch (err) {
+            console.error(`[WhatsApp Auth] Error deleting keys for ${cat}:`, err.message);
+          }
         }
       }
     },
   };
 
   // 3. saveCreds callback for Baileys creds.update
-  const saveCreds = async () => {
+  const saveCreds = async (update) => {
     try {
+      if (update && typeof update === 'object') {
+        Object.assign(creds, update);
+      }
+      tenantAuth.creds = creds;
       const encryptedCreds = encryptData(creds);
       await dbQuery(
         `INSERT INTO whatsapp_sessions (tenant_id, creds_data, updated_at)
@@ -209,6 +286,8 @@ const usePostgresAuthState = async (tenantId, dbQuery) => {
 
 module.exports = {
   usePostgresAuthState,
+  clearAuthState,
+  getTenantAuth,
   encryptData,
   decryptData,
 };

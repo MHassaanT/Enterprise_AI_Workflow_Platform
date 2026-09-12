@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AuthGuard from '../components/AuthGuard';
 import {
   fetchToolRegistry,
@@ -186,12 +186,18 @@ export default function IntegrationHubPage() {
   // Hunter.io Modal Fields
   const [hunterApiKey, setHunterApiKey] = useState('');
 
-  // WhatsApp QR & SSE Stream State
+  // WhatsApp QR, Pairing Code & SSE Stream State
   const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'qr_pending' | 'connected'
   const [waQr, setWaQr] = useState(null);
   const [waPhoneNumber, setWaPhoneNumber] = useState(null);
   const [waEventSource, setWaEventSource] = useState(null);
   const [waLoading, setWaLoading] = useState(false);
+  const [waPairMode, setWaPairMode] = useState('qr'); // 'qr' | 'code'
+  const [waPairPhone, setWaPairPhone] = useState('');
+  const [waPairCode, setWaPairCode] = useState(null);
+  const [waPairCodeLoading, setWaPairCodeLoading] = useState(false);
+  const [waPairError, setWaPairError] = useState('');
+  const waPollRef = useRef(null);
 
   // Form state for binding a tool to selected agent
   const [newToolName, setNewToolName] = useState('');
@@ -280,7 +286,10 @@ export default function IntegrationHubPage() {
     };
 
     window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
+    return () => {
+      window.removeEventListener('message', handleOAuthMessage);
+      if (waPollRef.current) clearInterval(waPollRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -303,6 +312,11 @@ export default function IntegrationHubPage() {
   const openWhatsAppModal = async () => {
     setActiveModal('WhatsApp');
     setWaLoading(true);
+    setWaQr(null);
+    setWaPairMode('qr');
+    setWaPairCode(null);
+    setWaPairError('');
+    setWaStatus('connecting');
     const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
 
     try {
@@ -310,29 +324,69 @@ export default function IntegrationHubPage() {
       const statusRes = await fetch('/api/whatsapp/status', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      let currentStatus = 'disconnected';
       if (statusRes.ok) {
         const data = await statusRes.json();
-        setWaStatus(data.status || 'disconnected');
+        currentStatus = data.status || 'disconnected';
+        setWaStatus(currentStatus);
         setWaPhoneNumber(data.phoneNumber || null);
         if (data.qr) setWaQr(data.qr);
-
-        // 2. If disconnected, trigger connect
-        if (!data.status || data.status === 'disconnected') {
-          setWaStatus('connecting');
-          fetch('/api/whatsapp/connect', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }).then((r) => r.json()).then((resData) => {
-            if (resData.qr) setWaQr(resData.qr);
-            if (resData.status) setWaStatus(resData.status);
-          }).catch((e) => console.error('Connect init error:', e));
-        }
       }
 
-      // 3. Open SSE stream
+      // 2. If not connected, trigger connect to ensure socket is running and generating QR
+      if (currentStatus !== 'connected') {
+        setWaStatus('connecting');
+        fetch('/api/whatsapp/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ forceNew: false }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((resData) => {
+            if (resData?.qr) {
+              setWaQr(resData.qr);
+              setWaStatus('qr_pending');
+            }
+            if (resData?.status) setWaStatus(resData.status);
+          })
+          .catch((e) => console.error('Connect init error:', e));
+      }
+
+      // 3. Fallback active polling every 1.5s while modal is active
+      if (waPollRef.current) clearInterval(waPollRef.current);
+      waPollRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch('/api/whatsapp/status', {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.qr) {
+              setWaQr(pollData.qr);
+              setWaStatus('qr_pending');
+            }
+            if (pollData.status === 'connected') {
+              setWaStatus('connected');
+              setWaPhoneNumber(pollData.phoneNumber || null);
+              if (waPollRef.current) {
+                clearInterval(waPollRef.current);
+                waPollRef.current = null;
+              }
+              loadInitialData();
+            }
+          }
+        } catch (pollErr) {}
+      }, 1500);
+
+      // 4. Open SSE stream
+      if (waEventSource) {
+        try {
+          waEventSource.close();
+        } catch (e) {}
+      }
       const sseUrl = `/api/whatsapp/qr-stream?token=${encodeURIComponent(token || '')}`;
       const es = new EventSource(sseUrl);
 
@@ -343,6 +397,10 @@ export default function IntegrationHubPage() {
           if (parsed.phoneNumber) setWaPhoneNumber(parsed.phoneNumber);
           if (parsed.qr) setWaQr(parsed.qr);
           if (parsed.status === 'connected') {
+            if (waPollRef.current) {
+              clearInterval(waPollRef.current);
+              waPollRef.current = null;
+            }
             loadInitialData();
           }
         } catch (err) {}
@@ -355,6 +413,13 @@ export default function IntegrationHubPage() {
             setWaQr(parsed.qr);
             setWaStatus('qr_pending');
           }
+        } catch (err) {}
+      });
+
+      es.addEventListener('pairing_code', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (parsed.code) setWaPairCode(parsed.code);
         } catch (err) {}
       });
 
@@ -372,6 +437,10 @@ export default function IntegrationHubPage() {
 
   const handleWhatsAppDisconnect = async () => {
     try {
+      if (waPollRef.current) {
+        clearInterval(waPollRef.current);
+        waPollRef.current = null;
+      }
       setWaLoading(true);
       const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
       const res = await fetch('/api/whatsapp/disconnect', {
@@ -407,12 +476,68 @@ export default function IntegrationHubPage() {
         body: JSON.stringify({ forceNew: true }),
       });
       const data = await res.json();
-      if (data.qr) setWaQr(data.qr);
+      if (data.qr) {
+        setWaQr(data.qr);
+        setWaStatus('qr_pending');
+      }
       if (data.status) setWaStatus(data.status);
+
+      // Start fallback poll for fresh QR
+      if (waPollRef.current) clearInterval(waPollRef.current);
+      waPollRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch('/api/whatsapp/status', {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            if (pollData.qr) {
+              setWaQr(pollData.qr);
+              setWaStatus('qr_pending');
+              if (waPollRef.current) {
+                clearInterval(waPollRef.current);
+                waPollRef.current = null;
+              }
+            }
+          }
+        } catch (e) {}
+      }, 1500);
     } catch (err) {
       console.error('Failed to regenerate QR:', err);
     } finally {
       setWaLoading(false);
+    }
+  };
+
+  const handleRequestPairCode = async (e) => {
+    if (e) e.preventDefault();
+    setWaPairError('');
+    const clean = waPairPhone.replace(/\D/g, '');
+    if (!clean || clean.length < 8) {
+      setWaPairError('Please enter a valid phone number with country code (e.g. 923001234567 or 15551234567).');
+      return;
+    }
+    try {
+      setWaPairCodeLoading(true);
+      setWaPairCode(null);
+      const token = getToken() || (typeof window !== 'undefined' ? localStorage.getItem('ai_platform_token') : '');
+      const res = await fetch('/api/whatsapp/pair-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ phoneNumber: clean }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to request pairing code.');
+      }
+      setWaPairCode(data.code);
+    } catch (err) {
+      setWaPairError(err.message || 'Failed to generate pairing code');
+    } finally {
+      setWaPairCodeLoading(false);
     }
   };
 
@@ -456,6 +581,10 @@ export default function IntegrationHubPage() {
   };
 
   const closeModal = () => {
+    if (waPollRef.current) {
+      clearInterval(waPollRef.current);
+      waPollRef.current = null;
+    }
     if (waEventSource) {
       try {
         waEventSource.close();
@@ -469,6 +598,9 @@ export default function IntegrationHubPage() {
     setSupabaseKey('');
     setStripeApiKey('');
     setHunterApiKey('');
+    setWaPairCode(null);
+    setWaPairError('');
+    setWaPairMode('qr');
   };
 
   const handleHunterSubmit = async (e) => {
@@ -1042,50 +1174,143 @@ export default function IntegrationHubPage() {
                   </div>
                 ) : (
                   <div className="space-y-md">
-                    {/* Instructions */}
-                    <div className="p-md bg-surface-container/50 border border-outline-variant rounded-lg text-sm text-on-surface space-y-1">
-                      <p className="font-semibold text-on-surface">To connect your WhatsApp number:</p>
-                      <ol className="list-decimal list-inside text-on-surface-variant text-xs space-y-1 pt-1">
-                        <li>Open <strong>WhatsApp</strong> on your phone</li>
-                        <li>Tap <strong>Settings</strong> or <strong>Menu (⋮)</strong> → <strong>Linked Devices</strong></li>
-                        <li>Tap <strong>Link a Device</strong></li>
-                        <li>Point your phone camera at the QR code below</li>
-                      </ol>
-                    </div>
-
-                    {/* QR Display */}
-                    <div className="flex flex-col items-center justify-center p-md bg-white border border-outline-variant rounded-xl min-h-[280px]">
-                      {waQr ? (
-                        <div className="space-y-3 flex flex-col items-center">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={waQr}
-                            alt="WhatsApp Pairing QR Code"
-                            className="w-60 h-60 object-contain rounded-lg shadow-sm border border-gray-200"
-                          />
-                          <p className="text-xs text-gray-500 font-mono text-center">
-                            QR updates in real-time. Scan before expiration.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-3 text-on-surface-variant py-8">
-                          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                          <p className="text-sm text-gray-600">Generating secure pairing QR code...</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
+                    {/* Tab Selector: QR Code vs Phone Pairing Code */}
+                    <div className="flex p-1 bg-surface-container border border-outline-variant rounded-xl gap-1">
                       <button
                         type="button"
-                        onClick={handleRefreshQr}
-                        disabled={waLoading}
-                        className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                        onClick={() => { setWaPairMode('qr'); setWaPairError(''); }}
+                        className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                          waPairMode === 'qr'
+                            ? 'bg-primary text-on-primary shadow-sm'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface'
+                        }`}
                       >
-                        🔄 Reload QR Code
+                        📷 Scan QR Code
                       </button>
-                      <span className="text-xs text-on-surface-variant">Encrypted via AES-256</span>
+                      <button
+                        type="button"
+                        onClick={() => { setWaPairMode('code'); setWaPairError(''); }}
+                        className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                          waPairMode === 'code'
+                            ? 'bg-primary text-on-primary shadow-sm'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface'
+                        }`}
+                      >
+                        🔢 Link with Phone Number
+                      </button>
                     </div>
+
+                    {/* Mode 1: QR Code */}
+                    {waPairMode === 'qr' && (
+                      <div className="space-y-md">
+                        <div className="p-md bg-surface-container/50 border border-outline-variant rounded-lg text-sm text-on-surface space-y-1">
+                          <p className="font-semibold text-on-surface">To connect via QR Code:</p>
+                          <ol className="list-decimal list-inside text-on-surface-variant text-xs space-y-1 pt-1">
+                            <li>Open <strong>WhatsApp</strong> on your phone</li>
+                            <li>Tap <strong>Settings</strong> or <strong>Menu (⋮)</strong> → <strong>Linked Devices</strong></li>
+                            <li>Tap <strong>Link a Device</strong></li>
+                            <li>Point your phone camera at the QR code below</li>
+                          </ol>
+                        </div>
+
+                        {/* QR Display */}
+                        <div className="flex flex-col items-center justify-center p-md bg-white border border-outline-variant rounded-xl min-h-[280px]">
+                          {waQr ? (
+                            <div className="space-y-3 flex flex-col items-center">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={waQr}
+                                alt="WhatsApp Pairing QR Code"
+                                className="w-60 h-60 object-contain rounded-lg shadow-sm border border-gray-200"
+                              />
+                              <p className="text-xs text-gray-500 font-mono text-center">
+                                QR updates automatically. Scan before expiration.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-3 text-on-surface-variant py-8">
+                              <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                              <p className="text-sm text-gray-600">Generating secure pairing QR code...</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <button
+                            type="button"
+                            onClick={handleRefreshQr}
+                            disabled={waLoading}
+                            className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                          >
+                            🔄 Reload QR Code
+                          </button>
+                          <span className="text-xs text-on-surface-variant">Encrypted via AES-256</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mode 2: Phone Pairing Code */}
+                    {waPairMode === 'code' && (
+                      <div className="space-y-md">
+                        <div className="p-md bg-surface-container/50 border border-outline-variant rounded-lg text-sm text-on-surface space-y-1">
+                          <p className="font-semibold text-on-surface">Link directly with your phone number (No camera needed):</p>
+                          <ol className="list-decimal list-inside text-on-surface-variant text-xs space-y-1 pt-1">
+                            <li>Enter your WhatsApp phone number below (with country code, e.g. <code>923001234567</code>).</li>
+                            <li>Click <strong>Get Pairing Code</strong>.</li>
+                            <li>On your phone, open <strong>WhatsApp</strong> → <strong>Linked Devices</strong> → <strong>Link a Device</strong>.</li>
+                            <li>Tap <strong>&quot;Link with phone number instead&quot;</strong> at the bottom of your phone screen.</li>
+                            <li>Type the 8-character pairing code shown below.</li>
+                          </ol>
+                        </div>
+
+                        <form onSubmit={handleRequestPairCode} className="space-y-2">
+                          <label className="block text-xs font-medium text-on-surface">
+                            WhatsApp Phone Number (with Country Code)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="tel"
+                              value={waPairPhone}
+                              onChange={(e) => setWaPairPhone(e.target.value)}
+                              placeholder="e.g. 923001234567 or +1 555 123 4567"
+                              className="flex-1 px-3 py-2 bg-surface border border-outline-variant rounded-lg text-sm text-on-surface focus:outline-none focus:border-primary font-mono placeholder:text-on-surface-variant/40"
+                              disabled={waPairCodeLoading}
+                            />
+                            <button
+                              type="submit"
+                              disabled={waPairCodeLoading || !waPairPhone.trim()}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-label-md text-label-md rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+                            >
+                              {waPairCodeLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  <span>Generating...</span>
+                                </>
+                              ) : (
+                                'Get Code'
+                              )}
+                            </button>
+                          </div>
+                          {waPairError && (
+                            <p className="text-xs text-error font-medium">{waPairError}</p>
+                          )}
+                        </form>
+
+                        {waPairCode && (
+                          <div className="flex flex-col items-center justify-center p-md bg-emerald-950/20 border-2 border-emerald-500/40 rounded-xl space-y-2 text-center">
+                            <span className="text-xs text-emerald-400 uppercase tracking-wider font-semibold">
+                              Your 8-Character Pairing Code
+                            </span>
+                            <div className="text-3xl font-mono font-bold tracking-widest text-emerald-300 bg-black/40 px-6 py-2.5 rounded-lg border border-emerald-700 select-all">
+                              {waPairCode.length === 8 ? `${waPairCode.slice(0, 4)} - ${waPairCode.slice(4)}` : waPairCode}
+                            </div>
+                            <p className="text-xs text-on-surface-variant max-w-sm">
+                              Enter this code in WhatsApp on your phone. Code expires in 60 seconds.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

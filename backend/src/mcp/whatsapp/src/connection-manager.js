@@ -1,8 +1,8 @@
-const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const { createClient } = require('redis');
-const { usePostgresAuthState } = require('./postgres-auth-state');
+const { usePostgresAuthState, clearAuthState, getTenantAuth } = require('./postgres-auth-state');
 const { handleInboundMessages } = require('./message-handler');
 const { formatOutboundMediaMessage } = require('./media-handler');
 
@@ -79,18 +79,28 @@ class WhatsAppConnectionManager {
       throw new Error('tenantId is required to connect WhatsApp.');
     }
 
-    // If session already connected, return current status
     const existing = this.sessions.get(tenantId);
-    if (!forceNew && existing && existing.status === 'connected') {
-      return {
-        status: 'connected',
-        phoneNumber: existing.phoneNumber,
-      };
+    if (!forceNew && existing) {
+      if (existing.status === 'connected' && existing.sock) {
+        return {
+          status: 'connected',
+          phoneNumber: existing.phoneNumber,
+        };
+      }
+      // If socket is already active and currently generating or displaying QR, return it
+      if (existing.sock && (existing.status === 'connecting' || existing.status === 'qr_pending')) {
+        return {
+          status: existing.status,
+          qr: existing.qr,
+          phoneNumber: existing.phoneNumber,
+        };
+      }
     }
 
     // Clean up any existing socket before reconnecting
     if (existing?.sock) {
       try {
+        if (existing.reconnectTimer) clearTimeout(existing.reconnectTimer);
         existing.sock.ev.removeAllListeners();
         existing.sock.end(undefined);
       } catch (e) {
@@ -99,6 +109,9 @@ class WhatsAppConnectionManager {
     }
 
     if (forceNew) {
+      const tenantAuth = getTenantAuth(tenantId);
+      tenantAuth.isPairingCodePending = false;
+      clearAuthState(tenantId);
       try {
         await this.dbQuery(
           `DELETE FROM whatsapp_auth_keys WHERE tenant_id = $1`,
@@ -106,7 +119,7 @@ class WhatsAppConnectionManager {
           tenantId
         );
         await this.dbQuery(
-          `UPDATE whatsapp_sessions SET creds_data = NULL, status = 'disconnected' WHERE tenant_id = $1`,
+          `UPDATE whatsapp_sessions SET creds_data = NULL, status = 'connecting' WHERE tenant_id = $1`,
           [tenantId],
           tenantId
         );
@@ -141,15 +154,25 @@ class WhatsAppConnectionManager {
 
     const silentLogger = pino({ level: 'silent' });
 
+    // Fetch latest Baileys protocol version
+    let version = [2, 3000, 1043857760];
+    try {
+      const v = await fetchLatestBaileysVersion();
+      if (v?.version) version = v.version;
+    } catch (e) {}
+
     // Initialize Baileys WASocket
     const sock = makeWASocket({
+      version,
       auth: state,
       printQRInTerminal: false,
       logger: silentLogger,
-      browser: ['Enterprise AI Platform', 'Chrome', '124.0.0.0'],
+      browser: Browsers.macOS('Chrome'),
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
       connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 10000,
     });
 
     sessionData.sock = sock;
@@ -224,8 +247,17 @@ class WhatsAppConnectionManager {
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const isRestartRequired = statusCode === DisconnectReason.restartRequired;
+        const isTimedOut = statusCode === DisconnectReason.timedOut;
 
-        console.warn(`⚠️ [WhatsApp Manager] Tenant ${tenantId} disconnected. StatusCode: ${statusCode}, isLoggedOut: ${isLoggedOut}`);
+        console.warn(`⚠️ [WhatsApp Manager] Tenant ${tenantId} disconnected. StatusCode: ${statusCode}, isLoggedOut: ${isLoggedOut}, isRestartRequired: ${isRestartRequired}, isTimedOut: ${isTimedOut}`);
+
+        // Mark previous socket as closed
+        sessionData.sock = null;
+        if (sessionData.reconnectTimer) {
+          clearTimeout(sessionData.reconnectTimer);
+          sessionData.reconnectTimer = null;
+        }
 
         if (isLoggedOut) {
           // Explicit logout by user from mobile device
@@ -254,8 +286,26 @@ class WhatsAppConnectionManager {
             reason: 'logged_out',
             tenantId,
           });
+        } else if (isRestartRequired) {
+          // StatusCode 515: Phone just scanned QR and approved pairing!
+          // WhatsApp server requested stream restart to complete handshake.
+          // Reconnect IMMEDIATELY without delay using the newly authorized credentials!
+          console.log(`⚡ [WhatsApp Manager] Code 515 (restartRequired) for tenant ${tenantId}. Reconnecting immediately with authorized credentials...`);
+          sessionData.status = 'connecting';
+          this.connectTenant(tenantId, false).catch((err) => {
+            console.error(`[WhatsApp Manager] Immediate reconnection error on 515 for tenant ${tenantId}:`, err.message);
+          });
+        } else if (isTimedOut && sessionData.status !== 'connected') {
+          // QR code expired (408). Auto-regenerate fresh QR code automatically so user does not need to click reload!
+          console.log(`🔄 [WhatsApp Manager] QR expired (408) for tenant ${tenantId}. Auto-regenerating fresh pairing QR code...`);
+          sessionData.qr = null;
+          sessionData.status = 'connecting';
+          this.connectTenant(tenantId, true).catch((err) => {
+            console.error(`[WhatsApp Manager] Auto-refresh QR error on timeout for tenant ${tenantId}:`, err.message);
+          });
         } else {
           // Temporary drop — attempt auto-reconnect with exponential backoff (max 5 retries)
+          sessionData.status = 'connecting';
           const MAX_RETRIES = 5;
           if (sessionData.retryCount < MAX_RETRIES) {
             sessionData.retryCount += 1;
@@ -323,6 +373,7 @@ class WhatsAppConnectionManager {
     }
 
     this.sessions.delete(tenantId);
+    clearAuthState(tenantId);
 
     await this.dbQuery(
       `UPDATE whatsapp_sessions 
@@ -351,42 +402,50 @@ class WhatsAppConnectionManager {
    * Returns current connection status
    */
   async getStatus(tenantId) {
-    let inMem = this.sessions.get(tenantId);
-    if (!inMem) {
-      for (const [tId, s] of this.sessions.entries()) {
-        if (s.status === 'connected') {
-          inMem = s;
-          break;
-        }
-      }
+    const inMem = this.sessions.get(tenantId);
+
+    // Fetch database state for this specific tenant
+    let dbRow = {};
+    try {
+      const dbRes = await this.dbQuery(
+        `SELECT status, phone_number, connected_at, last_qr_at FROM whatsapp_sessions WHERE tenant_id = $1`,
+        [tenantId],
+        tenantId
+      );
+      dbRow = dbRes.rows[0] || {};
+    } catch (e) {
+      console.warn(`[WhatsApp Manager] Could not query status for tenant ${tenantId}:`, e.message);
     }
 
-    // Fall back to database if not in memory
-    const dbRes = await this.dbQuery(
-      `SELECT status, phone_number, connected_at, last_qr_at FROM whatsapp_sessions WHERE tenant_id = $1`,
-      [tenantId],
-      tenantId
-    );
-
-    let dbRow = dbRes.rows[0];
-    if (!dbRow) {
-      try {
-        const anyDb = await this.dbQuery(`SELECT status, phone_number, connected_at, last_qr_at FROM whatsapp_sessions WHERE status = 'connected' ORDER BY updated_at DESC LIMIT 1`);
-        if (anyDb.rows.length > 0) {
-          dbRow = anyDb.rows[0];
-        }
-      } catch (_) {}
+    // If an in-memory session is active, report its live state
+    if (inMem) {
+      return {
+        status: inMem.status,
+        phoneNumber: inMem.phoneNumber || dbRow.phone_number || null,
+        qr: inMem.qr || null,
+        hasQr: Boolean(inMem.qr),
+        connectedAt: dbRow.connected_at || null,
+      };
     }
-    dbRow = dbRow || {};
-    const effectiveStatus = inMem ? inMem.status : dbRow.status || 'disconnected';
-    const effectivePhone = inMem?.phoneNumber || dbRow.phone_number || null;
-    const effectiveQr = inMem?.qr || null;
 
+    // No in-memory session
+    if (dbRow.status === 'connected') {
+      return {
+        status: 'connected',
+        phoneNumber: dbRow.phone_number || null,
+        qr: null,
+        hasQr: false,
+        connectedAt: dbRow.connected_at || null,
+      };
+    }
+
+    // If DB had qr_pending or connecting but in-memory socket was dropped/not started, true status is disconnected
     return {
-      status: effectiveStatus,
-      phoneNumber: effectivePhone,
-      qr: effectiveQr,
-      connectedAt: dbRow.connected_at || null,
+      status: 'disconnected',
+      phoneNumber: null,
+      qr: null,
+      hasQr: false,
+      connectedAt: null,
     };
   }
 
@@ -516,6 +575,56 @@ class WhatsAppConnectionManager {
     // Direct invocation of Baileys sock.onWhatsApp()
     const results = await session.sock.onWhatsApp(...flatNumbers);
     return results || [];
+  }
+
+  /**
+   * Requests an 8-character pairing code for phone number linking
+   */
+  async requestPairingCode(tenantId, phoneNumber) {
+    if (!phoneNumber) {
+      throw new Error('Phone number is required to request a pairing code.');
+    }
+
+    const cleanPhone = String(phoneNumber).replace(/\D/g, '');
+    if (cleanPhone.length < 8) {
+      throw new Error('Please provide a valid phone number with country code (e.g. 923001234567).');
+    }
+
+    const tenantAuth = getTenantAuth(tenantId);
+    tenantAuth.isPairingCodePending = true;
+
+    let session = this.sessions.get(tenantId);
+    if (!session?.sock) {
+      await this.connectTenant(tenantId, false);
+      session = this.sessions.get(tenantId);
+      // Allow Baileys socket connection negotiation
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    if (!session?.sock) {
+      throw new Error('WhatsApp connection is initializing. Please try again in a few seconds.');
+    }
+
+    try {
+      const code = await session.sock.requestPairingCode(cleanPhone);
+      console.log(`🔢 [WhatsApp Manager] Pairing code generated for tenant ${tenantId} (${cleanPhone}): ${code}`);
+
+      await this.publishEvent(tenantId, {
+        event: 'pairing_code',
+        code,
+        phoneNumber: cleanPhone,
+        tenantId,
+      });
+
+      return {
+        success: true,
+        code,
+        phoneNumber: cleanPhone,
+      };
+    } catch (err) {
+      console.error(`[WhatsApp Manager] Failed to request pairing code for tenant ${tenantId}:`, err.message);
+      throw new Error(`Failed to request pairing code: ${err.message}`);
+    }
   }
 
   /**

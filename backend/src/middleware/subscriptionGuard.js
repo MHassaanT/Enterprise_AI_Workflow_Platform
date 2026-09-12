@@ -18,6 +18,13 @@ const PLAN_AGENT_ACCESS = {
  */
 function requirePlanAccess(agentRouteKey) {
   return async (req, res, next) => {
+    // Internal services bypass subscription gating
+    const internalToken = req.headers['x-internal-token'];
+    const expectedInternalToken = process.env.INTERNAL_SERVICE_TOKEN || 'internal_secret_change_in_production';
+    if (req.user?.isInternal || (internalToken && internalToken === expectedInternalToken)) {
+      return next();
+    }
+
     const tenantId = req.user?.tenantId;
 
     if (!tenantId) {

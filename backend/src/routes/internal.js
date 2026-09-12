@@ -1679,6 +1679,28 @@ router.post('/appointments', async (req, res) => {
       tenantId
     );
 
+    // Sync with sales_prospects (mark prospect deal_stage as SCHEDULED)
+    try {
+      const cleanPhone = customer_phone ? customer_phone.replace(/[^0-9]/g, '') : '';
+      const emailLower = customer_email ? customer_email.trim().toLowerCase() : '';
+      if (cleanPhone || emailLower) {
+        await query(
+          `UPDATE sales_prospects
+           SET deal_stage = 'SCHEDULED',
+               has_reply = TRUE,
+               updated_at = NOW()
+           WHERE tenant_id = $1 AND (
+             ($2 != '' AND replace(replace(replace(contact_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $2)
+             OR ($3 != '' AND LOWER(contact_email) = $3)
+           )`,
+          [tenantId, cleanPhone, emailLower],
+          tenantId
+        );
+      }
+    } catch (syncErr) {
+      console.warn('[Appointment Sales Sync Notice]', syncErr.message);
+    }
+
     res.status(201).json({
       success: true,
       appointment: result.rows[0],

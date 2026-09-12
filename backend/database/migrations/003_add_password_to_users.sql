@@ -1,1 +1,1 @@
-ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hashed_password VARCHAR(255);

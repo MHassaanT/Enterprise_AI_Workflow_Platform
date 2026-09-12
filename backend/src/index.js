@@ -90,6 +90,7 @@ app.use('/api/v1/whatsapp', whatsappRoutes);
 app.use('/api/v1/sales', authenticate, requirePlanAccess('/sales'), salesRoutes);
 app.use('/api/v1/procurement', authenticate, requirePlanAccess('/procurement'), procurementRoutes);
 app.use('/api/v1/finance', authenticate, requirePlanAccess('/finance'), financeRoutes);
+app.use('/api/finance', authenticate, requirePlanAccess('/finance'), financeRoutes);
 app.use('/api/v1/coding', authenticate, requirePlanAccess('/coding'), codingRoutes);
 app.use('/api/v1/analytics', authenticate, requirePlanAccess('/analytics'), analyticsRoutes);
 app.use('/internal', internalRoutes); // agent service only — token-guarded

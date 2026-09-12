@@ -1,13 +1,13 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE tenants (
+CREATE TABLE IF NOT EXISTS tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE users (
     UNIQUE(tenant_id, email)
 );
 
-CREATE TABLE agent_instances (
+CREATE TABLE IF NOT EXISTS agent_instances (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE agent_instances (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE conversations (
+CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     agent_instance_id UUID REFERENCES agent_instances(id),
@@ -36,7 +36,7 @@ CREATE TABLE conversations (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -45,7 +45,7 @@ CREATE TABLE messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE approval_requests (
+CREATE TABLE IF NOT EXISTS approval_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     conversation_id UUID REFERENCES conversations(id),
@@ -57,7 +57,7 @@ CREATE TABLE approval_requests (
     resolved_at TIMESTAMPTZ
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     event_type VARCHAR(100) NOT NULL,

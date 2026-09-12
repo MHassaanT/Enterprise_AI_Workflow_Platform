@@ -1,6 +1,7 @@
 const https = require('https');
 const http = require('http');
 const { extractInboundMediaInfo } = require('./media-handler');
+const { decryptData } = require('./postgres-auth-state');
 
 /**
  * Invokes the Python Agent service (/agent/run) with shared secret
@@ -93,22 +94,45 @@ const handleInboundMessages = async ({ tenantId, sock, event, dbQuery }) => {
       }
 
       // 2. Extract phone number and message content
-      const phoneNumber = remoteJid.split('@')[0];
+      const rawId = remoteJid.split('@')[0];
+      let resolvedPhone = rawId;
+
+      if (remoteJid.endsWith('@lid')) {
+        try {
+          const lidRes = await dbQuery(
+            `SELECT key_data FROM whatsapp_auth_keys 
+             WHERE tenant_id = $1 AND key_category = 'lid-mapping' AND key_id = $2`,
+            [tenantId, `${rawId}_reverse`],
+            tenantId
+          );
+          if (lidRes.rows.length > 0 && lidRes.rows[0].key_data) {
+            const dec = decryptData(lidRes.rows[0].key_data);
+            if (dec && typeof dec === 'string') {
+              resolvedPhone = dec;
+              console.log(`[WhatsApp LID Resolver] Resolved LID ${rawId}@lid -> +${resolvedPhone}`);
+            }
+          }
+        } catch (lidErr) {
+          console.warn('[WhatsApp LID Resolver Notice]', lidErr.message);
+        }
+      }
+
+      const phoneNumber = resolvedPhone;
       const messageText = extractMessageText(m.message);
 
       if (!messageText || messageText.trim() === '') {
         continue;
       }
 
-      console.log(`[WhatsApp Inbound] Tenant ${tenantId} received message from ${phoneNumber}: "${messageText}"`);
+      console.log(`[WhatsApp Inbound] Tenant ${tenantId} received message from ${phoneNumber} (JID: ${remoteJid}): "${messageText}"`);
 
       // 3. Find or create an active conversation with channel='whatsapp'
       let conversation = null;
       const existingConvRes = await dbQuery(
         `SELECT id, agent_instance_id FROM conversations 
-         WHERE tenant_id = $1 AND customer_identifier = $2 AND channel = 'whatsapp' AND status = 'active'
+         WHERE tenant_id = $1 AND (customer_identifier = $2 OR customer_identifier = $3) AND channel = 'whatsapp' AND status = 'active'
          ORDER BY updated_at DESC LIMIT 1`,
-        [tenantId, phoneNumber],
+        [tenantId, phoneNumber, rawId],
         tenantId
       );
 
@@ -175,7 +199,8 @@ const handleInboundMessages = async ({ tenantId, sock, event, dbQuery }) => {
 
       // 5b. Cross-reference with Sales SDR Prospects (inbound WhatsApp reply tracking)
       try {
-        const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+        const cleanResolved = resolvedPhone.replace(/[^0-9]/g, '');
+        const cleanRaw = rawId.replace(/[^0-9]/g, '');
         const prospectUpdate = await dbQuery(
           `UPDATE sales_prospects 
            SET has_reply = TRUE,
@@ -183,19 +208,20 @@ const handleInboundMessages = async ({ tenantId, sock, event, dbQuery }) => {
                reply_content = $1,
                reply_status = 'REPLY_RECEIVED',
                deal_stage = CASE 
-                 WHEN deal_stage = 'OUTREACH_SENT' THEN 'REPLIED' 
-                 WHEN deal_stage = 'PROPOSAL_SENT' AND ($1 ILIKE '%agree%' OR $1 ILIKE '%confirm%' OR $1 ILIKE '%accept%' OR $1 ILIKE '%yes%') THEN 'PROPOSAL_ACCEPTED'
+                 WHEN deal_stage IN ('OUTREACH_SENT', 'DISCOVERED') THEN 'REPLIED' 
                  ELSE deal_stage 
                END,
                last_channel_used = 'whatsapp',
                updated_at = NOW()
            WHERE tenant_id = $2 AND (
              replace(replace(replace(contact_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $3
-             OR contact_phone = $4
+             OR replace(replace(replace(contact_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $4
+             OR contact_phone = $5
              OR contact_phone = '+' || $3
+             OR contact_phone = '+' || $4
            )
            RETURNING id, company_name, contact_name`,
-          [messageText, tenantId, cleanPhone, remoteJid],
+          [messageText, tenantId, cleanResolved, cleanRaw, remoteJid],
           tenantId
         );
         if (prospectUpdate.rows && prospectUpdate.rows.length > 0) {
@@ -203,6 +229,39 @@ const handleInboundMessages = async ({ tenantId, sock, event, dbQuery }) => {
         }
       } catch (salesHookErr) {
         console.warn('[WhatsApp Sales Hook Notice]', salesHookErr.message);
+      }
+
+      // 5c. Cross-reference with Procurement Vendors (inbound WhatsApp reply & interview tracking)
+      try {
+        const cleanResolved = resolvedPhone.replace(/[^0-9]/g, '');
+        const cleanRaw = rawId.replace(/[^0-9]/g, '');
+        const vendorUpdate = await dbQuery(
+          `UPDATE procurement_vendors
+           SET contact_status = CASE 
+                 WHEN contact_status = 'RFQ_SENT' THEN 'REPLIED'
+                 WHEN contact_status = 'INTERVIEW_SCHEDULED' THEN 'INTERVIEW_CONFIRMED'
+                 ELSE contact_status 
+               END,
+               interview_availability = CASE 
+                 WHEN contact_status = 'INTERVIEW_SCHEDULED' THEN $1
+                 ELSE interview_availability 
+               END
+           WHERE tenant_id = $2 AND (
+             replace(replace(replace(vendor_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $3
+             OR replace(replace(replace(vendor_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || $4
+             OR vendor_phone = $5
+             OR vendor_phone = '+' || $3
+             OR vendor_phone = '+' || $4
+           )
+           RETURNING id, vendor_name`,
+          [messageText, tenantId, cleanResolved, cleanRaw, remoteJid],
+          tenantId
+        );
+        if (vendorUpdate.rows && vendorUpdate.rows.length > 0) {
+          console.log(`[WhatsApp Procurement Hook] Updated procurement vendor ${vendorUpdate.rows[0].vendor_name} with inbound WhatsApp message.`);
+        }
+      } catch (procHookErr) {
+        console.warn('[WhatsApp Procurement Hook Notice]', procHookErr.message);
       }
 
       // 6. Fetch recent conversation history (up to 10 turns)

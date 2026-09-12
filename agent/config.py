@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # Search API (Serper.dev) — fallback for Places discovery
     SERPER_API_KEY: str = ""
 
+    # SafePay Gateway
+    SAFEPAY_ENVIRONMENT: str = "sandbox"
+    SAFEPAY_API_KEY: str = ""
+    SAFEPAY_V1_SECRET: str = ""
+    SAFEPAY_WEBHOOK_SECRET: str = ""
+
     @property
     def places_api_key(self) -> str:
         return self.GOOGLE_PLACES_API_KEY or self.GOOGLE_PLACES_API or self.GEMINI_API_KEY

@@ -168,8 +168,22 @@ pool.connect((err, client, release) => {
           display_name = EXCLUDED.display_name,
           provider_type = EXCLUDED.provider_type,
           schema_json = EXCLUDED.schema_json;`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS vendor_phone VARCHAR(50);`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(50) DEFAULT 'ON_WHATSAPP';`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(100);`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS place_id VARCHAR(255);`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS google_rating NUMERIC(3, 2);`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS review_count INTEGER DEFAULT 0;`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS address TEXT;`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS interview_requested_at TIMESTAMPTZ;`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS interview_availability TEXT;`),
+      client.query(`ALTER TABLE procurement_vendors ADD COLUMN IF NOT EXISTS appointment_id UUID;`),
+      client.query(`ALTER TABLE procurement_vendors ALTER COLUMN vendor_email DROP NOT NULL;`),
+      client.query(`ALTER TABLE procurement_requests ADD COLUMN IF NOT EXISTS appointment_id UUID;`),
+      client.query(`ALTER TABLE procurement_requests ADD COLUMN IF NOT EXISTS interview_scheduled_at TIMESTAMPTZ;`),
+      client.query(`ALTER TABLE appointments ALTER COLUMN customer_email DROP NOT NULL;`),
     ])
-      .then(() => console.log('✅ HR, SafePay, Onboarding, Appointments, Reported Issues, WhatsApp & OTP database tables verified'))
+      .then(() => console.log('✅ HR, SafePay, Onboarding, Appointments, Reported Issues, WhatsApp, OTP & Procurement database tables verified'))
       .catch(mErr => console.warn('⚠️ Column migration warning:', mErr.message))
       .finally(() => release());
   }

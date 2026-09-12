@@ -12,5 +12,14 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure columns exist if table was already created in 001_initial_schema
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS agent_name VARCHAR(100);
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS subagent_name VARCHAR(100);
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS action VARCHAR(150);
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS reasoning TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE audit_logs ALTER COLUMN event_type DROP NOT NULL;
+
 -- Enable RLS
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;

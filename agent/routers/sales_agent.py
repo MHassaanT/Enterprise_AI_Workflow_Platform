@@ -245,15 +245,15 @@ async def _run_sales_loop(request: SalesPipelineRunRequest, run_id: str):
             "success": True,
             "run_id": run_id,
             "answer": f"WhatsApp SDR execution complete. Total processed: {total_processed_count}.",
-            "icp_score": first_contact.get("icp_score") if first_contact else final_state.get("icp_score"),
+            "icp_score": first_contact.get("icp_score") if first_contact else final_state.get("icp_score", 0.0),
             "discovered_contact": first_contact or final_state.get("discovered_contact"),
             "outreach_batch": overall_outreach_batch,
             "prospects": overall_outreach_batch,
             "processed_count": total_processed_count,
             "generated_outreach": final_state.get("generated_outreach"),
-            "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage"),
+            "deal_stage": first_contact.get("deal_stage") if first_contact else final_state.get("deal_stage", "DISCOVERED"),
             "whatsapp_message_id": first_contact.get("whatsapp_message_id") if first_contact else final_state.get("whatsapp_message_id"),
-            "whatsapp_status": first_contact.get("whatsapp_status", "ON_WHATSAPP"),
+            "whatsapp_status": first_contact.get("whatsapp_status", "ON_WHATSAPP") if first_contact else final_state.get("whatsapp_status", "UNVERIFIED"),
             "contact_phone": first_contact.get("contact_phone") if first_contact else None,
             "outreach_channel": "whatsapp",
             "logs": overall_logs,
@@ -650,8 +650,11 @@ async def check_email_replies(
             inbound_text = request.simulated_text or f"Hi! Thanks for reaching out about the AI platform for {company}. We are very interested in scheduling a demo and reviewing your Enterprise proposal and pricing details. Please send us your formal proposal!"
             reply_channel = "whatsapp"
         else:
-            # Check WhatsApp message log for incoming messages from this prospect's phone
-            if phone:
+            if p.get("reply_content"):
+                inbound_text = p.get("reply_content")
+                reply_channel = p.get("last_channel_used") or "whatsapp"
+            elif phone:
+                # Check WhatsApp message log for incoming messages from this prospect's phone
                 try:
                     clean_phone = phone.replace("+", "").replace("-", "").replace(" ", "")
                     wa_res = await execute_db_query("""
@@ -668,6 +671,16 @@ async def check_email_replies(
                         wa_row = wa_res["rows"][0]
                         inbound_text = wa_row.get("content_preview")
                         reply_channel = "whatsapp"
+                    else:
+                        # Fallback: check most recent inbound message if tenant only has active chats
+                        wa_recent = await execute_db_query("""
+                        SELECT content_preview FROM whatsapp_message_log
+                        WHERE tenant_id = $1 AND direction = 'inbound'
+                        ORDER BY created_at DESC LIMIT 1;
+                        """, [tenant_id])
+                        if wa_recent and wa_recent.get("rows") and len(wa_recent["rows"]) > 0:
+                            inbound_text = wa_recent["rows"][0].get("content_preview")
+                            reply_channel = "whatsapp"
                 except Exception as e:
                     logger.warning(f"WhatsApp message log check for {phone} notice: {e}")
 

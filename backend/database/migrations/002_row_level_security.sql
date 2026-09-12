@@ -7,20 +7,26 @@ ALTER TABLE approval_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Create policies — each tenant only sees their own rows
+DROP POLICY IF EXISTS tenant_isolation ON users;
 CREATE POLICY tenant_isolation ON users
     USING (tenant_id = current_setting('app.tenant_id')::UUID);
 
+DROP POLICY IF EXISTS tenant_isolation ON agent_instances;
 CREATE POLICY tenant_isolation ON agent_instances
     USING (tenant_id = current_setting('app.tenant_id')::UUID);
 
+DROP POLICY IF EXISTS tenant_isolation ON conversations;
 CREATE POLICY tenant_isolation ON conversations
     USING (tenant_id = current_setting('app.tenant_id')::UUID);
 
+DROP POLICY IF EXISTS tenant_isolation ON messages;
 CREATE POLICY tenant_isolation ON messages
     USING (tenant_id = current_setting('app.tenant_id')::UUID);
 
+DROP POLICY IF EXISTS tenant_isolation ON approval_requests;
 CREATE POLICY tenant_isolation ON approval_requests
     USING (tenant_id = current_setting('app.tenant_id')::UUID);
 
+DROP POLICY IF EXISTS tenant_isolation ON audit_logs;
 CREATE POLICY tenant_isolation ON audit_logs
     USING (tenant_id = current_setting('app.tenant_id')::UUID);

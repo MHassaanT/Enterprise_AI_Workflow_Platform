@@ -6,15 +6,15 @@ try:
 except ModuleNotFoundError:
     from agent.services.llm_gateway import get_llm
 
+
 class NegotiationSynthesisSubAgent:
     """
-    Sub-Agent 4: Negotiation Synthesis Sub-Agent
-    Ingests vendor email responses and proposals.
-    Extracts pricing, lead times, SLA terms, and synthesizes a structured Vendor Quote Comparison Matrix.
+    Sub-Agent 4: WhatsApp Quote Synthesis & Comparison Matrix Sub-Agent
+    Ingests vendor WhatsApp responses, quote proposals, and fulfillment specifications.
+    Synthesizes a structured Vendor Quote Comparison Matrix for Human-in-the-Loop review.
     """
 
     def process(self, title: str, extracted_specs: Dict[str, Any], budget_limit: float, vendors: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # Generate or process vendor offer payloads
         analyzed_vendors = []
         base_budget = budget_limit if budget_limit > 0 else 50000.0
 
@@ -28,19 +28,21 @@ class NegotiationSynthesisSubAgent:
 
             payment_options = ["Net 30", "Net 45", "50% Upfront / 50% Upon Delivery", "Net 15"]
             sla_options = [
-                "99.9% Uptime Guarantee with 24/7 dedicated support",
-                "99.5% Uptime SLA with 4-hour resolution target",
-                "Standard 1-year hardware & service warranty",
-                "Premium Enterprise SLA with dedicated account manager"
+                "99.9% Uptime Guarantee with 24/7 dedicated enterprise support",
+                "99.5% SLA with 4-hour technical response resolution",
+                "Standard 1-year commercial warranty with on-site support",
+                "Enterprise SLA with dedicated technical account manager"
             ]
 
             quote_payload = {
                 "vendor_name": v.get("vendor_name"),
+                "vendor_phone": v.get("vendor_phone"),
                 "quote_amount": quote_amt,
                 "lead_time_days": lead_time,
                 "payment_terms": payment_options[idx % len(payment_options)],
                 "sla_terms": sla_options[idx % len(sla_options)],
-                "compliance_score": random.randint(85, 98)
+                "channel": "WhatsApp",
+                "compliance_score": random.randint(86, 98)
             }
 
             updated_v = dict(v)
@@ -54,17 +56,18 @@ class NegotiationSynthesisSubAgent:
             analyzed_vendors.append(updated_v)
 
         prompt = f"""You are an AI Procurement Negotiation Synthesis Sub-Agent.
-Synthesize the following vendor quote responses for procurement project '{title}':
+Synthesize the following vendor quote responses received via WhatsApp for procurement project '{title}':
 
 BUDGET TARGET: ${base_budget:,.2f}
 
-RECEIVED VENDOR QUOTES:
+RECEIVED VENDOR QUOTES VIA WHATSAPP:
 {json.dumps([v['received_quote_payload'] for v in analyzed_vendors], indent=2)}
 
 Generate a detailed, structured Vendor Quote Comparison Matrix in JSON format containing:
-1. "comparison_summary": A executive summary comparing vendor proposals.
+1. "comparison_summary": An executive summary comparing the vendor proposals received over WhatsApp.
 2. "comparison_matrix": An array of objects for each vendor with fields:
    - "vendor_name": string
+   - "vendor_phone": string
    - "quote_amount": number
    - "variance_from_budget_pct": string (e.g. "-15%", "+5%")
    - "lead_time_days": number
@@ -73,7 +76,7 @@ Generate a detailed, structured Vendor Quote Comparison Matrix in JSON format co
    - "key_pros": array of strings
    - "key_cons": array of strings
 3. "top_recommended_vendor": Name of the top AI-recommended vendor and brief rationale.
-4. "negotiation_insights": Key leverage points for final contract negotiation.
+4. "negotiation_insights": Key commercial leverage points for the company representative to discuss during the vendor interview.
 
 Return ONLY valid JSON matching this schema:
 {{
@@ -81,6 +84,7 @@ Return ONLY valid JSON matching this schema:
   "comparison_matrix": [
     {{
       "vendor_name": "...",
+      "vendor_phone": "...",
       "quote_amount": 42500.0,
       "variance_from_budget_pct": "-15%",
       "lead_time_days": 14,
@@ -95,9 +99,8 @@ Return ONLY valid JSON matching this schema:
 }}
 """
         llm = get_llm()
-        response = llm.invoke(prompt)
-
         try:
+            response = llm.invoke(prompt)
             content = response.content
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -106,21 +109,22 @@ Return ONLY valid JSON matching this schema:
             matrix = json.loads(content.strip())
         except Exception:
             matrix = {
-                "comparison_summary": f"Received and analyzed {len(analyzed_vendors)} vendor proposals for {title}.",
+                "comparison_summary": f"Received and synthesized {len(analyzed_vendors)} vendor proposals via WhatsApp for '{title}'.",
                 "comparison_matrix": [
                     {
                         "vendor_name": v["vendor_name"],
+                        "vendor_phone": v.get("vendor_phone", "N/A"),
                         "quote_amount": v["quote_amount"],
                         "variance_from_budget_pct": f"{round(((v['quote_amount'] - base_budget) / base_budget) * 100, 1)}%",
                         "lead_time_days": v["lead_time_days"],
                         "sla_score": 9,
                         "recommendation_score": 88,
-                        "key_pros": ["Competitive pricing", "Strong SLA"],
-                        "key_cons": ["Standard payment terms"]
+                        "key_pros": ["Competitive WhatsApp quotation", "Standard enterprise SLA"],
+                        "key_cons": ["Payment terms subject to interview review"]
                     } for v in analyzed_vendors
                 ],
                 "top_recommended_vendor": analyzed_vendors[0]["vendor_name"] if analyzed_vendors else "N/A",
-                "negotiation_insights": "Request an additional 5% volume discount during final contracting."
+                "negotiation_insights": "Review payment milestones and volume discount during the representative interview."
             }
 
         return {

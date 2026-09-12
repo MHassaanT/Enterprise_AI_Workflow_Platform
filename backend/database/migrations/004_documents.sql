@@ -1,5 +1,5 @@
 -- Track uploaded documents per tenant
-CREATE TABLE documents (
+CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     filename VARCHAR(512) NOT NULL,
@@ -13,5 +13,6 @@ CREATE TABLE documents (
 
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_isolation ON documents;
 CREATE POLICY tenant_isolation ON documents
     USING (tenant_id = current_setting('app.tenant_id')::UUID);

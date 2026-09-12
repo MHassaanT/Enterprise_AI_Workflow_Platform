@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import AuthGuard from '../components/AuthGuard';
 import { getAuthHeader } from '@/lib/api';
 
@@ -23,6 +24,9 @@ export default function ProcurementPage() {
   // HITL Selection Form State
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectionNotes, setSelectionNotes] = useState('');
+  const defaultDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const [preferredDate, setPreferredDate] = useState(defaultDate);
+  const [preferredTime, setPreferredTime] = useState('14:00');
 
   useEffect(() => {
     fetchRequests();
@@ -58,6 +62,12 @@ export default function ProcurementPage() {
       const data = await res.json();
       if (data.success) {
         setCurrentReqDetails(data);
+        if (data.request?.selected_vendor_id) {
+          setSelectedVendorId(data.request.selected_vendor_id);
+        }
+        if (data.request?.current_stage === 'INTERVIEW_SCHEDULED') {
+          setActiveTab('interview');
+        }
       }
     } catch (err) {
       console.error('Error fetching request details:', err);
@@ -90,7 +100,7 @@ export default function ProcurementPage() {
       }
 
       const headers = getAuthHeader();
-      delete headers['Content-Type']; // Let browser set boundary
+      delete headers['Content-Type'];
 
       const res = await fetch('/api/v1/procurement/requests', {
         method: 'POST',
@@ -108,6 +118,7 @@ export default function ProcurementPage() {
         if (data.id) {
           handleSelectRequest(data.id);
         }
+        setActiveTab('research');
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to submit request.' });
       }
@@ -149,11 +160,11 @@ export default function ProcurementPage() {
     }
   };
 
-  // Submit HITL Vendor Selection Decision (Sub-Agent 5 & 6)
+  // Submit HITL Vendor Selection Decision -> WhatsApp Interview & Appointment Booking
   const handleVendorSelectionDecision = async (e) => {
     e.preventDefault();
     if (!selectedReqId || !selectedVendorId) {
-      setMessage({ type: 'error', text: 'Please select a winning vendor.' });
+      setMessage({ type: 'error', text: 'Please select a vendor for the interview.' });
       return;
     }
     setSubmitting(true);
@@ -168,7 +179,9 @@ export default function ProcurementPage() {
         },
         body: JSON.stringify({
           selected_vendor_id: selectedVendorId,
-          selection_notes: selectionNotes
+          selection_notes: selectionNotes,
+          preferred_date: preferredDate,
+          preferred_time: preferredTime
         })
       });
 
@@ -176,17 +189,17 @@ export default function ProcurementPage() {
       if (data.success) {
         setMessage({
           type: 'success',
-          text: 'Winning Vendor Selected! Privacy-guarded notifications sent to all vendors & PO synchronized with Finance Agent!'
+          text: 'Vendor Interview Scheduled! WhatsApp invitation sent and appointment booked in Appointments page. Agent duty complete.'
         });
         fetchRequests();
         fetchRequestDetails(selectedReqId);
-        setActiveTab('finance');
+        setActiveTab('interview');
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to submit selection.' });
       }
     } catch (err) {
       console.error('Error submitting vendor selection:', err);
-      setMessage({ type: 'error', text: 'Error executing vendor selection.' });
+      setMessage({ type: 'error', text: 'Error scheduling vendor interview.' });
     } finally {
       setSubmitting(false);
     }
@@ -195,6 +208,7 @@ export default function ProcurementPage() {
   const reqObj = currentReqDetails?.request;
   const vendorsList = currentReqDetails?.vendors || [];
   const docsList = currentReqDetails?.documents || [];
+  const apptObj = currentReqDetails?.appointment;
   const researchReport = reqObj?.research_report;
   const comparisonMatrix = reqObj?.comparison_matrix;
   const finalReport = reqObj?.final_report;
@@ -203,25 +217,25 @@ export default function ProcurementPage() {
   const totalRequests = requests.length;
   const totalVendors = requests.reduce((acc, r) => acc + parseInt(r.vendor_count || 0), 0);
   const pendingHitlCount = requests.filter(r => r.current_stage === 'REPLIES_PARSED' || r.current_stage === 'AWAITING_SELECTION').length;
-  const completedCount = requests.filter(r => r.current_stage === 'COMPLETED').length;
+  const scheduledCount = requests.filter(r => r.current_stage === 'INTERVIEW_SCHEDULED').length;
 
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background text-on-surface font-body-md flex flex-col h-screen overflow-hidden">
         <main className="flex-1 overflow-y-auto p-md md:p-lg space-y-lg">
-          {/* Header Banner & Supervisor Badge */}
+          {/* Header Banner */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-md bg-surface-container border border-outline-variant rounded-2xl p-lg bg-gradient-to-r from-surface-container via-surface-container-high to-surface-container-highest">
             <div className="space-y-xs">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-2xl">shopping_cart</span>
-                <h1 className="font-headline-md text-headline-md font-bold text-on-surface">Procurement Multi-Agent Hub</h1>
-                <span className="px-3 py-1 rounded-full text-label-md font-semibold bg-primary-container/30 text-primary border border-primary/40 flex items-center gap-1">
+                <h1 className="font-headline-md text-headline-md font-bold text-on-surface">Procurement Agent Hub</h1>
+                <span className="px-3 py-1 rounded-full text-label-md font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Supervisor Architecture Active
+                  WhatsApp & Google Places Architecture
                 </span>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl">
-                Multi-agent purchasing orchestration: Sub-Agents handle intake, Hunter.io market research, RFQ outreach, quote matrix synthesis, HITL selection, privacy-safe vendor emails, and Finance Agent PO creation.
+                Autonomous purchasing pipeline: Google Places vendor discovery, direct WhatsApp RFQ outreach, quote matrix synthesis, and automated representative interview scheduling into the Appointments hub.
               </p>
             </div>
 
@@ -248,31 +262,31 @@ export default function ProcurementPage() {
 
             <div className="bg-surface-container border border-outline-variant rounded-2xl p-md flex items-center justify-between">
               <div>
-                <p className="font-label-md text-label-md text-on-surface-variant">Discovered Vendors</p>
+                <p className="font-label-md text-label-md text-on-surface-variant">Places Vendors Sourced</p>
                 <p className="font-headline-lg text-headline-lg font-bold text-on-surface mt-xs">{totalVendors}</p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-tertiary-container/20 border border-tertiary/30 flex items-center justify-center text-tertiary">
-                <span className="material-symbols-outlined">domain</span>
+                <span className="material-symbols-outlined">storefront</span>
               </div>
             </div>
 
             <div className="bg-surface-container border border-outline-variant rounded-2xl p-md flex items-center justify-between">
               <div>
-                <p className="font-label-md text-label-md text-on-surface-variant">Pending HITL Decisions</p>
+                <p className="font-label-md text-label-md text-on-surface-variant">Pending Representative Selection</p>
                 <p className="font-headline-lg text-headline-lg font-bold text-amber-400 mt-xs">{pendingHitlCount}</p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-amber-950/40 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <span className="material-symbols-outlined">gavel</span>
+                <span className="material-symbols-outlined">how_to_reg</span>
               </div>
             </div>
 
             <div className="bg-surface-container border border-outline-variant rounded-2xl p-md flex items-center justify-between">
               <div>
-                <p className="font-label-md text-label-md text-on-surface-variant">Executed POs & Synced GL</p>
-                <p className="font-headline-lg text-headline-lg font-bold text-emerald-400 mt-xs">{completedCount}</p>
+                <p className="font-label-md text-label-md text-on-surface-variant">Interviews Scheduled</p>
+                <p className="font-headline-lg text-headline-lg font-bold text-emerald-400 mt-xs">{scheduledCount}</p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <span className="material-symbols-outlined">verified</span>
+                <span className="material-symbols-outlined">event_available</span>
               </div>
             </div>
           </div>
@@ -311,16 +325,16 @@ export default function ProcurementPage() {
 
               {reqObj && (
                 <div className="flex items-center gap-xs">
-                  <span className="font-label-md text-label-md text-on-surface-variant">Active Sub-Agent:</span>
+                  <span className="font-label-md text-label-md text-on-surface-variant">Status:</span>
                   <span className="px-3 py-0.5 rounded-lg bg-surface-container-highest border border-outline-variant font-mono-sm text-mono-sm text-primary font-bold">
-                    {reqObj.active_subagent || 'intake_spec'}
+                    {reqObj.current_stage}
                   </span>
                 </div>
               )}
             </div>
           )}
 
-          {/* Multi-Tab Navigation Header */}
+          {/* Tab Navigation Header (5 Clean Stages) */}
           <div className="border-b border-outline-variant flex overflow-x-auto gap-2">
             <button
               onClick={() => setActiveTab('intake')}
@@ -342,8 +356,8 @@ export default function ProcurementPage() {
                   : 'border-transparent text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              <span className="material-symbols-outlined text-lg">travel_explore</span>
-              2. Vendor Research (Sub-Agent 2)
+              <span className="material-symbols-outlined text-lg">storefront</span>
+              2. Google Places Discovery (Sub-Agent 2)
             </button>
 
             <button
@@ -354,8 +368,8 @@ export default function ProcurementPage() {
                   : 'border-transparent text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              <span className="material-symbols-outlined text-lg">forward_to_inbox</span>
-              3. RFQ Outreach (Sub-Agent 3)
+              <span className="material-symbols-outlined text-lg">chat</span>
+              3. WhatsApp RFQ Outreach (Sub-Agent 3)
             </button>
 
             <button
@@ -367,42 +381,29 @@ export default function ProcurementPage() {
               }`}
             >
               <span className="material-symbols-outlined text-lg">analytics</span>
-              4. Matrix & HITL Decision (Sub-Agent 4 & 5)
+              4. Quote Matrix & Selection (Sub-Agent 4)
             </button>
 
             <button
-              onClick={() => setActiveTab('comms')}
+              onClick={() => setActiveTab('interview')}
               className={`px-md py-sm font-label-md text-label-md font-semibold whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
-                activeTab === 'comms'
+                activeTab === 'interview'
                   ? 'border-primary text-primary bg-primary-container/10'
                   : 'border-transparent text-on-surface-variant hover:text-on-surface'
               }`}
             >
-              <span className="material-symbols-outlined text-lg">mail_lock</span>
-              5. Vendor Comms (Sub-Agent 5)
-            </button>
-
-            <button
-              onClick={() => setActiveTab('finance')}
-              className={`px-md py-sm font-label-md text-label-md font-semibold whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
-                activeTab === 'finance'
-                  ? 'border-primary text-primary bg-primary-container/10'
-                  : 'border-transparent text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">payments</span>
-              6. Finance Sync (Sub-Agent 6)
+              <span className="material-symbols-outlined text-lg">event_available</span>
+              5. Interview & Appointment (Sub-Agent 5)
             </button>
           </div>
 
           {/* TAB 1: INTAKE & SPECS */}
           {activeTab === 'intake' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-              {/* Form Card */}
               <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
                 <div>
                   <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Submit New Procurement Request</h2>
-                  <p className="font-body-md text-body-md text-on-surface-variant">Input requirements and attach specification files (PDF/DOCX) for Sub-Agent 1 to extract technical criteria.</p>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Input requirements and attach specification files for Sub-Agent 1 to extract technical criteria.</p>
                 </div>
 
                 <form onSubmit={handleCreateRequest} className="space-y-md">
@@ -449,7 +450,7 @@ export default function ProcurementPage() {
                     <label className="font-label-md text-label-md font-semibold text-on-surface">Detailed Description & Specifications</label>
                     <textarea
                       rows={4}
-                      placeholder="Provide detailed description of required products, SLAs, minimum hardware specs, or service deliverables..."
+                      placeholder="Provide specifications, target region, hardware requirements, or deliverables..."
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       className="w-full bg-surface-container-high border border-outline-variant rounded-xl p-md text-on-surface font-body-md focus:outline-none focus:border-primary"
@@ -457,7 +458,7 @@ export default function ProcurementPage() {
                   </div>
 
                   <div className="space-y-xs">
-                    <label className="font-label-md text-label-md font-semibold text-on-surface">Attach RFP Specification Files (PDF / DOCX)</label>
+                    <label className="font-label-md text-label-md font-semibold text-on-surface">Attach RFP Files (.pdf, .docx, .txt)</label>
                     <input
                       type="file"
                       multiple
@@ -478,17 +479,20 @@ export default function ProcurementPage() {
                 </form>
               </div>
 
-              {/* Current Active Specs Display */}
+              {/* Specs Card */}
               <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
                 <div className="flex items-center justify-between">
                   <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 1 Extracted Specs</h2>
                   {reqObj && (
                     <button
-                      onClick={() => handleTriggerSubAgent('vendor_research')}
+                      onClick={() => {
+                        handleTriggerSubAgent('vendor_research');
+                        setActiveTab('research');
+                      }}
                       disabled={submitting}
                       className="px-md py-xs bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md font-semibold rounded-xl transition-colors flex items-center gap-2"
                     >
-                      <span>Trigger Vendor Research</span>
+                      <span>Find Places Vendors</span>
                       <span className="material-symbols-outlined text-sm">arrow_forward</span>
                     </button>
                   )}
@@ -506,7 +510,7 @@ export default function ProcurementPage() {
                       <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-md">
                         <div>
                           <p className="font-label-md text-label-md text-on-surface-variant font-semibold">Executive Summary</p>
-                          <p className="font-body-md text-body-md text-on-surface mt-xs">{reqObj.extracted_specs.summary || 'Summary generated by Intake Sub-Agent.'}</p>
+                          <p className="font-body-md text-body-md text-on-surface mt-xs">{reqObj.extracted_specs.summary || 'Summary extracted by Sub-Agent 1.'}</p>
                         </div>
 
                         {reqObj.extracted_specs.technical_requirements && (
@@ -522,7 +526,7 @@ export default function ProcurementPage() {
 
                         {reqObj.extracted_specs.key_deliverables && (
                           <div>
-                            <p className="font-label-md text-label-md text-on-surface-variant font-semibold">Expected Deliverables</p>
+                            <p className="font-label-md text-label-md text-on-surface-variant font-semibold">Deliverables</p>
                             <div className="flex flex-wrap gap-2 mt-xs">
                               {reqObj.extracted_specs.key_deliverables.map((del, i) => (
                                 <span key={i} className="px-2.5 py-1 rounded-lg bg-surface-container-highest border border-outline-variant text-label-md font-medium text-on-surface">
@@ -551,20 +555,20 @@ export default function ProcurementPage() {
                   </div>
                 ) : (
                   <div className="text-center py-xl text-on-surface-variant font-body-md">
-                    No procurement request selected. Submit a new request on the left or select an existing project.
+                    No procurement request selected. Submit a new request or pick an existing project above.
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 2: VENDOR RESEARCH */}
+          {/* TAB 2: GOOGLE PLACES VENDOR RESEARCH */}
           {activeTab === 'research' && (
             <div className="space-y-lg">
               <div className="flex items-center justify-between bg-surface-container border border-outline-variant rounded-2xl p-md">
                 <div>
-                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 2: Vendor Sourcing & Market Analysis</h2>
-                  <p className="font-body-md text-body-md text-on-surface-variant">Sources vendor candidates via Hunter.io API & web research, enriches deliverability, and compiles market report.</p>
+                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 2: Google Places Vendor Discovery</h2>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Sources operational commercial suppliers using Google Places API (New) + Serper Places fallback. Extracts E.164 phone numbers and validates WhatsApp status.</p>
                 </div>
 
                 <button
@@ -572,24 +576,39 @@ export default function ProcurementPage() {
                   disabled={submitting}
                   className="px-md py-xs bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md font-semibold rounded-xl transition-colors flex items-center gap-2"
                 >
-                  <span className="material-symbols-outlined">search</span>
-                  {submitting ? 'Searching Vendors...' : 'Run Vendor Research'}
+                  <span className="material-symbols-outlined">storefront</span>
+                  {submitting ? 'Querying Google Places...' : 'Run Places Sourcing'}
                 </button>
               </div>
 
-              {/* Vendor Candidates Grid */}
+              {/* Discovered Places Vendors Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md">
                 {vendorsList.map((v) => (
                   <div key={v.id || v.vendor_name} className="bg-surface-container border border-outline-variant rounded-2xl p-md space-y-xs hover:border-primary/50 transition-colors">
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full font-mono-sm text-mono-sm font-bold bg-emerald-950/50 text-emerald-400 border border-emerald-700/50">
-                        {v.deliverability_status || 'VALID'}
+                      <span className="px-2.5 py-0.5 rounded-full font-mono-sm text-mono-sm font-bold bg-emerald-950/50 text-emerald-400 border border-emerald-700/50 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        {v.whatsapp_status || 'ON_WHATSAPP'}
                       </span>
-                      <span className="font-label-md text-label-md text-on-surface-variant">{v.contact_status}</span>
+                      {v.google_rating > 0 && (
+                        <span className="font-label-md text-label-md text-amber-400 font-bold flex items-center gap-0.5">
+                          <span className="material-symbols-outlined text-sm">star</span>
+                          {parseFloat(v.google_rating).toFixed(1)} ({v.review_count || 0})
+                        </span>
+                      )}
                     </div>
                     <h3 className="font-title-md text-title-md font-bold text-on-surface">{v.vendor_name}</h3>
-                    <p className="font-body-md text-body-md text-primary font-medium">{v.domain}</p>
-                    <p className="font-body-md text-body-md text-on-surface-variant truncate">{v.vendor_email}</p>
+                    <p className="font-body-md text-body-md text-emerald-400 font-mono flex items-center gap-1">
+                      <span className="material-symbols-outlined text-sm">call</span>
+                      {v.vendor_phone || 'N/A'}
+                    </p>
+                    {v.address && (
+                      <p className="font-body-sm text-body-sm text-on-surface-variant truncate flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">location_on</span>
+                        {v.address}
+                      </p>
+                    )}
+                    <p className="font-body-sm text-body-sm text-primary font-medium">{v.domain}</p>
                   </div>
                 ))}
               </div>
@@ -600,16 +619,17 @@ export default function ProcurementPage() {
                   <div className="flex items-center justify-between border-b border-outline-variant pb-md">
                     <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
                       <span className="material-symbols-outlined text-primary">assessment</span>
-                      Market Research & Fit Report
+                      Market Research & Fit Analysis (Google Places Sourced)
                     </h3>
                     <button
                       onClick={() => {
                         handleTriggerSubAgent('rfq_outreach');
                         setActiveTab('rfq');
                       }}
-                      className="px-md py-xs bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-xl"
+                      className="px-md py-xs bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-xl flex items-center gap-1"
                     >
-                      Proceed to RFQ Outreach →
+                      <span>Proceed to WhatsApp RFQ</span>
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
                     </button>
                   </div>
 
@@ -621,7 +641,7 @@ export default function ProcurementPage() {
 
                     {researchReport.recommended_vendors && (
                       <div>
-                        <p className="font-label-md text-label-md text-on-surface-variant font-semibold mb-xs">Candidate Fit Scores</p>
+                        <p className="font-label-md text-label-md text-on-surface-variant font-semibold mb-xs">Candidate Suppliers & Commercial Fit</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
                           {researchReport.recommended_vendors.map((rv, idx) => (
                             <div key={idx} className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
@@ -629,7 +649,8 @@ export default function ProcurementPage() {
                                 <span className="font-title-md text-title-md font-bold text-on-surface">{rv.vendor_name}</span>
                                 <span className="font-headline-sm text-headline-sm font-bold text-emerald-400">{rv.perceived_fit_score}/100</span>
                               </div>
-                              <p className="font-body-md text-body-md text-on-surface-variant">Price Est: {rv.estimated_price_range}</p>
+                              <p className="font-body-md text-body-md text-emerald-400 font-mono">{rv.vendor_phone}</p>
+                              <p className="font-body-md text-body-md text-on-surface-variant">Est: {rv.estimated_price_range}</p>
                               {rv.key_strengths && (
                                 <div className="flex flex-wrap gap-1 mt-xs">
                                   {rv.key_strengths.map((str, sIdx) => (
@@ -648,37 +669,50 @@ export default function ProcurementPage() {
                 </div>
               ) : (
                 <div className="bg-surface-container border border-outline-variant rounded-2xl p-xl text-center text-on-surface-variant font-body-md">
-                  Click "Run Vendor Research" above to discover candidate vendors and compile the Market Research Report.
+                  Click "Run Places Sourcing" above to discover candidate commercial vendors via Google Places API and verify WhatsApp availability.
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 3: RFQ OUTREACH */}
+          {/* TAB 3: WHATSAPP RFQ OUTREACH */}
           {activeTab === 'rfq' && (
             <div className="space-y-lg">
               <div className="flex items-center justify-between bg-surface-container border border-outline-variant rounded-2xl p-md">
                 <div>
-                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 3: RFQ & Vendor Outreach</h2>
-                  <p className="font-body-md text-body-md text-on-surface-variant">Formats formal RFQ packages and dispatches outreach emails to candidate vendors via Gmail adapter.</p>
+                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 3: WhatsApp RFQ Outreach</h2>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Formats mobile-optimized RFQ packages and dispatches outreach directly to verified WhatsApp numbers via WhatsApp MCP.</p>
                 </div>
 
                 <button
                   onClick={() => handleTriggerSubAgent('rfq_outreach')}
                   disabled={submitting}
-                  className="px-md py-xs bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md font-semibold rounded-xl transition-colors flex items-center gap-2"
+                  className="px-md py-xs bg-emerald-600 hover:bg-emerald-700 text-white font-label-md text-label-md font-semibold rounded-xl transition-colors flex items-center gap-2"
                 >
                   <span className="material-symbols-outlined">send</span>
-                  {submitting ? 'Dispatching RFQs...' : 'Dispatch RFQ Emails'}
+                  {submitting ? 'Dispatching WhatsApp Messages...' : 'Dispatch WhatsApp RFQs'}
                 </button>
               </div>
 
               {/* Vendors Dispatch Status */}
               <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
-                <h3 className="font-title-md text-title-md font-bold text-on-surface">Dispatched RFQ Log</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-title-md text-title-md font-bold text-on-surface">Dispatched WhatsApp Log</h3>
+                  <button
+                    onClick={() => {
+                      handleTriggerSubAgent('negotiation_synthesis');
+                      setActiveTab('matrix');
+                    }}
+                    className="px-md py-xs bg-primary text-on-primary font-label-md text-label-md font-semibold rounded-xl flex items-center gap-1"
+                  >
+                    <span>Synthesize WhatsApp Replies</span>
+                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                  </button>
+                </div>
+
                 <div className="space-y-md">
                   {vendorsList.map((v) => (
-                    <div key={v.id || v.vendor_name} className="bg-surface-container-high border border-outline-variant rounded-xl p-md flex items-center justify-between">
+                    <div key={v.id || v.vendor_name} className="bg-surface-container-high border border-outline-variant rounded-xl p-md flex flex-col sm:flex-row sm:items-center justify-between gap-md">
                       <div className="space-y-xs">
                         <div className="flex items-center gap-2">
                           <span className="font-title-md text-title-md font-bold text-on-surface">{v.vendor_name}</span>
@@ -689,19 +723,15 @@ export default function ProcurementPage() {
                           }`}>
                             {v.contact_status}
                           </span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-400 text-xs font-semibold">
+                            WhatsApp
+                          </span>
                         </div>
-                        <p className="font-body-md text-body-md text-on-surface-variant">{v.vendor_email} ({v.domain})</p>
+                        <p className="font-body-md text-body-md text-emerald-400 font-mono">{v.vendor_phone} ({v.domain})</p>
+                        {v.whatsapp_message_id && (
+                          <p className="font-mono-sm text-mono-sm text-on-surface-variant">Message ID: {v.whatsapp_message_id}</p>
+                        )}
                       </div>
-
-                      <button
-                        onClick={() => {
-                          handleTriggerSubAgent('negotiation_synthesis');
-                          setActiveTab('matrix');
-                        }}
-                        className="px-md py-xs bg-surface-container-highest hover:bg-surface-container-low text-on-surface font-label-md text-label-md font-semibold rounded-xl"
-                      >
-                        Parse Quote Replies →
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -709,13 +739,13 @@ export default function ProcurementPage() {
             </div>
           )}
 
-          {/* TAB 4: MATRIX & HITL DECISION */}
+          {/* TAB 4: MATRIX & HUMAN SELECTION FOR INTERVIEW */}
           {activeTab === 'matrix' && (
             <div className="space-y-lg">
               <div className="flex items-center justify-between bg-surface-container border border-outline-variant rounded-2xl p-md">
                 <div>
-                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 4 & 5: Quote Matrix & HITL Selection</h2>
-                  <p className="font-body-md text-body-md text-on-surface-variant">Synthesizes vendor quote responses, compares SLAs, lead times, and enforces human selection gate.</p>
+                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">Sub-Agent 4: Quote Comparison Matrix & Interview Gate</h2>
+                  <p className="font-body-md text-body-md text-on-surface-variant">Synthesizes WhatsApp vendor quotes, SLAs, and lead times. Human selects the candidate to be invited for an interview with the company representative.</p>
                 </div>
 
                 <button
@@ -724,16 +754,16 @@ export default function ProcurementPage() {
                   className="px-md py-xs bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md font-semibold rounded-xl transition-colors flex items-center gap-2"
                 >
                   <span className="material-symbols-outlined">analytics</span>
-                  {submitting ? 'Synthesizing Matrix...' : 'Synthesize Quote Matrix'}
+                  {submitting ? 'Synthesizing Quotes...' : 'Synthesize Quotes'}
                 </button>
               </div>
 
-              {/* Vendor Quote Comparison Matrix Table */}
+              {/* Quote Comparison Matrix Table */}
               {comparisonMatrix ? (
                 <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
                   <h3 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary">table_chart</span>
-                    Vendor Quote Comparison Matrix
+                    Vendor Quote Comparison Matrix (WhatsApp Responses)
                   </h3>
 
                   <div className="overflow-x-auto">
@@ -741,17 +771,19 @@ export default function ProcurementPage() {
                       <thead>
                         <tr className="border-b border-outline-variant font-label-md text-label-md text-on-surface-variant bg-surface-container-high">
                           <th className="p-md">Vendor</th>
+                          <th className="p-md">WhatsApp Contact</th>
                           <th className="p-md">Quote Amount ($)</th>
                           <th className="p-md">Budget Var (%)</th>
                           <th className="p-md">Lead Time</th>
                           <th className="p-md">SLA Score</th>
-                          <th className="p-md">Recommendation</th>
+                          <th className="p-md">AI Score</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant font-body-md text-body-md">
                         {comparisonMatrix.comparison_matrix?.map((row, idx) => (
                           <tr key={idx} className="hover:bg-surface-container-high/50">
                             <td className="p-md font-semibold text-on-surface">{row.vendor_name}</td>
+                            <td className="p-md text-emerald-400 font-mono">{row.vendor_phone || 'WhatsApp Verified'}</td>
                             <td className="p-md font-bold text-primary">${parseFloat(row.quote_amount || 0).toLocaleString()}</td>
                             <td className="p-md text-on-surface-variant">{row.variance_from_budget_pct}</td>
                             <td className="p-md text-on-surface-variant">{row.lead_time_days} Days</td>
@@ -767,54 +799,81 @@ export default function ProcurementPage() {
                     <div className="bg-primary-container/20 border border-primary/30 rounded-xl p-md flex items-center gap-md">
                       <span className="material-symbols-outlined text-primary text-2xl">auto_awesome</span>
                       <div>
-                        <p className="font-label-md text-label-md text-primary font-bold">Top AI Recommendation</p>
+                        <p className="font-label-md text-label-md text-primary font-bold">Top AI Recommendation for Interview</p>
                         <p className="font-body-md text-body-md text-on-surface font-semibold">{comparisonMatrix.top_recommended_vendor}</p>
+                        {comparisonMatrix.negotiation_insights && (
+                          <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
+                            💡 Leverage note: {comparisonMatrix.negotiation_insights}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="bg-surface-container border border-outline-variant rounded-2xl p-xl text-center text-on-surface-variant font-body-md">
-                  Click "Synthesize Quote Matrix" above to parse vendor replies and populate the comparison matrix.
+                  Click "Synthesize Quotes" above to parse vendor replies received via WhatsApp.
                 </div>
               )}
 
-              {/* Human-in-the-Loop Selection Box */}
+              {/* Human-in-the-Loop Selection Form */}
               <div className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-lg space-y-md">
                 <div className="flex items-center gap-2 text-amber-400">
-                  <span className="material-symbols-outlined text-2xl">gavel</span>
-                  <h3 className="font-headline-sm text-headline-sm font-bold">Human-in-the-Loop Selection Gate</h3>
+                  <span className="material-symbols-outlined text-2xl">how_to_reg</span>
+                  <h3 className="font-headline-sm text-headline-sm font-bold">Select Vendor for Representative Interview</h3>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant">
-                  Review vendor quotes above and make the final vendor selection decision. Once confirmed, Sub-Agent 5 will dispatch acceptance & regret emails, and Sub-Agent 6 will execute the Finance PO sync.
+                  Review the proposals above and choose a vendor. The agent will message the vendor on WhatsApp to request an interview with your company representative and schedule the appointment in the Appointments calendar. <strong>The agent does not issue final calls or purchase orders — your human representative takes over.</strong>
                 </p>
 
                 <form onSubmit={handleVendorSelectionDecision} className="space-y-md">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                     <div className="space-y-xs">
-                      <label className="font-label-md text-label-md font-semibold text-on-surface">Select Winning Vendor *</label>
+                      <label className="font-label-md text-label-md font-semibold text-on-surface">Select Vendor *</label>
                       <select
                         required
                         value={selectedVendorId}
                         onChange={(e) => setSelectedVendorId(e.target.value)}
                         className="w-full bg-surface-container-high border border-outline-variant rounded-xl p-md text-on-surface font-body-md focus:outline-none focus:border-amber-400"
                       >
-                        <option value="">-- Choose Vendor --</option>
+                        <option value="">-- Choose Vendor for Interview --</option>
                         {vendorsList.map((v) => (
                           <option key={v.id || v.vendor_name} value={v.id || v.vendor_name}>
-                            {v.vendor_name} (${parseFloat(v.quote_amount || 0).toLocaleString()})
+                            {v.vendor_name} ({v.vendor_phone || 'WhatsApp'}) — ${parseFloat(v.quote_amount || 0).toLocaleString()}
                           </option>
                         ))}
                       </select>
                     </div>
 
                     <div className="space-y-xs">
-                      <label className="font-label-md text-label-md font-semibold text-on-surface">Selection Rationale / Decision Notes</label>
+                      <label className="font-label-md text-label-md font-semibold text-on-surface">Interview Agenda / Focus Notes</label>
                       <input
                         type="text"
-                        placeholder="e.g. Best SLA terms and fastest 14-day lead time."
+                        placeholder="e.g. Discuss 14-day SLA, volume discount, and hardware delivery terms."
                         value={selectionNotes}
                         onChange={(e) => setSelectionNotes(e.target.value)}
+                        className="w-full bg-surface-container-high border border-outline-variant rounded-xl p-md text-on-surface font-body-md focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+                    <div className="space-y-xs">
+                      <label className="font-label-md text-label-md font-semibold text-on-surface">Proposed Interview Date</label>
+                      <input
+                        type="date"
+                        value={preferredDate}
+                        onChange={(e) => setPreferredDate(e.target.value)}
+                        className="w-full bg-surface-container-high border border-outline-variant rounded-xl p-md text-on-surface font-body-md focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div className="space-y-xs">
+                      <label className="font-label-md text-label-md font-semibold text-on-surface">Proposed Time Slot</label>
+                      <input
+                        type="time"
+                        value={preferredTime}
+                        onChange={(e) => setPreferredTime(e.target.value)}
                         className="w-full bg-surface-container-high border border-outline-variant rounded-xl p-md text-on-surface font-body-md focus:outline-none focus:border-amber-400"
                       />
                     </div>
@@ -825,117 +884,108 @@ export default function ProcurementPage() {
                     disabled={submitting}
                     className="w-full py-md bg-amber-500 hover:bg-amber-600 text-black font-label-md text-label-md font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
                   >
-                    <span className="material-symbols-outlined">how_to_reg</span>
-                    {submitting ? 'Executing Selection & Notifications...' : 'Confirm & Select Winning Vendor'}
+                    <span className="material-symbols-outlined">chat</span>
+                    {submitting ? 'Requesting WhatsApp Interview & Scheduling...' : 'Request WhatsApp Interview & Schedule Appointment'}
                   </button>
                 </form>
               </div>
             </div>
           )}
 
-          {/* TAB 5: VENDOR COMMS */}
-          {activeTab === 'comms' && (
+          {/* TAB 5: INTERVIEW & APPOINTMENT STATUS */}
+          {activeTab === 'interview' && (
             <div className="space-y-lg">
               <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
-                <div className="flex items-center justify-between border-b border-outline-variant pb-md">
-                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary">mail_lock</span>
-                    Sub-Agent 5: Vendor Communications Audit Log
-                  </h2>
-                  <span className="px-3 py-1 rounded-full bg-emerald-950/50 text-emerald-400 border border-emerald-700/50 text-label-md font-bold">
-                    🔒 Privacy Guardrails Active
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-sm border-b border-outline-variant pb-md">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-400 text-2xl">event_available</span>
+                    <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface">
+                      Sub-Agent 5: WhatsApp Interview & Appointment Status
+                    </h2>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-950/50 text-emerald-400 border border-emerald-700/50 text-label-md font-bold self-start sm:self-auto flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Agent Duty Complete
                   </span>
                 </div>
 
-                <p className="font-body-md text-body-md text-on-surface-variant">
-                  Outbound email logs dispatched to all vendors post-selection. Polite regret emails strictly protect winning vendor identity and bid details.
-                </p>
+                {/* Duty Completed Notice */}
+                <div className="p-md rounded-xl bg-surface-container-high border border-emerald-500/30 text-on-surface space-y-xs">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                    <span className="material-symbols-outlined">verified</span>
+                    <span>Handed off to Human Company Representative</span>
+                  </div>
+                  <p className="font-body-md text-body-md text-on-surface-variant">
+                    The agent has messaged the selected vendor on WhatsApp and scheduled the interview in the platform database. 
+                    <strong> The agent will not generate any purchase orders, GL ledger reservations, or send closing calls.</strong> The human representative will conduct the interview and finalize the contracting manually.
+                  </p>
+                </div>
 
-                <div className="space-y-md">
-                  {vendorsList.map((v) => (
-                    <div key={v.id || v.vendor_name} className={`bg-surface-container-high border rounded-xl p-md flex items-center justify-between ${
-                      v.contact_status === 'SELECTED' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-outline-variant'
-                    }`}>
-                      <div className="space-y-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-title-md text-title-md font-bold text-on-surface">{v.vendor_name}</span>
-                          <span className={`px-2.5 py-0.5 rounded-full font-mono-sm text-mono-sm font-bold ${
-                            v.contact_status === 'SELECTED' ? 'bg-emerald-400 text-black' : 'bg-surface-container-highest text-on-surface-variant'
-                          }`}>
-                            {v.contact_status}
-                          </span>
-                        </div>
-                        <p className="font-body-md text-body-md text-on-surface-variant">{v.vendor_email}</p>
-                      </div>
-
-                      {v.contact_status === 'REJECTED' && (
-                        <span className="px-3 py-1 rounded-lg bg-surface-container-highest text-emerald-400 font-mono-sm text-mono-sm font-semibold border border-emerald-800/40">
-                          ✓ Privacy Non-Disclosure Check Passed
-                        </span>
-                      )}
+                {/* Booked Appointment Card */}
+                {apptObj ? (
+                  <div className="bg-surface-container-high border border-outline-variant rounded-2xl p-lg space-y-md">
+                    <div className="flex items-center justify-between border-b border-outline-variant pb-sm">
+                      <span className="font-label-md text-label-md text-on-surface-variant font-semibold">Scheduled Appointment Details</span>
+                      <span className="px-3 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 font-mono-sm text-mono-sm font-bold border border-emerald-600/40">
+                        {apptObj.status?.toUpperCase() || 'SCHEDULED'}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* TAB 6: FINANCE SYNC */}
-          {activeTab === 'finance' && (
-            <div className="space-y-lg">
-              <div className="bg-surface-container border border-outline-variant rounded-2xl p-lg space-y-md">
-                <div className="flex items-center justify-between border-b border-outline-variant pb-md">
-                  <h2 className="font-headline-sm text-headline-sm font-bold text-on-surface flex items-center gap-2">
-                    <span className="material-symbols-outlined text-emerald-400">payments</span>
-                    Sub-Agent 6: Cross-Agent Finance Synchronization
-                  </h2>
-                  {reqObj?.po_number && (
-                    <span className="px-3 py-1 rounded-full bg-emerald-950/50 text-emerald-400 border border-emerald-700/50 text-label-md font-bold">
-                      PO Executed: {reqObj.po_number}
-                    </span>
-                  )}
-                </div>
-
-                {finalReport ? (
-                  <div className="space-y-md">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-                      <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
-                        <p className="font-label-md text-label-md text-on-surface-variant">Purchase Order Number</p>
-                        <p className="font-headline-sm text-headline-sm font-bold text-emerald-400">{reqObj.po_number}</p>
+                      <div>
+                        <p className="font-label-md text-label-md text-on-surface-variant">Service / Meeting Type</p>
+                        <p className="font-title-md text-title-md font-bold text-on-surface mt-1">{apptObj.service_type}</p>
                       </div>
 
-                      <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
-                        <p className="font-label-md text-label-md text-on-surface-variant">Selected Vendor</p>
-                        <p className="font-headline-sm text-headline-sm font-bold text-on-surface">{finalReport.selected_vendor?.vendor_name}</p>
+                      <div>
+                        <p className="font-label-md text-label-md text-on-surface-variant">Vendor Representative</p>
+                        <p className="font-title-md text-title-md font-bold text-on-surface mt-1">{apptObj.customer_name}</p>
+                        <p className="font-body-md text-body-md text-emerald-400 font-mono">{apptObj.customer_phone}</p>
                       </div>
 
-                      <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
-                        <p className="font-label-md text-label-md text-on-surface-variant">Agreed Total Amount</p>
-                        <p className="font-headline-sm text-headline-sm font-bold text-primary">${parseFloat(finalReport.selected_vendor?.agreed_amount || 0).toLocaleString()}</p>
+                      <div>
+                        <p className="font-label-md text-label-md text-on-surface-variant">Date & Time</p>
+                        <p className="font-title-md text-title-md font-bold text-primary mt-1">
+                          {String(apptObj.appointment_date).slice(0, 10)} at {apptObj.appointment_time} ({apptObj.duration_minutes || 45} mins)
+                        </p>
                       </div>
                     </div>
 
-                    <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
-                      <p className="font-label-md text-label-md text-on-surface-variant font-semibold">Finance Agent Sync Status</p>
-                      <div className="space-y-2 mt-xs">
-                        <div className="flex items-center gap-2 text-emerald-400 font-body-md">
-                          <span className="material-symbols-outlined text-base">check_circle</span>
-                          <span>Purchase Order created in database (`purchase_orders` table)</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-emerald-400 font-body-md">
-                          <span className="material-symbols-outlined text-base">check_circle</span>
-                          <span>Funds reserved in General Ledger (`account_code = 'EXP-PROC-501'`)</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-emerald-400 font-body-md">
-                          <span className="material-symbols-outlined text-base">check_circle</span>
-                          <span>Cross-agent audit record logged (`NOTIFY_FINANCE_PROCUREMENT_CLOSED`)</span>
-                        </div>
+                    {apptObj.notes && (
+                      <div className="pt-xs">
+                        <p className="font-label-md text-label-md text-on-surface-variant">Meeting Agenda & Notes</p>
+                        <p className="font-body-md text-body-md text-on-surface mt-1 bg-surface-container rounded-xl p-md border border-outline-variant">
+                          {apptObj.notes}
+                        </p>
                       </div>
+                    )}
+
+                    <div className="pt-sm flex justify-end">
+                      <Link
+                        href="/approvals?tab=appointments"
+                        className="px-lg py-sm bg-emerald-500 hover:bg-emerald-600 text-black font-label-md text-label-md font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"
+                      >
+                        <span className="material-symbols-outlined text-sm">calendar_month</span>
+                        <span>View in Appointments Page →</span>
+                      </Link>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-xl text-on-surface-variant font-body-md">
-                    Complete the Human-in-the-Loop vendor selection in Tab 4 to execute Finance Agent PO synchronization.
+                  <div className="bg-surface-container-high border border-outline-variant rounded-2xl p-lg space-y-md">
+                    <p className="font-body-md text-body-md text-on-surface-variant">
+                      {reqObj?.current_stage === 'INTERVIEW_SCHEDULED' 
+                        ? 'Vendor interview is scheduled. Check the Appointments page for full meeting info.'
+                        : 'Select a vendor in Tab 4 to dispatch the WhatsApp interview request and schedule the appointment.'}
+                    </p>
+                    <div className="flex justify-end">
+                      <Link
+                        href="/approvals?tab=appointments"
+                        className="px-md py-xs bg-surface-container-highest hover:bg-surface-container-low text-on-surface font-label-md text-label-md font-semibold rounded-xl flex items-center gap-2"
+                      >
+                        <span>Open Appointments Page</span>
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                      </Link>
+                    </div>
                   </div>
                 )}
               </div>

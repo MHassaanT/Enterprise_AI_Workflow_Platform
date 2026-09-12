@@ -82,28 +82,64 @@ router.get('/status', authenticate, authorize('admin', 'employee'), async (req, 
 router.get('/qr-stream', authenticateSSE, authorize('admin'), async (req, res) => {
   const { tenantId } = req.user;
 
-  // Set SSE response headers
+  // Set SSE response headers with reverse-proxy unbuffering
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
+  // Send immediate comment chunk so reverse proxy (Next.js/Nginx) flushes stream immediately
+  res.write(': ping\n\n');
+
   const sendEvent = (event, data) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch (e) {
+      // Ignore write error if connection closed
+    }
   };
 
+  const manager = getWhatsAppManager();
+
   // Immediately send initial state
+  let lastSentQr = null;
   try {
-    const manager = getWhatsAppManager();
     const initialStatus = await manager.getStatus(tenantId);
     sendEvent('status', initialStatus);
 
     if (initialStatus.qr) {
+      lastSentQr = initialStatus.qr;
       sendEvent('qr', { qr: initialStatus.qr, tenantId });
     }
   } catch (initErr) {
     console.warn('[WhatsApp SSE] Could not fetch initial state:', initErr.message);
   }
+
+  // Active in-stream poll to guarantee immediate QR delivery even before/without Redis events
+  const pollInterval = setInterval(async () => {
+    try {
+      const current = await manager.getStatus(tenantId);
+      if (current.qr && current.qr !== lastSentQr) {
+        lastSentQr = current.qr;
+        sendEvent('qr', { qr: current.qr, tenantId });
+        sendEvent('status', current);
+      }
+      if (current.status === 'connected') {
+        sendEvent('status', current);
+        clearInterval(pollInterval);
+      }
+    } catch (pollErr) {
+      // Ignore poll error
+    }
+  }, 1500);
+
+  // Keep-alive heartbeat every 15 seconds to prevent gateway timeouts
+  const heartbeatInterval = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch (e) {}
+  }, 15000);
 
   // Subscribe to Redis channel for live updates
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -111,7 +147,7 @@ router.get('/qr-stream', authenticateSSE, authorize('admin'), async (req, res) =
 
   try {
     subscriber = createClient({ url: redisUrl });
-    subscriber.on('error', (err) => {
+    subscriber.on('error', () => {
       // Suppress noisy logs if Redis is unavailable
     });
 
@@ -121,34 +157,22 @@ router.get('/qr-stream', authenticateSSE, authorize('admin'), async (req, res) =
     await subscriber.subscribe(channel, (message) => {
       try {
         const parsed = JSON.parse(message);
+        if (parsed.qr) {
+          lastSentQr = parsed.qr;
+        }
         sendEvent(parsed.event || 'update', parsed);
       } catch (e) {
         sendEvent('raw', { message });
       }
     });
   } catch (redisErr) {
-    // If Redis is not available, fall back to interval polling of in-memory status
-    const pollInterval = setInterval(async () => {
-      try {
-        const manager = getWhatsAppManager();
-        const current = await manager.getStatus(tenantId);
-        sendEvent('status', current);
-        if (current.qr) {
-          sendEvent('qr', { qr: current.qr, tenantId });
-        }
-        if (current.status === 'connected') {
-          clearInterval(pollInterval);
-        }
-      } catch (pollErr) {
-        // Ignore poll error
-      }
-    }, 2000);
-
-    req.on('close', () => clearInterval(pollInterval));
+    console.warn('[WhatsApp SSE] Redis subscription fallback to interval polling:', redisErr.message);
   }
 
-  // Clean up Redis subscriber on client disconnect
+  // Clean up timers and Redis subscriber on client disconnect
   req.on('close', async () => {
+    clearInterval(pollInterval);
+    clearInterval(heartbeatInterval);
     if (subscriber && subscriber.isOpen) {
       try {
         await subscriber.unsubscribe(`whatsapp:events:${tenantId}`);
@@ -204,6 +228,27 @@ router.post('/check-number', authenticate, authorize('admin', 'employee'), async
   } catch (err) {
     console.error('Error checking numbers on WhatsApp:', err);
     res.status(500).json({ error: err.message || 'Failed to check numbers on WhatsApp.' });
+  }
+});
+
+// ── 7. POST /api/whatsapp/pair-code ── Request 8-character pairing code for phone number
+router.post('/pair-code', authenticate, authorize('admin'), async (req, res) => {
+  try {
+    const { tenantId } = req.user;
+    const { phoneNumber, phone } = req.body || {};
+    const targetPhone = phoneNumber || phone;
+
+    if (!targetPhone) {
+      return res.status(400).json({ error: 'phoneNumber is required (e.g. 923001234567)' });
+    }
+
+    const manager = getWhatsAppManager();
+    const result = await manager.requestPairingCode(tenantId, targetPhone);
+
+    res.json(result);
+  } catch (err) {
+    console.error('Error generating pairing code:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate pairing code.' });
   }
 });
 

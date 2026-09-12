@@ -86,7 +86,35 @@ router.get('/prospects', async (req, res) => {
       `);
 
       const result = await query(
-        "SELECT * FROM sales_prospects WHERE tenant_id = $1 ORDER BY created_at DESC;",
+        `SELECT sp.*,
+          (
+            SELECT json_build_object(
+              'id', a.id,
+              'service_type', a.service_type,
+              'appointment_date', a.appointment_date,
+              'appointment_time', a.appointment_time,
+              'duration_minutes', a.duration_minutes,
+              'status', a.status,
+              'customer_name', a.customer_name,
+              'customer_email', a.customer_email,
+              'customer_phone', a.customer_phone,
+              'notes', a.notes,
+              'created_at', a.created_at
+            )
+            FROM appointments a
+            WHERE a.tenant_id = sp.tenant_id
+              AND (
+                (a.customer_phone IS NOT NULL AND a.customer_phone != '' AND sp.contact_phone IS NOT NULL AND sp.contact_phone != '' AND (
+                  replace(replace(replace(a.customer_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || replace(replace(replace(sp.contact_phone, '+', ''), '-', ''), ' ', '')
+                  OR replace(replace(replace(sp.contact_phone, '+', ''), '-', ''), ' ', '') LIKE '%' || replace(replace(replace(a.customer_phone, '+', ''), '-', ''), ' ', '')
+                ))
+                OR (a.customer_email IS NOT NULL AND a.customer_email != '' AND sp.contact_email IS NOT NULL AND sp.contact_email != '' AND lower(a.customer_email) = lower(sp.contact_email))
+              )
+            ORDER BY a.created_at DESC LIMIT 1
+          ) AS scheduled_appointment
+        FROM sales_prospects sp 
+        WHERE sp.tenant_id = $1 
+        ORDER BY sp.created_at DESC;`,
         [tenantId],
         tenantId
       );

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from services.llm_gateway import get_llm
 from config import settings
 
 router = APIRouter(prefix="/crawl-company", tags=["Company Crawler"])
@@ -85,11 +86,16 @@ async def crawl_company_website(req: CrawlRequest):
     page_text = await scrape_website_content(url)
     
     # 2. Extract structured details using LLM
-    llm = ChatGoogleGenerativeAI(
-        model=settings.GEMINI_MODEL,
-        google_api_key=settings.GEMINI_API_KEY,
-        temperature=0.2,
-    )
+    if settings.LLM_PROVIDER in ("openrouter", "ollama"):
+        llm = get_llm()
+    else:
+        llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GEMINI_API_KEY,
+            temperature=0.2,
+            timeout=15.0,
+            max_retries=1,
+        )
     
     system_prompt = (
         "You are an expert business analyst and website scanner. "

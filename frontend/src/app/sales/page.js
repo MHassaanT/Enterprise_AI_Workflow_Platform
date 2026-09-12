@@ -11,7 +11,7 @@ export default function SalesDashboard() {
   const [buildingIcp, setBuildingIcp] = useState(false);
   const [runningPipeline, setRunningPipeline] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [activeTab, setActiveTab] = useState('prospects'); // 'prospects' | 'replies' | 'proposals' | 'sales' | 'icp' | 'logs'
+  const [activeTab, setActiveTab] = useState('prospects'); // 'prospects' | 'replies' | 'scheduled' | 'icp' | 'logs'
   const [message, setMessage] = useState('');
 
   // Analytics Metrics State
@@ -32,6 +32,7 @@ export default function SalesDashboard() {
   const [whatsappStatus, setWhatsappStatus] = useState(null);
   const [autoSendWhatsApp, setAutoSendWhatsApp] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [icpBuilt, setIcpBuilt] = useState(false);
   const [savingIcp, setSavingIcp] = useState(false);
 
@@ -48,21 +49,11 @@ export default function SalesDashboard() {
 
   // Modals and Active Inspections
   const [selectedProspect, setSelectedProspect] = useState(null);
-  const [proposalModalProspect, setProposalModalProspect] = useState(null);
-  const [draftingProposal, setDraftingProposal] = useState(false);
-  const [sendingProposal, setSendingProposal] = useState(false);
-  
   const [checkingReplies, setCheckingReplies] = useState(false);
   const [simulateReplyModalOpen, setSimulateReplyModalOpen] = useState(false);
   const [simulatedReplyText, setSimulatedReplyText] = useState('');
   const [simulateTargetProspectId, setSimulateTargetProspectId] = useState('');
-  const [simulateChannel, setSimulateChannel] = useState('email');
-
-  const [confirmSaleModalProspect, setConfirmSaleModalProspect] = useState(null);
-  const [confirmingSale, setConfirmingSale] = useState(false);
-  const [finalDealValueInput, setFinalDealValueInput] = useState(50000);
-
-  const [reportModalDetails, setReportModalDetails] = useState(null);
+  const [simulateChannel, setSimulateChannel] = useState('whatsapp');
 
   const [prospectSubTab, setProspectSubTab] = useState('current');
   const [latestRunProspects, setLatestRunProspects] = useState([]);
@@ -482,125 +473,19 @@ export default function SalesDashboard() {
     }
   };
 
-  // Feature 2: Draft Proposal & Send Proposal (Human-in-the-Loop)
-  const handleDraftProposal = async (prospect) => {
-    if (!prospect) return;
-    setDraftingProposal(true);
-    try {
-      const res = await fetch('/api/v1/sales/proposals/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
-          prospect_id: prospect.id,
-          pricing_tier: 'Enterprise',
-        }),
-      });
-      const data = await safeJsonParse(res);
-      if (data.success && data.proposal) {
-        setMessage(`✅ Proposal drafted for ${prospect.company_name}! Paused for human review.`);
-        fetchData();
-        fetchAnalytics();
-        setProposalModalProspect({ ...prospect, proposal_details: data.proposal, proposal_status: 'DRAFTED' });
-        setActiveTab('proposals');
-      } else {
-        alert(`❌ Drafting proposal failed: ${data.error}`);
-      }
-    } catch (err) {
-      alert(`❌ Network error: ${err.message}`);
-    } finally {
-      setDraftingProposal(false);
-    }
-  };
-
-  const handleSendProposal = async (prospect, channel = 'auto') => {
-    if (!prospect) return;
-    setSendingProposal(true);
-    try {
-      const res = await fetch('/api/v1/sales/proposals/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ prospect_id: prospect.id, channel }),
-      });
-      const data = await safeJsonParse(res);
-      if (data.success) {
-        const dest = (channel === 'whatsapp' || data.channel === 'whatsapp') ? (prospect.contact_phone || 'WhatsApp') : prospect.contact_email;
-        setMessage(`✅ Human approved! Proposal sent to ${dest} via ${data.channel || channel}.`);
-        fetchData();
-        fetchAnalytics();
-        setProposalModalProspect(null);
-      } else {
-        alert(`❌ Sending proposal failed: ${data.error}`);
-      }
-    } catch (err) {
-      alert(`❌ Network error: ${err.message}`);
-    } finally {
-      setSendingProposal(false);
-    }
-  };
-
-  // Feature 4: Confirm Sale & Notify Finance Agent
-  const handleConfirmSale = async (prospect) => {
-    if (!prospect) return;
-    setConfirmingSale(true);
-    try {
-      const res = await fetch('/api/v1/sales/deal/confirm-sale', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
-          prospect_id: prospect.id,
-          final_deal_value: parseFloat(finalDealValueInput) || 50000,
-        }),
-      });
-      const data = await safeJsonParse(res);
-      if (data.success) {
-        setMessage(`🏆 Sale closed for ${prospect.company_name}! Sales Report created and Finance Agent notified.`);
-        fetchData();
-        fetchAnalytics();
-        setConfirmSaleModalProspect(null);
-        setReportModalDetails(data.sales_report);
-        setActiveTab('sales');
-      } else {
-        alert(`❌ Sale confirmation failed: ${data.error}`);
-      }
-    } catch (err) {
-      alert(`❌ Network error: ${err.message}`);
-    } finally {
-      setConfirmingSale(false);
-    }
-  };
-
-  const hasValidJsonData = (val) => {
-    if (!val) return false;
-    if (typeof val === 'string') {
-      if (val === '{}' || val === '[]' || val.trim() === '') return false;
-      try {
-        const parsed = JSON.parse(val);
-        return parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0;
-      } catch (e) {
-        return false;
-      }
-    }
-    if (typeof val === 'object') {
-      return Object.keys(val).length > 0;
-    }
-    return false;
-  };
+  const scheduledProspects = prospects.filter((p) => 
+    p.deal_stage === 'SCHEDULED' || 
+    p.deal_stage === 'DEMO_SCHEDULED' || 
+    (p.scheduled_appointment && typeof p.scheduled_appointment === 'object')
+  );
 
   const repliesProspects = prospects.filter((p) => 
     p.has_reply === true || 
     (p.reply_content && p.reply_content.trim() !== '') || 
     p.deal_stage === 'REPLIED' || 
-    p.deal_stage === 'PROPOSAL_REQUESTED'
-  );
-  const proposalsProspects = prospects.filter((p) => 
-    (p.proposal_status && p.proposal_status !== 'NONE') || 
-    p.deal_stage === 'PROPOSAL_DRAFTED' || 
-    p.deal_stage === 'PROPOSAL_SENT' || 
-    hasValidJsonData(p.proposal_details)
-  );
-  const closedSalesProspects = prospects.filter((p) => 
-    p.deal_stage === 'CLOSED_WON' || 
-    hasValidJsonData(p.sales_report)
+    p.deal_stage === 'SCHEDULED' || 
+    p.deal_stage === 'DEMO_SCHEDULED' ||
+    (p.scheduled_appointment && typeof p.scheduled_appointment === 'object')
   );
 
   return (
@@ -618,7 +503,7 @@ export default function SalesDashboard() {
               </div>
               <div>
                 <h1 className="font-headline-sm text-headline-sm text-on-surface m-0 leading-tight">Sales Agent</h1>
-                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Autonomous Sourcing, Reply Handling, Proposals & Finance Integration</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant m-0">Autonomous Sourcing, Inbound Reply Handling & Meeting Scheduling</p>
               </div>
             </div>
           </div>
@@ -630,7 +515,7 @@ export default function SalesDashboard() {
               className="px-md py-sm bg-surface-variant hover:bg-outline-variant text-primary border border-outline-variant rounded-md text-body-sm font-label-md transition-all flex items-center gap-2"
             >
               <span className={`material-symbols-outlined text-[18px] ${checkingReplies ? 'animate-spin' : ''}`}>sync</span>
-              Check Email Replies
+              Scan Replies (Email & WA)
             </button>
 
             <button
@@ -677,27 +562,27 @@ export default function SalesDashboard() {
 
           <div className="bg-background border border-outline-variant rounded-lg p-sm flex items-center justify-between shadow-sm">
             <div>
-              <span className="text-xs text-on-surface-variant font-label-md block uppercase tracking-wider">Sales Completed</span>
+              <span className="text-xs text-on-surface-variant font-label-md block uppercase tracking-wider">Appointments Scheduled</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-emerald-400">{analytics.sales_completed_count}</span>
-                <span className="text-xs text-emerald-300 font-bold">({analytics.conversion_rate}% Conv)</span>
+                <span className="text-2xl font-bold text-emerald-400">{scheduledProspects.length}</span>
+                <span className="text-xs text-emerald-300 font-bold">Booked Calls</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-full bg-emerald-900/30 text-emerald-400 flex items-center justify-center font-bold">
-              <span className="material-symbols-outlined text-[20px]">verified</span>
+              <span className="material-symbols-outlined text-[20px]">event_available</span>
             </div>
           </div>
 
           <div className="bg-background border border-outline-variant rounded-lg p-sm flex items-center justify-between shadow-sm">
             <div>
-              <span className="text-xs text-on-surface-variant font-label-md block uppercase tracking-wider">Revenue / Pipeline</span>
+              <span className="text-xs text-on-surface-variant font-label-md block uppercase tracking-wider">Outreach Funnel</span>
               <div className="flex items-baseline gap-1">
-                <span className="text-xl font-bold text-primary">${analytics.total_revenue.toLocaleString()}</span>
-                <span className="text-xs text-on-surface-variant">(${analytics.active_pipeline_value.toLocaleString()} pipe)</span>
+                <span className="text-xl font-bold text-primary">{prospects.length} Leads</span>
+                <span className="text-xs text-on-surface-variant">({repliesProspects.length} in chat)</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-full bg-amber-900/30 text-amber-400 flex items-center justify-center font-bold">
-              <span className="material-symbols-outlined text-[20px]">payments</span>
+              <span className="material-symbols-outlined text-[20px]">hub</span>
             </div>
           </div>
         </section>
@@ -855,25 +740,16 @@ export default function SalesDashboard() {
                   activeTab === 'replies' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">forum</span> Email Replies ({repliesProspects.length})
+                <span className="material-symbols-outlined text-[18px]">forum</span> Replies ({repliesProspects.length})
               </button>
 
               <button
-                onClick={() => setActiveTab('proposals')}
+                onClick={() => setActiveTab('scheduled')}
                 className={`py-sm px-md font-title-sm border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  activeTab === 'proposals' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  activeTab === 'scheduled' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                <span className="material-symbols-outlined text-[18px]">description</span> Proposals ({proposalsProspects.length})
-              </button>
-
-              <button
-                onClick={() => setActiveTab('sales')}
-                className={`py-sm px-md font-title-sm border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  activeTab === 'sales' ? 'border-primary text-primary font-bold' : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[18px]">verified_user</span> Sales & Finance ({closedSalesProspects.length})
+                <span className="material-symbols-outlined text-[18px]">event_available</span> Scheduled ({scheduledProspects.length})
               </button>
 
               <button
@@ -1040,7 +916,7 @@ export default function SalesDashboard() {
 
                   {repliesProspects.length === 0 ? (
                     <div className="p-xl text-center text-on-surface-variant italic">
-                      No prospect replies recorded yet. Use "Check Email Replies" or click "Simulate Prospect Reply" to test!
+                      No prospect replies recorded yet. Use "Scan Replies" or click "Simulate Prospect Reply" to test!
                     </div>
                   ) : (
                     <div className="flex flex-col gap-md">
@@ -1080,12 +956,14 @@ export default function SalesDashboard() {
                             </div>
 
                             <div className="flex justify-end gap-sm mt-xs">
-                              <button
-                                onClick={() => handleDraftProposal(p)}
-                                className="px-md py-sm bg-secondary text-on-secondary font-label-md rounded text-xs"
-                              >
-                                Draft Formal Proposal
-                              </button>
+                              {(p.deal_stage === 'SCHEDULED' || p.deal_stage === 'DEMO_SCHEDULED' || p.scheduled_appointment) && (
+                                <button
+                                  onClick={() => setActiveTab('scheduled')}
+                                  className="px-md py-sm bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-300 border border-emerald-600/40 font-label-md rounded text-xs flex items-center gap-1.5"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">event_available</span> Meeting Scheduled
+                                </button>
+                              )}
                               {p.contact_phone && (
                                 <button
                                   onClick={() => handleSendAiReply(p, 'whatsapp')}
@@ -1111,154 +989,106 @@ export default function SalesDashboard() {
                 </div>
               )}
 
-              {/* TAB 3: Proposals & Agreements (Human-in-the-Loop) */}
-              {activeTab === 'proposals' && (
+              {/* TAB 3: Scheduled Appointments */}
+              {activeTab === 'scheduled' && (
                 <div className="flex flex-col gap-md">
-                  <div className="bg-amber-950/20 border border-amber-800/30 p-sm rounded-md text-xs text-amber-200">
-                    ⚠️ <strong>Human-in-the-Loop Safeguard</strong>: Proposal drafting stops automatically. Human review is required before clicking "Send Proposal".
+                  <div className="bg-emerald-950/20 border border-emerald-800/30 p-sm rounded-md text-xs text-emerald-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px] text-emerald-400">event_available</span>
+                      <span>Prospects who have scheduled a discovery call or consultation meeting with your team.</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 bg-emerald-900/50 text-emerald-300 rounded font-bold text-xs">
+                      {scheduledProspects.length} Booked
+                    </span>
                   </div>
 
-                  {proposalsProspects.length === 0 ? (
+                  {scheduledProspects.length === 0 ? (
                     <div className="p-xl text-center text-on-surface-variant italic">
-                      No proposals drafted yet. Click "Draft Proposal" next to any prospect to generate a formal agreement.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-md">
-                      {proposalsProspects.map((p, idx) => {
-                        const proposal = typeof p.proposal_details === 'string' ? JSON.parse(p.proposal_details || '{}') : (p.proposal_details || {});
-                        return (
-                          <div key={idx} className="bg-background border border-outline-variant rounded-lg p-md flex flex-col gap-sm shadow">
-                            <div className="flex justify-between items-center">
-                              <div>
-                                <h4 className="font-bold text-on-surface m-0 text-base">{proposal.title || `Proposal for ${p.company_name}`}</h4>
-                                <span className="text-xs text-on-surface-variant">{p.company_name} — {p.contact_email}</span>
-                              </div>
-                              <span className={`px-3 py-1 rounded text-xs font-bold ${
-                                p.proposal_status === 'SENT' ? 'bg-blue-900/50 text-blue-300' : 'bg-amber-900/50 text-amber-300 animate-pulse'
-                              }`}>
-                                {p.proposal_status === 'SENT' ? 'Proposal Sent' : 'Awaiting Human Approval'}
-                              </span>
-                            </div>
-
-                            <div className="p-sm bg-surface border border-outline-variant/60 rounded text-xs flex justify-between items-center">
-                              <div>
-                                <span>Pricing Tier: <strong className="text-primary">{proposal.pricing_tier || 'Enterprise'}</strong></span>
-                                <span className="ml-4">Annual Value: <strong className="text-emerald-400">${(proposal.deal_value || p.deal_value || 50000).toLocaleString()}</strong></span>
-                              </div>
-                              <span>Payment Terms: <strong>{proposal.payment_terms || 'Net 30 Days'}</strong></span>
-                            </div>
-
-                            <div className="p-sm bg-surface border border-outline-variant/60 rounded text-xs font-mono">
-                              <span className="font-bold block text-on-surface mb-1 font-sans">Deliverables & Scope:</span>
-                              <ul className="list-disc pl-4 m-0 space-y-0.5">
-                                {(proposal.deliverables || ['Enterprise AI Workflow Engine', 'SLA Support']).map((d, i) => (
-                                  <li key={i}>{d}</li>
-                                ))}
-                              </ul>
-                            </div>
-
-                            <div className="flex justify-end gap-sm mt-xs">
-                              <button
-                                onClick={() => setProposalModalProspect(p)}
-                                className="px-md py-sm bg-surface-variant text-on-surface font-label-md rounded text-xs"
-                              >
-                                Full Contract Preview
-                              </button>
-
-                              {p.proposal_status !== 'SENT' && (
-                                <div className="flex gap-1.5">
-                                  {p.contact_phone && (
-                                    <button
-                                      onClick={() => handleSendProposal(p, 'whatsapp')}
-                                      disabled={sendingProposal}
-                                      className="px-md py-sm bg-emerald-600 hover:bg-emerald-500 text-white font-label-md rounded text-xs flex items-center gap-1.5 shadow"
-                                    >
-                                      <span className="material-symbols-outlined text-[16px]">chat</span> Send WhatsApp
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => handleSendProposal(p, 'email')}
-                                    disabled={sendingProposal}
-                                    className="px-md py-sm bg-blue-600 hover:bg-blue-500 text-white font-label-md rounded text-xs flex items-center gap-1.5 shadow"
-                                  >
-                                    <span className="material-symbols-outlined text-[16px]">mail</span> Send Email
-                                  </button>
-                                </div>
-                              )}
-
-                              <button
-                                onClick={() => { setConfirmSaleModalProspect(p); setFinalDealValueInput(proposal.deal_value || p.deal_value || 50000); }}
-                                className="px-md py-sm bg-primary text-on-primary font-label-md rounded text-xs font-bold"
-                              >
-                                Confirm Sale
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 4: Closed Sales & Finance Integration */}
-              {activeTab === 'sales' && (
-                <div className="flex flex-col gap-md">
-                  <div className="bg-emerald-950/20 border border-emerald-800/30 p-sm rounded-md text-xs text-emerald-200">
-                    Feature 4: Completed Deals, Sales Reports & Inter-Agent Finance General Ledger Notification
-                  </div>
-
-                  {closedSalesProspects.length === 0 ? (
-                    <div className="p-xl text-center text-on-surface-variant italic">
-                      No closed sales yet. Click "Close Sale" next to any qualified prospect or agreement to finalize revenue!
+                      No scheduled meetings yet. Once a prospect agrees on a demo or consultation via WhatsApp or email, their appointment will appear here.
                     </div>
                   ) : (
                     <div className="flex flex-col gap-md">
-                      {closedSalesProspects.map((p, idx) => {
-                        const report = typeof p.sales_report === 'string' ? JSON.parse(p.sales_report || '{}') : (p.sales_report || {});
-                        const chUsed = report.channel_used || p.last_channel_used || p.outreach_channel || 'email';
+                      {scheduledProspects.map((p, idx) => {
+                        const appt = p.scheduled_appointment || {};
+                        const isWa = p.last_channel_used === 'whatsapp' || (!p.last_channel_used && p.outreach_channel === 'whatsapp');
                         return (
-                          <div key={idx} className="bg-background border border-emerald-800/40 rounded-lg p-md flex flex-col gap-sm shadow">
-                            <div className="flex justify-between items-center">
+                          <div key={idx} className="bg-background border border-emerald-800/50 rounded-lg p-md flex flex-col gap-sm shadow-sm hover:border-emerald-700 transition-colors">
+                            <div className="flex justify-between items-start">
                               <div>
-                                <span className="font-bold text-emerald-400 text-lg">{p.company_name}</span>
-                                <span className="text-xs text-on-surface-variant ml-2">Contact: {p.contact_name} ({p.contact_email})</span>
-                                {p.contact_phone && (
-                                  <span className="text-xs text-emerald-300 ml-2 font-mono">📱 {p.contact_phone}</span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-on-surface text-base m-0">{p.company_name}</h4>
+                                  <span className="px-2 py-0.5 bg-emerald-900/50 text-emerald-300 rounded text-xs font-bold flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[13px]">check_circle</span> Scheduled
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-on-surface-variant mt-1">
+                                  <span>Contact: <strong>{appt.customer_name || p.contact_name || 'Decision Maker'}</strong></span>
+                                  {(appt.customer_email || p.contact_email) && (
+                                    <span className="font-mono">✉️ {appt.customer_email || p.contact_email}</span>
+                                  )}
+                                  {(appt.customer_phone || p.contact_phone) && (
+                                    <span className="font-mono text-emerald-400">📱 {appt.customer_phone || p.contact_phone}</span>
+                                  )}
+                                </div>
                               </div>
+
                               <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded text-xs font-bold flex items-center gap-1 ${
-                                  chUsed === 'whatsapp' ? 'bg-emerald-900/60 text-emerald-200' : 'bg-blue-900/60 text-blue-200'
+                                  isWa ? 'bg-emerald-900/50 text-emerald-300' : 'bg-blue-900/50 text-blue-300'
                                 }`}>
-                                  <span className="material-symbols-outlined text-[13px]">{chUsed === 'whatsapp' ? 'chat' : 'mail'}</span>
-                                  {chUsed === 'whatsapp' ? 'WhatsApp Sale' : 'Email Sale'}
-                                </span>
-                                <span className="px-3 py-1 bg-emerald-900/60 text-emerald-200 rounded font-bold text-sm">
-                                  ${ (p.deal_value || 50000).toLocaleString() } CLOSED
+                                  <span className="material-symbols-outlined text-[12px]">{isWa ? 'chat' : 'mail'}</span>
+                                  {isWa ? 'WhatsApp' : 'Email'}
                                 </span>
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-sm text-xs p-sm bg-surface rounded border border-outline-variant/60">
+                            {/* Meeting Details Card */}
+                            <div className="p-md bg-surface/80 border border-outline-variant/60 rounded-lg grid grid-cols-3 gap-md text-xs">
                               <div>
-                                <span className="text-on-surface-variant block">Sales Report ID:</span>
-                                <span className="font-mono text-primary font-bold">{report.report_id || 'REP-SALE-101'}</span>
+                                <span className="text-on-surface-variant block font-label-md mb-0.5">Meeting Agenda / Scope:</span>
+                                <span className="font-bold text-on-surface">
+                                  {appt.service_type || 'Consultation & Product Walkthrough'}
+                                </span>
                               </div>
                               <div>
-                                <span className="text-on-surface-variant block">Finance Agent Sync:</span>
-                                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-[14px]">check_circle</span> GL Ledger & Invoice Created
+                                <span className="text-on-surface-variant block font-label-md mb-0.5">Date & Time:</span>
+                                <span className="font-bold text-primary flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[14px]">calendar_today</span>
+                                  {appt.appointment_date ? `${appt.appointment_date} at ${appt.appointment_time || 'TBD'}` : 'Scheduled in Calendar'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-on-surface-variant block font-label-md mb-0.5">Duration:</span>
+                                <span className="font-bold text-on-surface">
+                                  {appt.duration_minutes || 60} Minutes
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex justify-end gap-sm mt-xs">
+                            {appt.id && (
+                              <div className="text-[11px] font-mono text-on-surface-variant/80 flex items-center justify-between">
+                                <span>Appointment ID: <strong className="text-on-surface">{appt.id}</strong></span>
+                                <span>Status: <strong className="text-emerald-400 font-bold uppercase">{appt.status || 'scheduled'}</strong></span>
+                              </div>
+                            )}
+
+                            {/* Action Row */}
+                            <div className="flex justify-end gap-sm mt-xs pt-xs border-t border-outline-variant/40">
+                              {(appt.customer_phone || p.contact_phone) && (
+                                <a
+                                  href={`https://wa.me/${(appt.customer_phone || p.contact_phone).replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-md py-sm bg-emerald-600 hover:bg-emerald-500 text-white font-label-md rounded text-xs flex items-center gap-1.5 shadow transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">chat</span> Open WhatsApp
+                                </a>
+                              )}
                               <button
-                                onClick={() => setReportModalDetails(report)}
-                                className="px-md py-sm bg-emerald-800/40 text-emerald-200 hover:bg-emerald-800/60 font-label-md rounded text-xs flex items-center gap-1"
+                                onClick={() => setActiveTab('replies')}
+                                className="px-md py-sm bg-surface-variant hover:bg-outline-variant text-on-surface font-label-md rounded text-xs flex items-center gap-1.5 transition-colors"
                               >
-                                <span className="material-symbols-outlined text-[15px]">description</span> View Sales Report
+                                <span className="material-symbols-outlined text-[15px]">history</span> View Conversation
                               </button>
                             </div>
                           </div>
@@ -1483,79 +1313,7 @@ export default function SalesDashboard() {
           </div>
         )}
 
-        {/* Modal: Confirm Sale */}
-        {confirmSaleModalProspect && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-md w-full shadow-lg">
-              <div className="flex justify-between items-center mb-md">
-                <h3 className="font-title-md text-on-surface m-0">Confirm Sale for {confirmSaleModalProspect.company_name}</h3>
-                <button onClick={() => setConfirmSaleModalProspect(null)} className="text-on-surface-variant font-bold">✕</button>
-              </div>
 
-              <div className="flex flex-col gap-md text-body-sm">
-                <div>
-                  <label className="font-bold block mb-1">Final Deal Annual Value ($)</label>
-                  <input
-                    type="number"
-                    value={finalDealValueInput}
-                    onChange={(e) => setFinalDealValueInput(e.target.value)}
-                    className="w-full p-sm bg-background border border-outline rounded-md text-on-surface font-mono"
-                  />
-                </div>
-
-                <p className="text-xs text-on-surface-variant">
-                  Confirming this sale will update the deal stage to CLOSED_WON, generate the Sales Completion Report, and automatically post revenue into the Finance Agent's General Ledger and Invoice ledger.
-                </p>
-
-                <div className="flex justify-end gap-sm mt-sm">
-                  <button
-                    onClick={() => setConfirmSaleModalProspect(null)}
-                    className="px-md py-sm bg-surface-variant text-on-surface rounded-md text-body-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleConfirmSale(confirmSaleModalProspect)}
-                    disabled={confirmingSale}
-                    className="px-md py-sm bg-emerald-600 hover:bg-emerald-500 text-white font-label-md rounded text-body-sm"
-                  >
-                    {confirmingSale ? 'Notifying Finance...' : 'Confirm Sale & Notify Finance'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: Sales Completion Report */}
-        {reportModalDetails && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-surface border border-outline-variant rounded-lg p-lg max-w-lg w-full shadow-lg overflow-y-auto max-h-[85vh]">
-              <div className="flex justify-between items-center mb-md">
-                <h3 className="font-title-md text-on-surface m-0">Sales Completion Report</h3>
-                <button onClick={() => setReportModalDetails(null)} className="text-on-surface-variant font-bold">✕</button>
-              </div>
-
-              <div className="flex flex-col gap-md text-body-sm font-mono text-xs bg-background p-md border rounded">
-                <div>Report ID: <span className="text-primary font-bold">{reportModalDetails.report_id}</span></div>
-                <div>Client: <span className="text-on-surface font-bold">{reportModalDetails.company_name}</span></div>
-                <div>Contact: {reportModalDetails.contact_name} ({reportModalDetails.contact_email})</div>
-                <div>Deal Value: <span className="text-emerald-400 font-bold">${(reportModalDetails.final_deal_value || 0).toLocaleString()}</span></div>
-                <div>Payment Terms: {reportModalDetails.payment_terms}</div>
-                <div>Executive Summary: {reportModalDetails.executive_summary}</div>
-              </div>
-
-              <div className="mt-md flex justify-end">
-                <button
-                  onClick={() => setReportModalDetails(null)}
-                  className="px-md py-sm bg-primary text-on-primary rounded text-body-sm font-label-md"
-                >
-                  Close Report
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Modal: Prospect Details & Draft WhatsApp Outreach View */}
         {selectedProspect && (() => {
