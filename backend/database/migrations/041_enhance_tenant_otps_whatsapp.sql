@@ -14,16 +14,11 @@ CREATE INDEX IF NOT EXISTS idx_tenant_email_otps_phone
 ON tenant_email_otps (tenant_id, phone, verified);
 
 -- 4. Ensure at least one identifier (email or phone) is provided
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'chk_tenant_otps_identifier'
-    ) THEN
-        ALTER TABLE tenant_email_otps 
-        ADD CONSTRAINT chk_tenant_otps_identifier 
-        CHECK (email IS NOT NULL OR phone IS NOT NULL);
-    END IF;
-END $$;
+ALTER TABLE tenant_email_otps DROP CONSTRAINT IF EXISTS chk_tenant_otps_identifier;
+ALTER TABLE tenant_email_otps 
+    ADD CONSTRAINT chk_tenant_otps_identifier 
+    CHECK (email IS NOT NULL OR phone IS NOT NULL);
+
 
 -- 5. Update tool_registry with enhanced multi-channel schema
 INSERT INTO tool_registry (canonical_name, display_name, provider_type, is_high_risk, schema_json)
