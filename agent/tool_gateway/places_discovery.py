@@ -200,10 +200,17 @@ async def search_places_discovery(
                                 "industry": primary_industry,
                             })
                     else:
-                        logger.warning(
-                            f"[PLACES TOOL] Google Places API (New) returned {resp.status_code}: {resp.text[:150]}. "
-                            "Will fall back to Serper Places."
-                        )
+                        if resp.status_code == 403:
+                            logger.warning(
+                                f"[PLACES TOOL] Google Places API (New) returned 403 Forbidden: {resp.text[:150]}. "
+                                "Note: Google AI Studio Gemini API keys cannot access Places API. "
+                                "Falling back to Serper Places."
+                            )
+                        else:
+                            logger.warning(
+                                f"[PLACES TOOL] Google Places API (New) returned {resp.status_code}: {resp.text[:150]}. "
+                                "Will fall back to Serper Places."
+                            )
                         break
             except Exception as e:
                 logger.warning(f"[PLACES TOOL] Error querying Google Places API (New): {e}")
@@ -281,7 +288,10 @@ async def search_places_discovery(
                 except Exception as e:
                     logger.warning(f"[PLACES TOOL] Error querying Serper Places fallback ({type(e).__name__}): {e}")
         else:
-            logger.warning("[PLACES TOOL] No Serper API key configured for Places fallback.")
+            logger.warning(
+                "[PLACES TOOL] No Serper API key configured for Places fallback. "
+                "Set SERPER_API_KEY in your environment variables."
+            )
 
     # For top candidates lacking phone numbers, resolve via Serper company search
     async def _resolve_missing_phone(place: Dict[str, Any]):
@@ -319,9 +329,20 @@ async def search_places_discovery(
         f"for industries={clean_industries}, region='{region_str}'"
     )
 
+    error_hint = ""
+    if not discovered_places:
+        if not google_places_success and not serper_key:
+            error_hint = (
+                "Google Places API failed (403/unavailable) and SERPER_API_KEY is not set. "
+                "Please configure SERPER_API_KEY in your container environment variables."
+            )
+        elif not serper_key and not api_key:
+            error_hint = "No discovery API key configured. Set SERPER_API_KEY in your environment variables."
+
     return {
         "places": discovered_places,
         "total_found": len(discovered_places),
         "api_used": places_api_used,
         "query_used": queries[0] if queries else "",
+        "error_hint": error_hint,
     }

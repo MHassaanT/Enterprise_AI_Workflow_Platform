@@ -619,7 +619,7 @@ Return ONLY a valid JSON object:
         return None
 
 
-def normalize_e164_phone(raw_phone: Optional[str]) -> Optional[str]:
+def normalize_e164_phone(raw_phone: Optional[str], default_country_code: str = "+92") -> Optional[str]:
     """
     Standardizes a phone string into clean E.164 international format (+[country][number]).
     """
@@ -629,15 +629,23 @@ def normalize_e164_phone(raw_phone: Optional[str]) -> Optional[str]:
     cleaned = re.sub(r'[^\d+]', '', str(raw_phone).strip())
     if not cleaned:
         return None
+    if cleaned.startswith("+0"):
+        digits = cleaned[2:]
+        if len(digits) == 10:
+            return f"+92{digits}"
+        return f"{default_country_code}{digits}"
     if cleaned.startswith("+"):
         digits = cleaned[1:]
         if 8 <= len(digits) <= 15:
             return f"+{digits}"
-    elif len(cleaned) == 10:
+    elif len(cleaned) == 10 and not cleaned.startswith("0"):
         return f"+1{cleaned}"
+    elif cleaned.startswith("0") and len(cleaned) == 11:
+        return f"+92{cleaned[1:]}"
     elif 8 <= len(cleaned) <= 15:
         return f"+{cleaned}"
     return None
+
 
 
 async def search_company_phone(

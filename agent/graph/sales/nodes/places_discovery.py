@@ -67,6 +67,9 @@ async def places_discovery_node(state: SalesAgentState) -> Dict[str, Any]:
     else:
         status_str = "NO_PLACES_FOUND"
         details = f"0 candidate commercial entities found for '{', '.join(target_industries)}' in '{region}'."
+        hint = discovery_res.get("error_hint")
+        if hint:
+            details += f" Hint: {hint}"
 
     logs.append({
         "stage": "Stage 1: Google Places Discovery",
