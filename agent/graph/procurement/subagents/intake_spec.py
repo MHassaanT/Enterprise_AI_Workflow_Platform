@@ -20,7 +20,7 @@ Analyze the following corporate procurement request and attached RFP specificati
 
 PROJECT TITLE: {title}
 DEPARTMENT: {department}
-BUDGET LIMIT: ${budget_limit:,.2f}
+BUDGET LIMIT: Rs. {budget_limit:,.2f}
 USER DESCRIPTION:
 {description}
 
@@ -31,7 +31,7 @@ Extract and structure the procurement requirements into a clean JSON object with
 1. "summary": A 2-3 sentence executive summary of what is needed.
 2. "technical_requirements": List of key technical specifications or service deliverables.
 3. "key_deliverables": Array of tangible deliverables expected from vendors.
-4. "budget_cap": Target maximum budget amount ($).
+4. "budget_cap": Target maximum budget amount (PKR / Rs.).
 5. "target_timeline": Estimated completion timeframe (e.g., "30 days", "Q4 2026").
 6. "evaluation_criteria": Key factors to score vendor offers (e.g. price, SLA, warranty, lead time).
 7. "preferred_certifications": ISO or industry compliance certifications required.

@@ -77,7 +77,7 @@ Return ONLY valid JSON matching this schema:
                 f"📋 *Scope & Requirements:*\n• {tech_reqs}\n\n"
                 f"⏱️ *Timeline:* {timeline}\n\n"
                 f"Could you please reply with your:\n"
-                f"1. Total proposed quote ($)\n"
+                f"1. Total proposed quote (PKR / Rs.)\n"
                 f"2. Delivery lead time\n"
                 f"3. SLA / Warranty coverage\n"
                 f"4. Payment terms\n\n"

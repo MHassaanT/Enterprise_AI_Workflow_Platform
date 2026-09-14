@@ -67,7 +67,7 @@ class FinanceSyncSubAgent:
             "audit_log": {
                 "action": "NOTIFY_FINANCE_PROCUREMENT_CLOSED",
                 "subagent": "finance_sync",
-                "details": f"Created Purchase Order {po_number} for {vendor_name} ($ {quote_amount:,.2f})"
+                "details": f"Created Purchase Order {po_number} for {vendor_name} (Rs. {quote_amount:,.2f})"
             }
         }
 

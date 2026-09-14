@@ -48,7 +48,7 @@ Draft a formal Vendor Award & Selection Acceptance Email for the winning vendor 
 BUYING COMPANY: {comp_name} ({ctx.get('description', '')[:200]})
 PROJECT TITLE: {title}
 WINNING VENDOR: {winning_vendor.get('vendor_name')}
-AGREED QUOTE AMOUNT: ${winning_vendor.get('quote_amount', 0):,.2f}
+AGREED QUOTE AMOUNT: Rs. {winning_vendor.get('quote_amount', 0):,.2f}
 SELECTION RATIONALE / NOTES: {selection_notes}
 
 Generate JSON containing:

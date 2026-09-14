@@ -58,7 +58,7 @@ class NegotiationSynthesisSubAgent:
         prompt = f"""You are an AI Procurement Negotiation Synthesis Sub-Agent.
 Synthesize the following vendor quote responses received via WhatsApp for procurement project '{title}':
 
-BUDGET TARGET: ${base_budget:,.2f}
+BUDGET TARGET: Rs. {base_budget:,.2f}
 
 RECEIVED VENDOR QUOTES VIA WHATSAPP:
 {json.dumps([v['received_quote_payload'] for v in analyzed_vendors], indent=2)}

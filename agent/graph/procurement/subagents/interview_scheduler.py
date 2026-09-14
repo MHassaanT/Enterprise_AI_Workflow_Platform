@@ -74,7 +74,7 @@ Draft a professional, courteous WhatsApp message to invite {vendor_name} for an 
 
 DETAILS:
 - PROJECT: {title}
-- QUOTE SUBMITTED: ${quote_amt:,.2f}
+- QUOTE SUBMITTED: Rs. {quote_amt:,.2f}
 - COMPANY REPRESENTATIVE: {rep_name} at {comp_name}
 - PROPOSED INTERVIEW SLOT: {slot_date} at {slot_time} (45 minutes)
 - SELECTION REASON / AGENDA: {selection_notes or 'Technical discussion and commercial alignment'}
@@ -104,7 +104,7 @@ Return ONLY valid JSON matching this schema:
             logger.warning(f"[InterviewScheduler] LLM message fallback: {e}")
             interview_msg = (
                 f"Hello {vendor_name} Team! 👋\n\n"
-                f"Thank you for submitting your proposal for *{title}* (${quote_amt:,.2f}).\n\n"
+                f"Thank you for submitting your proposal for *{title}* (Rs. {quote_amt:,.2f}).\n\n"
                 f"Our evaluation team was impressed with your specifications. We would like to invite you for a 45-minute interview with our company representative, *{rep_name}*, to discuss technical alignment and project deliverables.\n\n"
                 f"📅 *Proposed Schedule:* {slot_date} at {slot_time}\n"
                 f"📝 *Discussion Focus:* {selection_notes or 'Scope, timeline, and SLA verification'}\n\n"
@@ -130,7 +130,7 @@ Return ONLY valid JSON matching this schema:
         vendor_email = f"{slug_name or 'vendor'}@whatsapp.vendor"
         appt_notes = (
             f"Procurement Interview for '{title}' with selected vendor {vendor_name}. "
-            f"Quoted Amount: ${quote_amt:,.2f}. Notes: {selection_notes or 'Technical review'}. "
+            f"Quoted Amount: Rs. {quote_amt:,.2f}. Notes: {selection_notes or 'Technical review'}. "
             f"Vendor WhatsApp: {vendor_phone}"
         )
 

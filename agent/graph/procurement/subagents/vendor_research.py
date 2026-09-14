@@ -146,7 +146,7 @@ Generate a structured JSON report containing:
    - "vendor_name": string
    - "domain": string
    - "vendor_phone": string
-   - "estimated_price_range": string (e.g. "Within Budget", "$40,000 - $48,000")
+   - "estimated_price_range": string (e.g. "Within Budget", "Rs. 40,000 - Rs. 48,000")
    - "perceived_fit_score": integer (0-100)
    - "key_strengths": array of strings (e.g. high Google rating, local presence, WhatsApp readiness)
 3. "procurement_risks": List of 2-3 potential supply chain or fulfillment risks.

@@ -317,7 +317,7 @@ export default function ProcurementPage() {
                 >
                   {requests.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.title} (${parseFloat(r.budget_limit || 0).toLocaleString()}) — [{r.current_stage}]
+                      {r.title} (Rs. {parseFloat(r.budget_limit || 0).toLocaleString()}) — [{r.current_stage}]
                     </option>
                   ))}
                 </select>
@@ -421,7 +421,7 @@ export default function ProcurementPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                     <div className="space-y-xs">
-                      <label className="font-label-md text-label-md font-semibold text-on-surface">Budget Limit ($)</label>
+                      <label className="font-label-md text-label-md font-semibold text-on-surface">Budget Limit (PKR - Rs.)</label>
                       <input
                         type="number"
                         placeholder="50000"
@@ -503,7 +503,7 @@ export default function ProcurementPage() {
                     <div className="bg-surface-container-high border border-outline-variant rounded-xl p-md space-y-xs">
                       <p className="font-label-md text-label-md text-on-surface-variant font-semibold">Title & Department</p>
                       <p className="font-title-md text-title-md font-bold text-on-surface">{reqObj.title}</p>
-                      <p className="font-body-md text-body-md text-primary font-semibold">{reqObj.department} — Budget Cap: ${parseFloat(reqObj.budget_limit || 0).toLocaleString()}</p>
+                      <p className="font-body-md text-body-md text-primary font-semibold">{reqObj.department} — Budget Cap: Rs. {parseFloat(reqObj.budget_limit || 0).toLocaleString()}</p>
                     </div>
 
                     {reqObj.extracted_specs && (
@@ -772,7 +772,7 @@ export default function ProcurementPage() {
                         <tr className="border-b border-outline-variant font-label-md text-label-md text-on-surface-variant bg-surface-container-high">
                           <th className="p-md">Vendor</th>
                           <th className="p-md">WhatsApp Contact</th>
-                          <th className="p-md">Quote Amount ($)</th>
+                          <th className="p-md">Quote Amount (PKR)</th>
                           <th className="p-md">Budget Var (%)</th>
                           <th className="p-md">Lead Time</th>
                           <th className="p-md">SLA Score</th>
@@ -784,7 +784,7 @@ export default function ProcurementPage() {
                           <tr key={idx} className="hover:bg-surface-container-high/50">
                             <td className="p-md font-semibold text-on-surface">{row.vendor_name}</td>
                             <td className="p-md text-emerald-400 font-mono">{row.vendor_phone || 'WhatsApp Verified'}</td>
-                            <td className="p-md font-bold text-primary">${parseFloat(row.quote_amount || 0).toLocaleString()}</td>
+                            <td className="p-md font-bold text-primary">Rs. {parseFloat(row.quote_amount || 0).toLocaleString()}</td>
                             <td className="p-md text-on-surface-variant">{row.variance_from_budget_pct}</td>
                             <td className="p-md text-on-surface-variant">{row.lead_time_days} Days</td>
                             <td className="p-md text-emerald-400 font-bold">{row.sla_score}/10</td>
@@ -839,7 +839,7 @@ export default function ProcurementPage() {
                         <option value="">-- Choose Vendor for Interview --</option>
                         {vendorsList.map((v) => (
                           <option key={v.id || v.vendor_name} value={v.id || v.vendor_name}>
-                            {v.vendor_name} ({v.vendor_phone || 'WhatsApp'}) — ${parseFloat(v.quote_amount || 0).toLocaleString()}
+                            {v.vendor_name} ({v.vendor_phone || 'WhatsApp'}) — Rs. {parseFloat(v.quote_amount || 0).toLocaleString()}
                           </option>
                         ))}
                       </select>
