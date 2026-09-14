@@ -19,7 +19,6 @@ ALTER TABLE tenant_email_otps
     ADD CONSTRAINT chk_tenant_otps_identifier 
     CHECK (email IS NOT NULL OR phone IS NOT NULL);
 
-
 -- 5. Update tool_registry with enhanced multi-channel schema
 INSERT INTO tool_registry (canonical_name, display_name, provider_type, is_high_risk, schema_json)
 VALUES (

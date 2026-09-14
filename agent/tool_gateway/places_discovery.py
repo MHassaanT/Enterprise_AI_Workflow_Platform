@@ -212,7 +212,20 @@ async def search_places_discovery(
     # Fallback to Serper Places if Google Places was not used or yielded 0 places
     if not google_places_success or not discovered_places:
         places_api_used = "serper_places_fallback"
-        serper_key = settings.SERPER_API_KEY
+        # Resolve Serper API key via config, environment, or tenant credentials
+        serper_key = (settings.SERPER_API_KEY or "").strip()
+        if not serper_key or len(serper_key) < 5:
+            import os
+            serper_key = os.getenv("SERPER_API_KEY", "").strip()
+        if not serper_key or len(serper_key) < 5:
+            try:
+                from tool_gateway.credentials_manager import fetch_tool_credentials
+                creds = await fetch_tool_credentials(tenant_id=tenant_id, tool_id="Serper")
+                if creds and (creds.get("api_key") or creds.get("secret_key")):
+                    serper_key = (creds.get("api_key") or creds.get("secret_key") or "").strip()
+            except Exception:
+                pass
+
         if serper_key:
             for query in queries[:2]:
                 if len(discovered_places) >= limit * 2:
@@ -227,7 +240,7 @@ async def search_places_discovery(
                         "q": query,
                         "num": min(limit, 20),
                     }
-                    async with httpx.AsyncClient(timeout=12.0) as client:
+                    async with httpx.AsyncClient(timeout=15.0) as client:
                         resp = await client.post(url, headers=headers, json=body)
                         if resp.status_code == 200:
                             data = resp.json()
@@ -260,9 +273,15 @@ async def search_places_discovery(
                                     "business_status": "OPERATIONAL",
                                     "source": "serper_places",
                                     "industry": primary_industry,
-                                })
+                                    })
+                        else:
+                            logger.warning(
+                                f"[PLACES TOOL] Serper Places returned status {resp.status_code}: {resp.text[:150]}"
+                            )
                 except Exception as e:
-                    logger.warning(f"[PLACES TOOL] Error querying Serper Places fallback: {e}")
+                    logger.warning(f"[PLACES TOOL] Error querying Serper Places fallback ({type(e).__name__}): {e}")
+        else:
+            logger.warning("[PLACES TOOL] No Serper API key configured for Places fallback.")
 
     # For top candidates lacking phone numbers, resolve via Serper company search
     async def _resolve_missing_phone(place: Dict[str, Any]):

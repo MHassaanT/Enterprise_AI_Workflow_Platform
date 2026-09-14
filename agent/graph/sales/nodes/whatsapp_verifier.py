@@ -62,6 +62,15 @@ async def whatsapp_verifier_node(state: SalesAgentState) -> Dict[str, Any]:
         if status == "ON_WHATSAPP":
             logger.info(f"[WHATSAPP GUARD] ✅ {place.get('company_name')} ({clean_phone}) is ON_WHATSAPP!")
             return enriched, "ON_WHATSAPP"
+        elif status in ("NOT_CONNECTED", "UNVERIFIED"):
+            # If WhatsApp is not paired in Integration Hub, allow prospect through as UNVERIFIED
+            # so the user gets qualified leads & draft pitches in CRM rather than discarding everything
+            logger.warning(
+                f"[WHATSAPP GUARD] ⚠️ WhatsApp session not connected. "
+                f"Proceeding with {place.get('company_name')} ({clean_phone}) as UNVERIFIED."
+            )
+            enriched["whatsapp_status"] = "UNVERIFIED"
+            return enriched, "UNVERIFIED"
         else:
             logger.info(f"[WHATSAPP GUARD] ❌ {place.get('company_name')} ({clean_phone}) is NOT on WhatsApp ({status}).")
             return None, status
@@ -82,20 +91,20 @@ async def whatsapp_verifier_node(state: SalesAgentState) -> Dict[str, Any]:
 
     logger.info(
         f"[STAGE 3: WHATSAPP VERIFIER] Verification complete: {len(fulfilled_prospects)} "
-        f"verified ON_WHATSAPP prospects selected (evaluated {len(qualified_places)}, discarded {discarded_count})."
+        f"prospects selected (evaluated {len(qualified_places)}, discarded {discarded_count})."
     )
 
     if fulfilled_prospects:
         status_str = "COMPLETED"
         details = (
-            f"Baileys onWhatsApp() verified {len(fulfilled_prospects)} prospects actively registered on WhatsApp. "
-            f"Filtered out {discarded_count} non-WhatsApp or landline numbers."
+            f"Baileys onWhatsApp() verified/processed {len(fulfilled_prospects)} prospects for WhatsApp outreach. "
+            f"Filtered out {discarded_count} invalid numbers."
         )
     else:
         status_str = "FAILED"
         details = (
-            f"Evaluated {len(qualified_places)} business phones via Baileys onWhatsApp(), but 0 were registered "
-            f"on WhatsApp ({discarded_count} discarded)."
+            f"Evaluated {len(qualified_places)} business phones via Baileys onWhatsApp(), but 0 were valid "
+            f"for WhatsApp ({discarded_count} discarded)."
         )
 
     logs.append({

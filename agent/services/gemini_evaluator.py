@@ -17,8 +17,90 @@ def _get_gemini_client():
     from google import genai
     api_key = settings.GEMINI_API_KEY
     if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured in settings.")
-    return genai.Client(api_key=api_key)
+        return None
+    try:
+        return genai.Client(api_key=api_key)
+    except Exception as e:
+        logger.warning(f"[GEMINI EVALUATOR] Failed to initialize Gemini client: {e}")
+        return None
+
+
+def _parse_and_enrich_evaluations(raw_text: str, candidates: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """Parses JSON text response and enriches candidate list."""
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    try:
+        evaluations = json.loads(cleaned)
+    except Exception:
+        # Try finding the array inside text if surrounded by comments
+        m = re.search(r"\[\s*\{.*\}\s*\]", cleaned, re.DOTALL)
+        if m:
+            try:
+                evaluations = json.loads(m.group(0))
+            except Exception:
+                return None
+        else:
+            return None
+
+    if not isinstance(evaluations, list):
+        return None
+
+    eval_map = {e.get("candidate_index"): e for e in evaluations if isinstance(e, dict)}
+    enriched_candidates = []
+    for idx, c in enumerate(candidates, 1):
+        eval_data = eval_map.get(idx, {})
+        is_qualified = bool(eval_data.get("qualified", True))
+        score = float(eval_data.get("icp_score") or (85.0 if is_qualified else 30.0))
+        rejection = eval_data.get("rejection_reason")
+        target_role = eval_data.get("target_role") or "Owner / Decision Maker"
+        pain_points = eval_data.get("key_pain_points") or ["Operational efficiency", "Workflow automation"]
+        outreach_angle = eval_data.get("outreach_angle") or "Streamlining business operations and customer workflows."
+
+        enriched = dict(c)
+        enriched["qualified"] = is_qualified
+        enriched["rejection_reason"] = rejection
+        enriched["icp_score"] = score
+        enriched["target_role"] = target_role
+        enriched["key_pain_points"] = pain_points
+        enriched["outreach_angle"] = outreach_angle
+        enriched_candidates.append(enriched)
+    return enriched_candidates
+
+
+async def _evaluate_with_openrouter(prompt: str, candidates: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    if not settings.OPENROUTER_API_KEY:
+        return None
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import SystemMessage, HumanMessage
+    llm = ChatOpenAI(
+        model=settings.OPENROUTER_MODEL or "openai/gpt-4o-mini",
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0.1,
+    )
+    llm_res = await llm.ainvoke([
+        SystemMessage(content="You are an elite B2B Sales SDR Evaluation AI. Respond ONLY with a valid JSON array."),
+        HumanMessage(content=prompt)
+    ])
+    return _parse_and_enrich_evaluations(llm_res.content, candidates)
+
+
+def _evaluate_with_gemini_direct(prompt: str, candidates: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    client = _get_gemini_client()
+    if not client:
+        return None
+    response = client.models.generate_content(
+        model=settings.GEMINI_MODEL or "gemini-2.5-flash",
+        contents=prompt,
+    )
+    return _parse_and_enrich_evaluations(response.text, candidates)
 
 
 async def evaluate_business_candidates_with_gemini(
@@ -27,8 +109,8 @@ async def evaluate_business_candidates_with_gemini(
     tenant_id: str = "00000000-0000-0000-0000-000000000000",
 ) -> List[Dict[str, Any]]:
     """
-    Evaluates a batch of business candidates from Google Places against the ICP criteria using Gemini.
-    Returns the enriched candidate list with qualification, icp_score, pain_points, and outreach_angle.
+    Evaluates a batch of business candidates against the ICP criteria.
+    Respects LLM_PROVIDER (defaults to OpenRouter if configured).
     """
     if not candidates:
         return []
@@ -41,9 +123,7 @@ async def evaluate_business_candidates_with_gemini(
     region = icp_config.get("region", "")
     battlecard_notes = icp_config.get("battlecard_notes", "Enterprise AI Workflow Platform with zero vendor lock-in.")
 
-    client = _get_gemini_client()
-
-    # Prepare candidate summaries for Gemini
+    # Prepare candidate summaries
     formatted_candidates = []
     for idx, c in enumerate(candidates, 1):
         formatted_candidates.append({
@@ -93,116 +173,55 @@ Each object must have this exact structure:
 ]
 """
 
-    try:
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL or "gemini-2.5-flash",
-            contents=prompt,
-        )
+    enriched_candidates = None
+    provider = (settings.LLM_PROVIDER or "openrouter").lower().strip()
 
-        response_text = response.text.strip()
-        # Clean potential markdown fences
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        elif response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
+    # If OpenRouter is chosen as provider or if Gemini API key is missing
+    if provider in ("openrouter", "ollama") or not settings.GEMINI_API_KEY:
+        try:
+            logger.info(f"[EVALUATION] Evaluating {len(candidates)} businesses via OpenRouter ({settings.OPENROUTER_MODEL}).")
+            enriched_candidates = await _evaluate_with_openrouter(prompt, candidates)
+        except Exception as e:
+            logger.warning(f"[EVALUATION] OpenRouter primary evaluation note: {e}. Trying fallback.")
 
-        evaluations = json.loads(response_text)
-        eval_map = {e.get("candidate_index"): e for e in evaluations if isinstance(e, dict)}
+    # Fallback to Gemini only if OpenRouter did not succeed and Gemini key is present
+    if not enriched_candidates and settings.GEMINI_API_KEY:
+        try:
+            logger.info(f"[EVALUATION] Evaluating {len(candidates)} businesses via Google Gemini ({settings.GEMINI_MODEL}).")
+            enriched_candidates = _evaluate_with_gemini_direct(prompt, candidates)
+        except Exception as e:
+            logger.warning(f"[EVALUATION] Gemini direct evaluation note: {e}.")
 
-        enriched_candidates = []
-        for idx, c in enumerate(candidates, 1):
-            eval_data = eval_map.get(idx, {})
-            is_qualified = bool(eval_data.get("qualified", True))
-            score = float(eval_data.get("icp_score") or (85.0 if is_qualified else 30.0))
-            rejection = eval_data.get("rejection_reason")
-            target_role = eval_data.get("target_role") or "Owner / Decision Maker"
-            pain_points = eval_data.get("key_pain_points") or ["Operational efficiency", "Workflow automation"]
-            outreach_angle = eval_data.get("outreach_angle") or "Streamlining business operations and customer workflows."
+    # If Gemini was primary and failed, try OpenRouter as fallback
+    if not enriched_candidates and settings.OPENROUTER_API_KEY:
+        try:
+            logger.info(f"[EVALUATION] Attempting OpenRouter fallback evaluation.")
+            enriched_candidates = await _evaluate_with_openrouter(prompt, candidates)
+        except Exception as e:
+            logger.warning(f"[EVALUATION] OpenRouter fallback note: {e}.")
 
-            enriched = dict(c)
-            enriched["qualified"] = is_qualified
-            enriched["rejection_reason"] = rejection
-            enriched["icp_score"] = score
-            enriched["target_role"] = target_role
-            enriched["key_pain_points"] = pain_points
-            enriched["outreach_angle"] = outreach_angle
-            enriched_candidates.append(enriched)
-
+    if enriched_candidates:
         logger.info(
-            f"[GEMINI EVALUATOR] Evaluated {len(candidates)} businesses: "
+            f"[EVALUATOR] Evaluated {len(candidates)} businesses: "
             f"{sum(1 for e in enriched_candidates if e['qualified'])} qualified, "
             f"{sum(1 for e in enriched_candidates if not e['qualified'])} rejected."
         )
         return enriched_candidates
 
-    except Exception as e:
-        logger.warning(f"[GEMINI EVALUATOR] Direct Gemini API note ({e}). Attempting OpenRouter LLM fallback.")
-        try:
-            if settings.OPENROUTER_API_KEY:
-                from langchain_openai import ChatOpenAI
-                from langchain_core.messages import SystemMessage, HumanMessage
-                llm = ChatOpenAI(
-                    model=settings.OPENROUTER_MODEL or "openai/gpt-4o-mini",
-                    api_key=settings.OPENROUTER_API_KEY,
-                    base_url="https://openrouter.ai/api/v1",
-                    temperature=0.1,
-                )
-                llm_res = await llm.ainvoke([
-                    SystemMessage(content="You are an elite B2B Sales SDR Evaluation AI. Respond ONLY with a valid JSON array."),
-                    HumanMessage(content=prompt)
-                ])
-                res_content = llm_res.content.strip()
-                if res_content.startswith("```json"):
-                    res_content = res_content[7:]
-                elif res_content.startswith("```"):
-                    res_content = res_content[3:]
-                if res_content.endswith("```"):
-                    res_content = res_content[:-3]
-                res_content = res_content.strip()
-                evaluations = json.loads(res_content)
-                eval_map = {e.get("candidate_index"): e for e in evaluations if isinstance(e, dict)}
-
-                enriched_candidates = []
-                for idx, c in enumerate(candidates, 1):
-                    eval_data = eval_map.get(idx, {})
-                    is_qualified = bool(eval_data.get("qualified", True))
-                    score = float(eval_data.get("icp_score") or (85.0 if is_qualified else 30.0))
-                    rejection = eval_data.get("rejection_reason")
-                    target_role = eval_data.get("target_role") or "Owner / Decision Maker"
-                    pain_points = eval_data.get("key_pain_points") or ["Operational efficiency", "Workflow automation"]
-                    outreach_angle = eval_data.get("outreach_angle") or "Streamlining business operations and customer workflows."
-
-                    enriched = dict(c)
-                    enriched["qualified"] = is_qualified
-                    enriched["rejection_reason"] = rejection
-                    enriched["icp_score"] = score
-                    enriched["target_role"] = target_role
-                    enriched["key_pain_points"] = pain_points
-                    enriched["outreach_angle"] = outreach_angle
-                    enriched_candidates.append(enriched)
-
-                logger.info(f"[GEMINI EVALUATOR] Evaluated {len(candidates)} businesses via OpenRouter fallback.")
-                return enriched_candidates
-        except Exception as fallback_err:
-            logger.warning(f"[GEMINI EVALUATOR] OpenRouter fallback note: {fallback_err}. Applying safe heuristic fallback.")
-
-        # Safe heuristic fallback
-        enriched_candidates = []
-        for c in candidates:
-            enriched = dict(c)
-            cat = (c.get("category") or "").lower()
-            name = (c.get("company_name") or "").lower()
-            # Reject if obvious vendor / tech
-            is_vendor = any(w in cat or w in name for w in ["software", "pos", "tech", "platform", "app", "system", "consult"])
-            rating = c.get("google_rating", 0.0)
-            enriched["qualified"] = not is_vendor
-            enriched["rejection_reason"] = "Tech vendor selling to target industry" if is_vendor else None
-            enriched["icp_score"] = min(95.0, 70.0 + (rating * 5.0)) if not is_vendor else 20.0
-            enriched["target_role"] = "Owner / General Manager"
-            enriched["key_pain_points"] = ["Operational workflow management", "Customer communication efficiency"]
-            enriched["outreach_angle"] = "Modernizing operations with automated AI workflows."
-            enriched_candidates.append(enriched)
-        return enriched_candidates
+    # Safe heuristic fallback if all LLM calls fail
+    logger.warning("[EVALUATOR] LLMs unavailable. Applying safe heuristic qualification fallback.")
+    fallback_candidates = []
+    for c in candidates:
+        enriched = dict(c)
+        cat = (c.get("category") or "").lower()
+        name = (c.get("company_name") or "").lower()
+        is_vendor = any(w in cat or w in name for w in ["software", "pos", "tech", "platform", "app", "system", "consult"])
+        rating = c.get("google_rating", 0.0)
+        enriched["qualified"] = not is_vendor
+        enriched["rejection_reason"] = "Tech vendor selling to target industry" if is_vendor else None
+        enriched["icp_score"] = min(95.0, 70.0 + (rating * 5.0)) if not is_vendor else 20.0
+        enriched["target_role"] = "Owner / General Manager"
+        enriched["key_pain_points"] = ["Operational workflow management", "Customer communication efficiency"]
+        enriched["outreach_angle"] = "Modernizing operations with automated AI workflows."
+        fallback_candidates.append(enriched)
+    return fallback_candidates

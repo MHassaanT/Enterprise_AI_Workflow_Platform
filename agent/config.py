@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     # LLM Gateway — "gemini" | "openrouter" | "ollama"
-    LLM_PROVIDER: str = "gemini"
+    LLM_PROVIDER: str = "openrouter"
 
     # OpenRouter (OpenAI-compatible)
     OPENROUTER_API_KEY: str = ""
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     @property
     def places_api_key(self) -> str:
-        return self.GOOGLE_PLACES_API_KEY or self.GOOGLE_PLACES_API or self.GEMINI_API_KEY
+        return self.GOOGLE_PLACES_API_KEY or self.GOOGLE_PLACES_API
 
     model_config = {"env_file": env_path, "extra": "ignore"}
 

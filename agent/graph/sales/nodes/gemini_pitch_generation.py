@@ -67,23 +67,11 @@ WHATSAPP COPYWRITING RULES:
 Output ONLY the final WhatsApp message text without any introductory commentary or quotation marks.
 """
 
-    # 1. Attempt direct Gemini API
-    try:
-        from google import genai
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        resp = client.models.generate_content(
-            model=settings.GEMINI_MODEL or "gemini-2.5-flash",
-            contents=prompt,
-        )
-        body = resp.text.strip()
-        if body:
-            return body
-    except Exception as e:
-        logger.debug(f"[PITCH GEN] Direct Gemini note ({e}). Trying OpenRouter fallback.")
+    provider = (settings.LLM_PROVIDER or "openrouter").lower().strip()
 
-    # 2. Attempt OpenRouter fallback
-    try:
-        if settings.OPENROUTER_API_KEY:
+    # 1. If OpenRouter is chosen as provider or Gemini key is not set
+    if (provider in ("openrouter", "ollama") or not settings.GEMINI_API_KEY) and settings.OPENROUTER_API_KEY:
+        try:
             from langchain_openai import ChatOpenAI
             from langchain_core.messages import HumanMessage
             llm = ChatOpenAI(
@@ -96,8 +84,41 @@ Output ONLY the final WhatsApp message text without any introductory commentary 
             body = res.content.strip()
             if body:
                 return body
-    except Exception as e:
-        logger.debug(f"[PITCH GEN] OpenRouter note: {e}.")
+        except Exception as e:
+            logger.debug(f"[PITCH GEN] OpenRouter note ({e}). Trying fallback.")
+
+    # 2. Attempt direct Gemini API if provider is gemini or as fallback
+    if settings.GEMINI_API_KEY:
+        try:
+            from google import genai
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            resp = client.models.generate_content(
+                model=settings.GEMINI_MODEL or "gemini-2.5-flash",
+                contents=prompt,
+            )
+            body = resp.text.strip()
+            if body:
+                return body
+        except Exception as e:
+            logger.debug(f"[PITCH GEN] Direct Gemini note ({e}). Trying OpenRouter fallback.")
+
+    # 3. Attempt OpenRouter fallback if not already tried
+    if settings.OPENROUTER_API_KEY and provider not in ("openrouter", "ollama"):
+        try:
+            from langchain_openai import ChatOpenAI
+            from langchain_core.messages import HumanMessage
+            llm = ChatOpenAI(
+                model=settings.OPENROUTER_MODEL or "openai/gpt-4o-mini",
+                api_key=settings.OPENROUTER_API_KEY,
+                base_url="https://openrouter.ai/api/v1",
+                temperature=0.7,
+            )
+            res = await llm.ainvoke([HumanMessage(content=prompt)])
+            body = res.content.strip()
+            if body:
+                return body
+        except Exception as e:
+            logger.debug(f"[PITCH GEN] OpenRouter fallback note: {e}.")
 
     # 3. High-quality structured template fallback
     return (
